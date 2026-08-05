@@ -29,6 +29,7 @@ const PLAYER_RADIUS = 0.38;
 
 export function FpsGame() {
   const mountRef = useRef<HTMLDivElement>(null);
+  const respawnRef = useRef<() => void>(() => {});
   const [locked, setLocked] = useState(false);
   const [started, setStarted] = useState(false);
   const [ammo, setAmmo] = useState(30);
@@ -44,6 +45,8 @@ export function FpsGame() {
   const [reloadDuration, setReloadDuration] = useState(0);
   const [utilityCount, setUtilityCount] = useState(2);
   const [flashed, setFlashed] = useState(false);
+  const [health, setHealth] = useState(100);
+  const [dead, setDead] = useState(false);
 
   useEffect(() => {
     const mount = mountRef.current;
@@ -109,6 +112,46 @@ export function FpsGame() {
     addBox(18, 1.1, 11, 4, 2.2, 4, 0x596467);
     addBox(-20, 1.1, -12, 4, 2.2, 4, 0x596467);
     addBox(0, 1.75, -21, 16, 3.5, 1.2, 0x424f52);
+
+    // Collision test course
+    addBox(-23, 1.5, 4, 1, 3, 13, 0x687477);
+    addBox(-17, 1.5, -2, 11, 3, 1, 0x687477);
+    addBox(-12, 1.5, 3, 1, 3, 9, 0x687477);
+    addBox(-17, 0.65, 9, 5, 1.3, 1, 0x8d7650);
+
+    // Player test pads: damage, instant death, and healing.
+    const padMaterial = (color: number) => new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 1.8, roughness: 0.5 });
+    const addPad = (x: number, z: number, color: number) => {
+      const pad = new THREE.Mesh(new THREE.BoxGeometry(4, 0.12, 4), padMaterial(color));
+      pad.position.set(x, 0.06, z); scene.add(pad);
+    };
+    addPad(-8, 23, 0xff8a24);
+    addPad(0, 23, 0xff263f);
+    addPad(8, 23, 0x37dc80);
+
+    // Human-shaped test dummies with separate head and body hit zones.
+    const dummies: THREE.Group[] = [];
+    const addDummy = (x: number, z: number, color: number) => {
+      const dummy = new THREE.Group(); dummy.position.set(x, 0, z);
+      dummy.userData.health = 150; dummy.userData.maxHealth = 150;
+      const dummyMat = material(color, 0.55, 0.15);
+      const addLimb = (geometry: THREE.BufferGeometry, px: number, py: number, pz: number, multiplier = 1) => {
+        const mesh = new THREE.Mesh(geometry, dummyMat); mesh.position.set(px, py, pz); mesh.castShadow = true;
+        mesh.userData.dummy = dummy; mesh.userData.damageMultiplier = multiplier; dummy.add(mesh); return mesh;
+      };
+      addLimb(new THREE.BoxGeometry(0.62, 0.82, 0.3), 0, 1.35, 0);
+      addLimb(new THREE.SphereGeometry(0.24, 12, 9), 0, 2.02, 0, 1.75);
+      addLimb(new THREE.BoxGeometry(0.18, 0.78, 0.2), -0.43, 1.38, 0);
+      addLimb(new THREE.BoxGeometry(0.18, 0.78, 0.2), 0.43, 1.38, 0);
+      addLimb(new THREE.BoxGeometry(0.22, 0.9, 0.24), -0.2, 0.48, 0);
+      addLimb(new THREE.BoxGeometry(0.22, 0.9, 0.24), 0.2, 0.48, 0);
+      const barBack = new THREE.Mesh(new THREE.PlaneGeometry(1.05, 0.09), new THREE.MeshBasicMaterial({ color: 0x151a1b, side: THREE.DoubleSide }));
+      barBack.position.set(0, 2.48, 0); barBack.raycast = () => {}; dummy.add(barBack);
+      const bar = new THREE.Mesh(new THREE.PlaneGeometry(1, 0.055), new THREE.MeshBasicMaterial({ color: 0x63e690, side: THREE.DoubleSide }));
+      bar.position.set(0, 2.48, -0.006); bar.raycast = () => {}; dummy.add(bar); dummy.userData.healthBar = bar;
+      scene.add(dummy); dummies.push(dummy);
+    };
+    addDummy(-7, -14, 0x4d7182); addDummy(0, -14, 0x706347); addDummy(7, -14, 0x754b4b);
 
     // Landmark tower and emissive arena lights
     addBox(22, 4, -20, 5, 8, 5, 0x343f43);
@@ -230,6 +273,12 @@ export function FpsGame() {
     let throwableAiming = false, grenadesLeft = 2;
     const projectiles: { mesh: THREE.Mesh; velocity: THREE.Vector3; age: number; type: string }[] = [];
     let currentFireMode: FireMode = "AUTO", triggerHeld = false, lastShot = 0, currentSlot = 1, movementSpread = 1;
+    let playerHealth = 100, nextPadTick = 0;
+    respawnRef.current = () => {
+      camera.position.set(0, PLAYER_HEIGHT, 15);
+      yaw = 0; pitch = 0; verticalVelocity = 0; playerHealth = 100;
+      keys.clear();
+    };
     let last = performance.now();
     const clock = new THREE.Clock();
 
@@ -277,6 +326,23 @@ export function FpsGame() {
     const raycaster = new THREE.Raycaster();
     const impactGeometry = new THREE.SphereGeometry(0.045, 6, 6);
     const impactMaterial = new THREE.MeshBasicMaterial({ color: 0xff9a55 });
+    const damageDummy = (hit: THREE.Intersection, damage: number) => {
+      const dummy = hit.object.userData.dummy as THREE.Group | undefined;
+      if (!dummy || !dummy.visible) return;
+      dummy.userData.health = Math.max(0, dummy.userData.health - damage * (hit.object.userData.damageMultiplier ?? 1));
+      const ratio = dummy.userData.health / dummy.userData.maxHealth;
+      (dummy.userData.healthBar as THREE.Mesh).scale.x = Math.max(0.001, ratio);
+      ((dummy.userData.healthBar as THREE.Mesh).material as THREE.MeshBasicMaterial).color.set(ratio > .5 ? 0x63e690 : ratio > .2 ? 0xffb347 : 0xff4057);
+      if (dummy.userData.health <= 0) {
+        dummy.visible = false;
+        window.setTimeout(() => {
+          dummy.userData.health = dummy.userData.maxHealth;
+          (dummy.userData.healthBar as THREE.Mesh).scale.x = 1;
+          ((dummy.userData.healthBar as THREE.Mesh).material as THREE.MeshBasicMaterial).color.set(0x63e690);
+          dummy.visible = true;
+        }, 3000);
+      }
+    };
     const getThrow = () => {
       const direction = new THREE.Vector3(); camera.getWorldDirection(direction);
       const start = camera.position.clone().addScaledVector(direction, 0.65).add(new THREE.Vector3(0, -0.18, 0));
@@ -322,8 +388,9 @@ export function FpsGame() {
         lastMelee = now;
         meleeSwing = 1;
         raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
-        const meleeHit = raycaster.intersectObjects(scene.children, false).find((result) => result.object !== camera && result.distance > 0.5 && result.distance <= 2.35);
+        const meleeHit = raycaster.intersectObjects(scene.children, true).find((result) => result.object !== camera && result.distance > 0.5 && result.distance <= 2.35);
         if (meleeHit) {
+          damageDummy(meleeHit, 100);
           const slash = new THREE.Mesh(new THREE.SphereGeometry(0.075, 6, 6), new THREE.MeshBasicMaterial({ color: 0xe9f7f2 }));
           slash.position.copy(meleeHit.point);
           scene.add(slash);
@@ -347,7 +414,7 @@ export function FpsGame() {
         const spreadNdc = spreadDegrees / camera.fov;
         const offset = new THREE.Vector2((Math.random() - 0.5) * spreadNdc * 2, (Math.random() - 0.5) * spreadNdc * 2);
         raycaster.setFromCamera(offset, camera);
-        const hit = raycaster.intersectObjects(scene.children, false).find((result) => result.object !== camera && result.distance > 1);
+        const hit = raycaster.intersectObjects(scene.children, true).find((result) => result.object !== camera && result.distance > 1);
         const tracerEnd = hit?.point.clone() ?? raycaster.ray.at(shotStats.range, new THREE.Vector3());
         const tracerMaterial = new THREE.LineBasicMaterial({ color: pelletCount > 1 ? 0xffd09a : 0xffb06b, transparent: true, opacity: 0.82 });
         const tracer = new THREE.Line(new THREE.BufferGeometry().setFromPoints([tracerStart, tracerEnd]), tracerMaterial);
@@ -356,6 +423,7 @@ export function FpsGame() {
           scene.remove(tracer); tracer.geometry.dispose(); tracerMaterial.dispose();
         }, pelletCount > 1 ? 48 : 65);
         if (hit) {
+          damageDummy(hit, shotStats.damage);
           const impact = new THREE.Mesh(impactGeometry, impactMaterial);
           impact.position.copy(hit.point).addScaledVector(hit.face?.normal ?? new THREE.Vector3(0, 1, 0), 0.025);
           scene.add(impact); window.setTimeout(() => scene.remove(impact), 1800);
@@ -423,6 +491,19 @@ export function FpsGame() {
       const dz = (-input.x * sin - input.y * cos) * speed * dt;
       if (!collides(camera.position.x + dx, camera.position.z)) camera.position.x += dx;
       if (!collides(camera.position.x, camera.position.z + dz)) camera.position.z += dz;
+
+      if (now >= nextPadTick) {
+        nextPadTick = now + 250;
+        const onPad = (x: number) => Math.abs(camera.position.x - x) < 2 && Math.abs(camera.position.z - 23) < 2;
+        if (onPad(-8)) playerHealth = Math.max(0, playerHealth - 8);
+        if (onPad(0)) playerHealth = 0;
+        if (onPad(8)) playerHealth = Math.min(100, playerHealth + 12);
+        setHealth(playerHealth);
+        if (playerHealth <= 0) {
+          setDead(true); triggerHeld = false; keys.clear();
+          if (document.pointerLockElement) document.exitPointerLock();
+        }
+      }
 
       verticalVelocity -= 14.5 * dt;
       camera.position.y += verticalVelocity * dt;
@@ -525,7 +606,7 @@ export function FpsGame() {
         <div className="status"><i /> SYSTEMS ONLINE</div>
       </header>
       <div className="crosshair"><span /><span /></div>
-      <div className="hud-left"><small>VITALS</small><strong>100</strong><div className="health"><i /></div></div>
+      <div className="hud-left"><small>VITALS</small><strong>{health}</strong><div className="health"><i style={{ width: `${health}%` }} /></div></div>
       <div className="hud-right"><small>{equippedItems[activeSlot - 1]}{activeIsMelee ? " · MELEE" : activeSlot <= 2 ? ` · ${fireMode}` : " · READY"}</small><strong>{activeSlot === 4 ? utilityCount : activeIsMelee || activeSlot > 2 ? "—" : ammo} <em>{activeSlot === 4 ? "THROWABLES" : activeIsMelee || activeSlot > 2 ? "" : "/ 120"}</em></strong></div>
       {reloading && <div className="reload-status"><span>RELOADING</span><i style={{ animationDuration: `${reloadDuration}s` }} /></div>}
       <div className="quick-slots">
@@ -536,8 +617,16 @@ export function FpsGame() {
         </div>)}
       </div>
       <div className={`flash-effect${flashed ? " active" : ""}`} />
+      <div className="test-legend"><span className="damage-dot" /> DAMAGE PAD <span className="kill-dot" /> KILL PAD <span className="heal-dot" /> HEAL PAD</div>
       <div className="controls"><kbd>WASD</kbd> MOVE <kbd>SHIFT</kbd> SPRINT <kbd>RMB</kbd> AIM <kbd>LMB</kbd> FIRE <kbd>B</kbd> MODE <kbd>R</kbd> RELOAD</div>
-      {!locked && <div className={`menu-screen${!started ? " main-menu-screen" : " pause-screen"}`}>
+      {dead && <div className="death-screen">
+        <div className="death-code">KIA</div><h2>OPERATOR DOWN</h2><p>TEST CONDITION: FATAL DAMAGE</p>
+        <button onClick={() => {
+          respawnRef.current(); setHealth(100); setDead(false);
+          mountRef.current?.querySelector("canvas")?.requestPointerLock();
+        }}>RESPAWN AT TEST YARD</button>
+      </div>}
+      {!locked && !dead && <div className={`menu-screen${!started ? " main-menu-screen" : " pause-screen"}`}>
         <div className="menu-rule" />
         <section className="menu-card">
           <div className="menu-kicker">TACTICAL TRAINING SIMULATION</div>
