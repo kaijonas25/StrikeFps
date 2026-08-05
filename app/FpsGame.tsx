@@ -140,9 +140,11 @@ export function FpsGame() {
 
     // Human-shaped test dummies with separate head and body hit zones.
     const dummies: THREE.Group[] = [];
-    const addDummy = (x: number, z: number, color: number) => {
+    const addDummy = (x: number, z: number, color: number, movement: "static" | "walk" | "sprint" = "static") => {
       const dummy = new THREE.Group(); dummy.position.set(x, 0, z);
       dummy.userData.health = 150; dummy.userData.maxHealth = 150;
+      dummy.userData.movement = movement; dummy.userData.laneOrigin = z;
+      dummy.userData.animatedLimbs = [] as { mesh: THREE.Mesh; side: number; amount: number }[];
       const dummyMat = material(color, 0.55, 0.15);
       const armorMat = material(0x20292b, 0.7, 0.28);
       const fabricMat = material(0x303a3b, 0.92, 0.02);
@@ -169,15 +171,17 @@ export function FpsGame() {
       [-1, 1].forEach((side) => {
         addLimb(new THREE.SphereGeometry(0.17, 10, 8), side * 0.43, 1.65, 0, 1, armorMat);
         const upper = addLimb(new THREE.CylinderGeometry(0.105, 0.095, 0.44, 9), side * 0.45, 1.42, 0, 1, fabricMat); upper.rotation.z = side * -0.08;
-        addLimb(new THREE.CylinderGeometry(0.09, 0.075, 0.38, 9), side * 0.47, 1.04, -0.02, 1, fabricMat);
+        const forearm = addLimb(new THREE.CylinderGeometry(0.09, 0.075, 0.38, 9), side * 0.47, 1.04, -0.02, 1, fabricMat);
         addLimb(new THREE.BoxGeometry(0.17, 0.16, 0.18), side * 0.48, 0.8, -0.02, 1, armorMat);
+        dummy.userData.animatedLimbs.push({ mesh: upper, side, amount: 1 }, { mesh: forearm, side, amount: .55 });
       });
       // Thighs, knee pads, lower legs and boots.
       [-1, 1].forEach((side) => {
-        addLimb(new THREE.CylinderGeometry(0.13, 0.115, 0.46, 9), side * 0.19, 0.74, 0, 1, fabricMat);
+        const thigh = addLimb(new THREE.CylinderGeometry(0.13, 0.115, 0.46, 9), side * 0.19, 0.74, 0, 1, fabricMat);
         addLimb(new THREE.BoxGeometry(0.23, 0.18, 0.14), side * 0.19, 0.47, -0.1, 1, armorMat);
-        addLimb(new THREE.CylinderGeometry(0.11, 0.09, 0.4, 9), side * 0.19, 0.25, 0, 1, fabricMat);
+        const shin = addLimb(new THREE.CylinderGeometry(0.11, 0.09, 0.4, 9), side * 0.19, 0.25, 0, 1, fabricMat);
         addLimb(new THREE.BoxGeometry(0.24, 0.14, 0.38), side * 0.19, 0.08, -0.08, 1, armorMat);
+        dummy.userData.animatedLimbs.push({ mesh: thigh, side: -side, amount: 1 }, { mesh: shin, side: -side, amount: .7 });
       });
       const barBack = new THREE.Mesh(new THREE.PlaneGeometry(1.05, 0.09), new THREE.MeshBasicMaterial({ color: 0x151a1b, side: THREE.DoubleSide }));
       barBack.position.set(0, 2.48, 0); barBack.raycast = () => {}; dummy.add(barBack);
@@ -186,6 +190,7 @@ export function FpsGame() {
       scene.add(dummy); dummies.push(dummy);
     };
     addDummy(-7, -14, 0x4d7182); addDummy(0, -14, 0x706347); addDummy(7, -14, 0x754b4b);
+    addDummy(15, -15, 0x38785d, "walk"); addDummy(26, -15, 0x804f32, "sprint");
 
     // Landmark tower and emissive arena lights
     addBox(22, 4, -20, 5, 8, 5, 0x343f43);
@@ -555,6 +560,20 @@ export function FpsGame() {
       const moving = input.lengthSq() > 0 && grounded;
       movementSpread = input.lengthSq() > 0 ? 1.55 : 1;
       const t = clock.getElapsedTime();
+      dummies.forEach((dummy) => {
+        const movement = dummy.userData.movement as "static" | "walk" | "sprint";
+        if (movement === "static" || !dummy.visible) return;
+        const speed = movement === "sprint" ? 4.2 : 1.75;
+        const travel = (t * speed) % 24;
+        dummy.position.z = dummy.userData.laneOrigin + (travel <= 12 ? -6 + travel : 18 - travel);
+        dummy.rotation.y = travel <= 12 ? Math.PI : 0;
+        const stride = Math.sin(t * (movement === "sprint" ? 12 : 6.5));
+        const amplitude = movement === "sprint" ? 0.92 : 0.5;
+        dummy.position.y = Math.abs(Math.sin(t * (movement === "sprint" ? 12 : 6.5))) * (movement === "sprint" ? .075 : .035);
+        (dummy.userData.animatedLimbs as { mesh: THREE.Mesh; side: number; amount: number }[]).forEach((limb) => {
+          limb.mesh.rotation.x = stride * amplitude * limb.side * limb.amount;
+        });
+      });
       if (healEnd && now >= healEnd) {
         playerHealth = Math.min(100, playerHealth + MEDICAL_STATS[medical].healing);
         medicalCharges -= 1; healEnd = 0;
