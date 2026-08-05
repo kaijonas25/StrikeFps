@@ -112,16 +112,66 @@ export function FpsGame() {
       addBox(x, 3.9, 30.8, 0.35, 0.35, 0.35, 0x9de8ff, false);
     });
 
-    // Simple weapon view model
+    // Detailed procedural weapon view models. All sights share the same centerline for ADS.
     const gun = new THREE.Group();
-    const gunBody = new THREE.Mesh(new THREE.BoxGeometry(0.19, 0.18, 0.62), material(0x22282a, 0.35, 0.65));
-    gunBody.position.set(0.34, -0.28, -0.58);
-    gun.add(gunBody);
-    const sight = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.08, 0.1), material(0xef5e2f, 0.5, 0.2));
-    sight.position.set(0.34, -0.15, -0.72);
-    gun.add(sight);
+    const weaponMaterial = (color: number, metalness = 0.72) => material(color, 0.34, metalness);
+    const buildWeapon = (name: string) => {
+      const model = new THREE.Group();
+      const addPart = (w: number, h: number, d: number, x: number, y: number, z: number, color = 0x20282b) => {
+        const part = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), weaponMaterial(color));
+        part.position.set(x, y, z); part.castShadow = true; model.add(part); return part;
+      };
+      const x = 0.34;
+      let muzzleZ = -1.22;
+
+      if (name === "P9 SIDEARM" || name === "R45 REVOLVER") {
+        const revolver = name === "R45 REVOLVER";
+        addPart(revolver ? 0.22 : 0.18, 0.14, revolver ? 0.48 : 0.52, x, -0.25, -0.62, revolver ? 0x343638 : 0x1d2427);
+        const grip = addPart(0.15, 0.38, 0.2, x, -0.48, -0.48, revolver ? 0x5b3727 : 0x252d2f);
+        grip.rotation.x = -0.25;
+        if (revolver) {
+          const cylinder = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.22, 10), weaponMaterial(0x4b5051));
+          cylinder.rotation.z = Math.PI / 2; cylinder.position.set(x, -0.27, -0.64); model.add(cylinder);
+        } else {
+          const magazine = addPart(0.115, 0.31, 0.14, x, -0.53, -0.48, 0x111719);
+          magazine.rotation.x = -0.25;
+          addPart(0.15, 0.025, 0.17, x, -0.7, -0.43, 0x343d3f);
+        }
+        muzzleZ = revolver ? -0.91 : -0.93;
+      } else if (name === "COMBAT KNIFE") {
+        addPart(0.12, 0.12, 0.42, x, -0.32, -0.46, 0x272f30);
+        const blade = addPart(0.045, 0.15, 0.7, x, -0.25, -0.98, 0x9ca6a4);
+        blade.rotation.z = 0.08; muzzleZ = -1.34;
+      } else {
+        const isSmg = name === "M12 SMG";
+        const isRifle = name === "BR-7 RIFLE";
+        const accent = isSmg ? 0x2f4a4e : isRifle ? 0x584f3c : 0x343e40;
+        addPart(isSmg ? 0.21 : 0.23, 0.2, isRifle ? 0.72 : 0.6, x, -0.28, -0.57, 0x1b2224);
+        addPart(isSmg ? 0.19 : 0.18, 0.16, isRifle ? 0.62 : 0.46, x, -0.27, isRifle ? -1.18 : -1.04, accent);
+        const stock = addPart(isSmg ? 0.08 : 0.2, isSmg ? 0.1 : 0.22, isSmg ? 0.38 : 0.5, x, -0.3, -0.08, 0x242c2e);
+        stock.rotation.x = isSmg ? 0 : -0.08;
+        const magazine = addPart(isSmg ? 0.13 : 0.145, isSmg ? 0.46 : isRifle ? 0.32 : 0.39, isSmg ? 0.14 : 0.19, x, isSmg ? -0.56 : -0.5, isSmg ? -0.72 : -0.58, 0x111719);
+        magazine.rotation.x = isSmg ? 0.04 : -0.2;
+        addPart((isSmg ? 0.15 : 0.165), 0.03, 0.21, x, isSmg ? -0.8 : -0.69, isSmg ? -0.72 : -0.51, 0x465154);
+        const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, isRifle ? 0.55 : 0.38, 10), weaponMaterial(0x111718));
+        barrel.rotation.x = Math.PI / 2; barrel.position.set(x, -0.25, isRifle ? -1.73 : -1.43); model.add(barrel);
+        muzzleZ = isRifle ? -2.02 : -1.64;
+      }
+
+      // Open rear aperture and front post remain see-through when centered in ADS.
+      const rearSight = new THREE.Mesh(new THREE.TorusGeometry(0.045, 0.009, 8, 18), weaponMaterial(0x101719));
+      rearSight.position.set(x, -0.145, -0.46); model.add(rearSight);
+      const frontLeft = addPart(0.012, 0.085, 0.025, x - 0.052, -0.18, muzzleZ + 0.16, 0x12191b);
+      const frontRight = frontLeft.clone(); frontRight.position.x = x + 0.052; model.add(frontRight);
+      addPart(0.012, 0.065, 0.02, x, -0.175, muzzleZ + 0.15, 0xff6b3c);
+      const muzzleAnchor = new THREE.Object3D(); muzzleAnchor.position.set(x, -0.25, muzzleZ); model.add(muzzleAnchor);
+      return { model, muzzleAnchor };
+    };
+    const primaryWeapon = buildWeapon(primary);
+    const secondaryWeapon = buildWeapon(secondary);
+    gun.add(primaryWeapon.model, secondaryWeapon.model);
     const muzzle = new THREE.PointLight(0xff7b35, 0, 2.5, 2);
-    muzzle.position.set(0.34, -0.2, -0.95);
+    muzzle.position.set(0.34, -0.2, -1.1);
     gun.add(muzzle);
     camera.add(gun);
     scene.add(camera);
@@ -190,7 +240,7 @@ export function FpsGame() {
       raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
       const hit = raycaster.intersectObjects(scene.children, false).find((result) => result.object !== camera && result.distance > 1);
       const tracerStart = new THREE.Vector3();
-      gunBody.getWorldPosition(tracerStart);
+      (currentSlot === 1 ? primaryWeapon.muzzleAnchor : secondaryWeapon.muzzleAnchor).getWorldPosition(tracerStart);
       const tracerEnd = hit?.point.clone() ?? raycaster.ray.at(70, new THREE.Vector3());
       const tracerMaterial = new THREE.LineBasicMaterial({ color: 0xffb06b, transparent: true, opacity: 0.9 });
       const tracer = new THREE.Line(new THREE.BufferGeometry().setFromPoints([tracerStart, tracerEnd]), tracerMaterial);
@@ -300,6 +350,8 @@ export function FpsGame() {
       gun.rotation.x = THREE.MathUtils.lerp(gun.rotation.x, reloadEnd ? -0.45 : sprinting ? -0.22 : recoil * 0.7, Math.min(1, dt * 12));
       gun.rotation.z = THREE.MathUtils.lerp(gun.rotation.z, reloadEnd ? -0.35 : sprinting ? 0.72 : 0, Math.min(1, dt * 12));
       gun.visible = currentSlot <= 2;
+      primaryWeapon.model.visible = currentSlot === 1;
+      secondaryWeapon.model.visible = currentSlot === 2;
       camera.fov = THREE.MathUtils.lerp(camera.fov, aiming ? 58 : sprinting ? 84 : 78, Math.min(1, dt * 10));
       camera.updateProjectionMatrix();
       renderer.render(scene, camera);
