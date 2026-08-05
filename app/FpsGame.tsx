@@ -197,14 +197,12 @@ export function FpsGame() {
         dummy.userData.rig.push({ kind: "leg", side, upper: thigh, lower: shin, joint: knee, end: boot });
       });
       if (targetable) {
-        const healthBars: THREE.Mesh[] = [];
-        [-.34, .34].forEach((z, index) => {
-          const barBack = new THREE.Mesh(new THREE.PlaneGeometry(1.05, 0.09), new THREE.MeshBasicMaterial({ color: 0x151a1b, side: THREE.DoubleSide }));
-          barBack.position.set(0, 2.48, z); barBack.rotation.y = index ? Math.PI : 0; barBack.raycast = () => {}; dummy.add(barBack);
-          const bar = new THREE.Mesh(new THREE.PlaneGeometry(1, 0.055), new THREE.MeshBasicMaterial({ color: 0x63e690, side: THREE.DoubleSide }));
-          bar.position.set(0, 2.48, z + (index ? .006 : -.006)); bar.rotation.y = index ? Math.PI : 0; bar.raycast = () => {}; dummy.add(bar); healthBars.push(bar);
-        });
-        dummy.userData.healthBars = healthBars;
+        const healthBarRoot = new THREE.Group(); healthBarRoot.position.set(0, 2.48, 0); dummy.add(healthBarRoot);
+        const barBack = new THREE.Mesh(new THREE.PlaneGeometry(1.05, 0.09), new THREE.MeshBasicMaterial({ color: 0x151a1b, side: THREE.DoubleSide }));
+        barBack.raycast = () => {}; healthBarRoot.add(barBack);
+        const bar = new THREE.Mesh(new THREE.PlaneGeometry(1, 0.055), new THREE.MeshBasicMaterial({ color: 0x63e690, side: THREE.DoubleSide }));
+        bar.position.z = .006; bar.raycast = () => {}; healthBarRoot.add(bar);
+        dummy.userData.healthBarRoot = healthBarRoot; dummy.userData.healthBars = [bar];
       }
       scene.add(dummy); if (targetable) dummies.push(dummy); return dummy;
     };
@@ -645,6 +643,8 @@ export function FpsGame() {
       [...dummies, localPlayer].forEach((dummy) => {
         const movement = dummy.userData.movement as "static" | "walk" | "sprint";
         const isLocal = dummy === localPlayer;
+        const healthBarRoot = dummy.userData.healthBarRoot as THREE.Group | undefined;
+        if (healthBarRoot) healthBarRoot.lookAt(camera.position);
         if (!dummy.visible || (movement === "static" && !isLocal)) return;
         const speed = movement === "sprint" ? 4.2 : 1.75;
         const travel = (t * speed) % 24;
