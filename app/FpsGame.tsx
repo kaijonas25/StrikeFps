@@ -394,6 +394,7 @@ export function FpsGame() {
       pitch = Math.max(-1.48, Math.min(1.48, pitch - e.movementY * 0.0022));
     };
     const raycaster = new THREE.Raycaster();
+    const getAimNdc = () => new THREE.Vector2(isThirdPerson ? 0.08 : 0, 0);
     const impactGeometry = new THREE.SphereGeometry(0.045, 6, 6);
     const impactMaterial = new THREE.MeshBasicMaterial({ color: 0xff9a55 });
     const damageDummy = (hit: THREE.Intersection, damage: number) => {
@@ -457,7 +458,7 @@ export function FpsGame() {
         if (now - lastMelee < 480) return;
         lastMelee = now;
         meleeSwing = 1;
-        raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+        raycaster.setFromCamera(getAimNdc(), camera);
         const meleeHit = raycaster.intersectObjects(scene.children, true).find((result) => result.object !== camera && result.distance > 0.5 && result.distance <= 2.35);
         if (meleeHit) {
           damageDummy(meleeHit, 100);
@@ -483,7 +484,8 @@ export function FpsGame() {
       const spreadDegrees = shotStats.spread * (aiming ? 0.42 : 1) * movementSpread;
       for (let pellet = 0; pellet < pelletCount; pellet++) {
         const spreadNdc = spreadDegrees / camera.fov;
-        const offset = new THREE.Vector2((Math.random() - 0.5) * spreadNdc * 2, (Math.random() - 0.5) * spreadNdc * 2);
+        const aimNdc = getAimNdc();
+        const offset = new THREE.Vector2(aimNdc.x + (Math.random() - 0.5) * spreadNdc * 2, (Math.random() - 0.5) * spreadNdc * 2);
         raycaster.setFromCamera(offset, camera);
         const hit = raycaster.intersectObjects(scene.children, true).find((result) => result.object !== camera && result.distance > 1);
         const tracerEnd = hit?.point.clone() ?? raycaster.ray.at(shotStats.range, new THREE.Vector3());
@@ -764,7 +766,7 @@ export function FpsGame() {
         <div className="mission"><small>TRAINING SECTOR 01</small><strong>FREE ROAM</strong></div>
         <div className="status"><i /> SYSTEMS ONLINE</div>
       </header>
-      <div className="crosshair"><span /><span /></div>
+      <div className={`crosshair${thirdPerson ? " third-person" : ""}`}><span /><span /></div>
       <div className="hud-left"><small>VITALS</small><strong>{health}</strong><div className="health"><i style={{ width: `${health}%` }} /></div></div>
       <div className="hud-right"><small>{equippedItems[activeSlot - 1]}{activeIsMelee ? " · MELEE" : activeSlot <= 2 ? ` · ${fireMode}` : " · READY"}</small><strong>{activeSlot === 4 ? utilityCount : activeSlot === 3 ? medicalCount : activeIsMelee ? "—" : ammo} <em>{activeSlot === 4 ? "THROWABLES" : activeSlot === 3 ? "MEDICAL" : activeIsMelee ? "" : "/ 120"}</em></strong></div>
       {reloading && <div className="reload-status"><span>RELOADING</span><i style={{ animationDuration: `${reloadDuration}s` }} /></div>}
