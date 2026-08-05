@@ -7,12 +7,15 @@ type Box = { minX: number; maxX: number; minZ: number; maxZ: number; height: num
 type FireMode = "SEMI" | "BURST" | "AUTO";
 type MenuPage = "HOME" | "LOADOUT";
 
-const WEAPON_STATS: Record<string, { damage: number; fireRate: number; capacity: number; reload: number; range: number; mobility: number }> = {
-  "VXR-4 CARBINE": { damage: 32, fireRate: 72, capacity: 30, reload: 2.35, range: 74, mobility: 68 },
-  "M12 SMG": { damage: 24, fireRate: 91, capacity: 36, reload: 1.85, range: 48, mobility: 90 },
-  "BR-7 RIFLE": { damage: 58, fireRate: 43, capacity: 20, reload: 2.8, range: 94, mobility: 51 },
-  "P9 SIDEARM": { damage: 28, fireRate: 58, capacity: 15, reload: 1.45, range: 45, mobility: 94 },
-  "R45 REVOLVER": { damage: 72, fireRate: 29, capacity: 6, reload: 3.1, range: 61, mobility: 76 },
+const WEAPON_STATS: Record<string, { damage: number; fireRate: number; capacity: number; reload: number; range: number; mobility: number; spread: number; pellets?: number }> = {
+  "VXR-4 CARBINE": { damage: 32, fireRate: 72, capacity: 30, reload: 2.35, range: 74, mobility: 68, spread: 1.25 },
+  "M12 SMG": { damage: 24, fireRate: 91, capacity: 36, reload: 1.85, range: 48, mobility: 90, spread: 2.1 },
+  "BR-7 RIFLE": { damage: 58, fireRate: 43, capacity: 20, reload: 2.8, range: 94, mobility: 51, spread: 0.65 },
+  "SNR-90 SNIPER": { damage: 96, fireRate: 16, capacity: 5, reload: 3.4, range: 100, mobility: 34, spread: 0.12 },
+  "KSG-12 SHOTGUN": { damage: 18, fireRate: 22, capacity: 8, reload: 4.1, range: 30, mobility: 58, spread: 5.8, pellets: 8 },
+  "HMG-6 LMG": { damage: 38, fireRate: 66, capacity: 60, reload: 5.2, range: 78, mobility: 27, spread: 1.75 },
+  "P9 SIDEARM": { damage: 28, fireRate: 58, capacity: 15, reload: 1.45, range: 45, mobility: 94, spread: 1.55 },
+  "R45 REVOLVER": { damage: 72, fireRate: 29, capacity: 6, reload: 3.1, range: 61, mobility: 76, spread: 0.9 },
 };
 
 const PLAYER_HEIGHT = 1.7;
@@ -146,18 +149,28 @@ export function FpsGame() {
         blade.rotation.z = 0.08; muzzleZ = -1.34;
       } else {
         const isSmg = name === "M12 SMG";
-        const isRifle = name === "BR-7 RIFLE";
-        const accent = isSmg ? 0x2f4a4e : isRifle ? 0x584f3c : 0x343e40;
-        addPart(isSmg ? 0.21 : 0.23, 0.2, isRifle ? 0.72 : 0.6, x, -0.28, -0.57, 0x1b2224);
-        addPart(isSmg ? 0.19 : 0.18, 0.16, isRifle ? 0.62 : 0.46, x, -0.27, isRifle ? -1.18 : -1.04, accent);
+        const isSniper = name === "SNR-90 SNIPER";
+        const isShotgun = name === "KSG-12 SHOTGUN";
+        const isLmg = name === "HMG-6 LMG";
+        const isRifle = name === "BR-7 RIFLE" || isSniper;
+        const accent = isSmg ? 0x2f4a4e : isRifle ? 0x584f3c : isShotgun ? 0x3f3430 : isLmg ? 0x384638 : 0x343e40;
+        addPart(isSmg ? 0.21 : isLmg ? 0.3 : 0.23, isLmg ? 0.25 : 0.2, isRifle ? 0.72 : isShotgun ? 0.78 : 0.6, x, -0.28, -0.57, 0x1b2224);
+        addPart(isSmg ? 0.19 : isShotgun ? 0.23 : 0.18, isShotgun ? 0.2 : 0.16, isRifle ? 0.62 : isShotgun ? 0.72 : 0.46, x, -0.27, isRifle ? -1.18 : isShotgun ? -1.24 : -1.04, accent);
         const stock = addPart(isSmg ? 0.08 : 0.2, isSmg ? 0.1 : 0.22, isSmg ? 0.38 : 0.5, x, -0.3, -0.08, 0x242c2e);
         stock.rotation.x = isSmg ? 0 : -0.08;
-        const magazine = addPart(isSmg ? 0.13 : 0.145, isSmg ? 0.46 : isRifle ? 0.32 : 0.39, isSmg ? 0.14 : 0.19, x, isSmg ? -0.56 : -0.5, isSmg ? -0.72 : -0.58, 0x111719);
+        const magazine = addPart(isLmg ? 0.42 : isSmg ? 0.13 : 0.145, isLmg ? 0.28 : isSmg ? 0.46 : isRifle ? 0.32 : 0.39, isLmg ? 0.32 : isSmg ? 0.14 : 0.19, x, isSmg ? -0.56 : -0.5, isLmg ? -0.62 : isSmg ? -0.72 : -0.58, 0x111719);
         magazine.rotation.x = isSmg ? 0.04 : -0.2;
         addPart((isSmg ? 0.15 : 0.165), 0.03, 0.21, x, isSmg ? -0.8 : -0.69, isSmg ? -0.72 : -0.51, 0x465154);
-        const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, isRifle ? 0.55 : 0.38, 10), weaponMaterial(0x111718));
-        barrel.rotation.x = Math.PI / 2; barrel.position.set(x, -0.25, isRifle ? -1.73 : -1.43); model.add(barrel);
-        muzzleZ = isRifle ? -2.02 : -1.64;
+        const barrelLength = isSniper ? 0.76 : isShotgun ? 0.58 : isRifle ? 0.55 : 0.38;
+        const barrel = new THREE.Mesh(new THREE.CylinderGeometry(isShotgun ? 0.04 : 0.025, isShotgun ? 0.04 : 0.025, barrelLength, 10), weaponMaterial(0x111718));
+        barrel.rotation.x = Math.PI / 2; barrel.position.set(x, -0.25, isSniper ? -1.82 : isRifle || isShotgun ? -1.73 : -1.43); model.add(barrel);
+        muzzleZ = isSniper ? -2.21 : isRifle || isShotgun ? -2.02 : -1.64;
+        if (isSniper) {
+          const scope = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.52, 12), weaponMaterial(0x151b1d));
+          scope.rotation.x = Math.PI / 2; scope.position.set(x, -0.105, -0.7); model.add(scope);
+        }
+        if (isShotgun) addPart(0.16, 0.17, 0.34, x, -0.28, -1.48, 0x665044);
+        if (isLmg) addPart(0.28, 0.05, 0.68, x, -0.13, -0.7, 0x525e50);
       }
 
       // Firearms get an open rear aperture and front post; melee weapons do not.
@@ -189,13 +202,13 @@ export function FpsGame() {
     let yaw = 0, pitch = 0, verticalVelocity = 0, grounded = true;
     const primaryStats = WEAPON_STATS[primary];
     const secondaryIsMelee = secondary === "COMBAT KNIFE";
-    const secondaryStats = WEAPON_STATS[secondary] ?? { damage: 100, fireRate: 100, capacity: 1, reload: 0.6, range: 5, mobility: 100 };
+    const secondaryStats = WEAPON_STATS[secondary] ?? { damage: 100, fireRate: 100, capacity: 1, reload: 0.6, range: 5, mobility: 100, spread: 0 };
     const ammoCounts = [primaryStats.capacity, secondaryStats.capacity];
     setAmmo(primaryStats.capacity);
     let ammoCount = ammoCounts[0], recoil = 0, muzzleTimer = 0, aiming = false, sprinting = false, reloadEnd = 0, meleeSwing = 0, lastMelee = 0;
     let throwableAiming = false, grenadesLeft = 2;
     const projectiles: { mesh: THREE.Mesh; velocity: THREE.Vector3; age: number; type: string }[] = [];
-    let currentFireMode: FireMode = "AUTO", triggerHeld = false, lastShot = 0, currentSlot = 1;
+    let currentFireMode: FireMode = "AUTO", triggerHeld = false, lastShot = 0, currentSlot = 1, movementSpread = 1;
     let last = performance.now();
     const clock = new THREE.Clock();
 
@@ -304,24 +317,28 @@ export function FpsGame() {
       recoil = Math.min(recoil + 0.055, 0.11);
       muzzle.intensity = 35;
       muzzleTimer = 0.045;
-      raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
-      const hit = raycaster.intersectObjects(scene.children, false).find((result) => result.object !== camera && result.distance > 1);
+      const shotStats = currentSlot === 1 ? primaryStats : secondaryStats;
       const tracerStart = new THREE.Vector3();
       (currentSlot === 1 ? primaryWeapon.muzzleAnchor : secondaryWeapon.muzzleAnchor).getWorldPosition(tracerStart);
-      const tracerEnd = hit?.point.clone() ?? raycaster.ray.at(70, new THREE.Vector3());
-      const tracerMaterial = new THREE.LineBasicMaterial({ color: 0xffb06b, transparent: true, opacity: 0.9 });
-      const tracer = new THREE.Line(new THREE.BufferGeometry().setFromPoints([tracerStart, tracerEnd]), tracerMaterial);
-      scene.add(tracer);
-      window.setTimeout(() => {
-        scene.remove(tracer);
-        tracer.geometry.dispose();
-        tracerMaterial.dispose();
-      }, 65);
-      if (hit) {
-        const impact = new THREE.Mesh(impactGeometry, impactMaterial);
-        impact.position.copy(hit.point).addScaledVector(hit.face?.normal ?? new THREE.Vector3(0, 1, 0), 0.025);
-        scene.add(impact);
-        window.setTimeout(() => scene.remove(impact), 1800);
+      const pelletCount = shotStats.pellets ?? 1;
+      const spreadDegrees = shotStats.spread * (aiming ? 0.42 : 1) * movementSpread;
+      for (let pellet = 0; pellet < pelletCount; pellet++) {
+        const spreadNdc = spreadDegrees / camera.fov;
+        const offset = new THREE.Vector2((Math.random() - 0.5) * spreadNdc * 2, (Math.random() - 0.5) * spreadNdc * 2);
+        raycaster.setFromCamera(offset, camera);
+        const hit = raycaster.intersectObjects(scene.children, false).find((result) => result.object !== camera && result.distance > 1);
+        const tracerEnd = hit?.point.clone() ?? raycaster.ray.at(shotStats.range, new THREE.Vector3());
+        const tracerMaterial = new THREE.LineBasicMaterial({ color: pelletCount > 1 ? 0xffd09a : 0xffb06b, transparent: true, opacity: 0.82 });
+        const tracer = new THREE.Line(new THREE.BufferGeometry().setFromPoints([tracerStart, tracerEnd]), tracerMaterial);
+        scene.add(tracer);
+        window.setTimeout(() => {
+          scene.remove(tracer); tracer.geometry.dispose(); tracerMaterial.dispose();
+        }, pelletCount > 1 ? 48 : 65);
+        if (hit) {
+          const impact = new THREE.Mesh(impactGeometry, impactMaterial);
+          impact.position.copy(hit.point).addScaledVector(hit.face?.normal ?? new THREE.Vector3(0, 1, 0), 0.025);
+          scene.add(impact); window.setTimeout(() => scene.remove(impact), 1800);
+        }
       }
     };
     const onMouseDown = (e: MouseEvent) => {
@@ -391,6 +408,7 @@ export function FpsGame() {
       if (camera.position.y <= PLAYER_HEIGHT) { camera.position.y = PLAYER_HEIGHT; verticalVelocity = 0; grounded = true; }
 
       const moving = input.lengthSq() > 0 && grounded;
+      movementSpread = input.lengthSq() > 0 ? 1.55 : 1;
       const t = clock.getElapsedTime();
       if (throwableAiming) {
         const { start, velocity } = getThrow();
@@ -519,7 +537,8 @@ export function FpsGame() {
             <div className="loadout-heading"><div><span>COMBAT</span> LOADOUT</div><small>SELECT ONE ITEM PER SLOT</small></div>
             <div className="loadout-grid">
               <LoadoutSlot label="PRIMARY WEAPON" selected={primary} options={[
-                ["VXR-4 CARBINE", "BALANCED · AUTO"], ["M12 SMG", "MOBILE · CLOSE RANGE"], ["BR-7 RIFLE", "PRECISION · SEMI"]
+                ["VXR-4 CARBINE", "BALANCED · AUTO"], ["M12 SMG", "MOBILE · CLOSE RANGE"], ["BR-7 RIFLE", "PRECISION · SEMI"],
+                ["SNR-90 SNIPER", "EXTREME RANGE · BOLT ACTION"], ["KSG-12 SHOTGUN", "8 PELLETS · CLOSE RANGE"], ["HMG-6 LMG", "60 ROUNDS · SUPPRESSION"]
               ]} onSelect={setPrimary} />
               <LoadoutSlot label="SECONDARY" selected={secondary} options={[
                 ["P9 SIDEARM", "RELIABLE · 15 ROUNDS"], ["R45 REVOLVER", "HEAVY · 6 ROUNDS"], ["COMBAT KNIFE", "FAST · SILENT"]
@@ -588,10 +607,10 @@ function LoadoutSlot({ label, selected, options, onSelect }: {
       <em>{selected === name ? "EQUIPPED" : "SELECT"}</em>
     </button>)}
     {stats && <div className="weapon-stats">
-      {[['DAMAGE', stats.damage], ['FIRE RATE', stats.fireRate], ['RANGE', stats.range], ['MOBILITY', stats.mobility]].map(([name, value]) => <div key={name}>
+      {[['DAMAGE', stats.damage], ['FIRE RATE', stats.fireRate], ['RANGE', stats.range], ['MOBILITY', stats.mobility], ['ACCURACY', Math.max(8, Math.round(100 - stats.spread * 11))]].map(([name, value]) => <div key={name}>
         <span>{name}</span><i><b style={{ width: `${value}%` }} /></i><em>{value}</em>
       </div>)}
-      <footer><span>MAGAZINE <b>{stats.capacity}</b></span><span>RELOAD <b>{stats.reload.toFixed(2)}s</b></span></footer>
+      <footer><span>MAGAZINE <b>{stats.capacity}</b></span><span>SPREAD <b>{stats.spread.toFixed(2)}°</b></span><span>RELOAD <b>{stats.reload.toFixed(2)}s</b></span></footer>
     </div>}
   </section>;
 }
