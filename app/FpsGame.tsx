@@ -8,20 +8,20 @@ type FireMode = "SEMI" | "BURST" | "AUTO";
 type MenuPage = "HOME" | "LOADOUT";
 
 const WEAPON_STATS: Record<string, { damage: number; fireRate: number; capacity: number; reload: number; range: number; mobility: number; spread: number; pellets?: number }> = {
-  "VXR-4 CARBINE": { damage: 32, fireRate: 72, capacity: 30, reload: 2.35, range: 74, mobility: 68, spread: 1.25 },
-  "M12 SMG": { damage: 24, fireRate: 91, capacity: 36, reload: 1.85, range: 48, mobility: 90, spread: 2.1 },
-  "BR-7 RIFLE": { damage: 58, fireRate: 43, capacity: 20, reload: 2.8, range: 94, mobility: 51, spread: 0.65 },
-  "SNR-90 SNIPER": { damage: 96, fireRate: 16, capacity: 5, reload: 3.4, range: 100, mobility: 34, spread: 0.12 },
-  "KSG-12 SHOTGUN": { damage: 18, fireRate: 22, capacity: 8, reload: 4.1, range: 30, mobility: 58, spread: 5.8, pellets: 8 },
-  "HMG-6 LMG": { damage: 38, fireRate: 66, capacity: 60, reload: 5.2, range: 78, mobility: 27, spread: 1.75 },
-  "AKR-47 ASSAULT": { damage: 44, fireRate: 61, capacity: 30, reload: 2.65, range: 76, mobility: 61, spread: 1.6 },
-  "M8 BURST RIFLE": { damage: 35, fireRate: 78, capacity: 27, reload: 2.25, range: 72, mobility: 70, spread: 1.05 },
-  "DMR-11 MARKSMAN": { damage: 67, fireRate: 34, capacity: 12, reload: 2.9, range: 96, mobility: 45, spread: 0.32 },
-  "VX-9 PDW": { damage: 21, fireRate: 98, capacity: 42, reload: 2.05, range: 42, mobility: 93, spread: 2.35 },
-  "P9 SIDEARM": { damage: 28, fireRate: 58, capacity: 15, reload: 1.45, range: 45, mobility: 94, spread: 1.55 },
-  "R45 REVOLVER": { damage: 72, fireRate: 29, capacity: 6, reload: 3.1, range: 61, mobility: 76, spread: 0.9 },
-  "G18 AUTO PISTOL": { damage: 19, fireRate: 95, capacity: 24, reload: 1.75, range: 35, mobility: 96, spread: 2.65 },
-  "DB-2 SAWED-OFF": { damage: 22, fireRate: 18, capacity: 2, reload: 2.6, range: 20, mobility: 81, spread: 7.2, pellets: 6 },
+  "VXR-4 CARBINE": { damage: 16, fireRate: 72, capacity: 30, reload: 2.35, range: 74, mobility: 68, spread: 1.25 },
+  "M12 SMG": { damage: 12, fireRate: 91, capacity: 36, reload: 1.85, range: 48, mobility: 90, spread: 2.1 },
+  "BR-7 RIFLE": { damage: 29, fireRate: 43, capacity: 20, reload: 2.8, range: 94, mobility: 51, spread: 0.65 },
+  "SNR-90 SNIPER": { damage: 48, fireRate: 16, capacity: 5, reload: 3.4, range: 100, mobility: 34, spread: 0.12 },
+  "KSG-12 SHOTGUN": { damage: 9, fireRate: 22, capacity: 8, reload: 4.1, range: 30, mobility: 58, spread: 5.8, pellets: 8 },
+  "HMG-6 LMG": { damage: 19, fireRate: 66, capacity: 60, reload: 5.2, range: 78, mobility: 27, spread: 1.75 },
+  "AKR-47 ASSAULT": { damage: 22, fireRate: 61, capacity: 30, reload: 2.65, range: 76, mobility: 61, spread: 1.6 },
+  "M8 BURST RIFLE": { damage: 17.5, fireRate: 78, capacity: 27, reload: 2.25, range: 72, mobility: 70, spread: 1.05 },
+  "DMR-11 MARKSMAN": { damage: 33.5, fireRate: 34, capacity: 12, reload: 2.9, range: 96, mobility: 45, spread: 0.32 },
+  "VX-9 PDW": { damage: 10.5, fireRate: 98, capacity: 42, reload: 2.05, range: 42, mobility: 93, spread: 2.35 },
+  "P9 SIDEARM": { damage: 14, fireRate: 58, capacity: 15, reload: 1.45, range: 45, mobility: 94, spread: 1.55 },
+  "R45 REVOLVER": { damage: 36, fireRate: 29, capacity: 6, reload: 3.1, range: 61, mobility: 76, spread: 0.9 },
+  "G18 AUTO PISTOL": { damage: 9.5, fireRate: 95, capacity: 24, reload: 1.75, range: 35, mobility: 96, spread: 2.65 },
+  "DB-2 SAWED-OFF": { damage: 11, fireRate: 18, capacity: 2, reload: 2.6, range: 20, mobility: 81, spread: 7.2, pellets: 6 },
 };
 const MEDICAL_STATS: Record<string, { healing: number; duration: number }> = {
   "FIELD MEDKIT": { healing: 60, duration: 2.5 },
@@ -321,7 +321,7 @@ export function FpsGame() {
     let yaw = 0, pitch = 0, cameraYaw = 0, cameraPitch = 0.2, verticalVelocity = 0, grounded = true;
     const primaryStats = WEAPON_STATS[primary];
     const secondaryIsMelee = secondary === "COMBAT KNIFE";
-    const secondaryStats = WEAPON_STATS[secondary] ?? { damage: 100, fireRate: 100, capacity: 1, reload: 0.6, range: 5, mobility: 100, spread: 0 };
+    const secondaryStats = WEAPON_STATS[secondary] ?? { damage: 50, fireRate: 100, capacity: 1, reload: 0.6, range: 5, mobility: 100, spread: 0 };
     const ammoCounts = [primaryStats.capacity, secondaryStats.capacity];
     setAmmo(primaryStats.capacity);
     let ammoCount = ammoCounts[0], recoil = 0, muzzleTimer = 0, aiming = false, sprinting = false, reloadEnd = 0, meleeSwing = 0, lastMelee = 0;
@@ -461,7 +461,7 @@ export function FpsGame() {
         raycaster.setFromCamera(getAimNdc(), camera);
         const meleeHit = raycaster.intersectObjects(scene.children, true).find((result) => result.object !== camera && result.distance > 0.5 && result.distance <= 2.35);
         if (meleeHit) {
-          damageDummy(meleeHit, 100);
+          damageDummy(meleeHit, 50);
           const slash = new THREE.Mesh(new THREE.SphereGeometry(0.075, 6, 6), new THREE.MeshBasicMaterial({ color: 0xe9f7f2 }));
           slash.position.copy(meleeHit.point);
           scene.add(slash);
