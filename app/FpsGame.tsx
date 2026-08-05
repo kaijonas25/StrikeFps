@@ -56,6 +56,7 @@ export function FpsGame() {
   const [healingEffect, setHealingEffect] = useState(false);
   const [healing, setHealing] = useState(false);
   const [healDuration, setHealDuration] = useState(0);
+  const [thirdPerson, setThirdPerson] = useState(false);
 
   useEffect(() => {
     const mount = mountRef.current;
@@ -140,7 +141,7 @@ export function FpsGame() {
 
     // Human-shaped test dummies with separate head and body hit zones.
     const dummies: THREE.Group[] = [];
-    const addDummy = (x: number, z: number, color: number, movement: "static" | "walk" | "sprint" = "static") => {
+    const addDummy = (x: number, z: number, color: number, movement: "static" | "walk" | "sprint" = "static", targetable = true) => {
       const dummy = new THREE.Group(); dummy.position.set(x, 0, z);
       dummy.userData.health = 150; dummy.userData.maxHealth = 150;
       dummy.userData.movement = movement; dummy.userData.laneOrigin = z;
@@ -151,7 +152,9 @@ export function FpsGame() {
       const visorMat = new THREE.MeshStandardMaterial({ color: 0x76b9c7, emissive: 0x173b43, emissiveIntensity: 0.8, metalness: 0.65, roughness: 0.18 });
       const addLimb = (geometry: THREE.BufferGeometry, px: number, py: number, pz: number, multiplier = 1, partMaterial: THREE.Material = dummyMat) => {
         const mesh = new THREE.Mesh(geometry, partMaterial); mesh.position.set(px, py, pz); mesh.castShadow = true;
-        mesh.userData.dummy = dummy; mesh.userData.damageMultiplier = multiplier; dummy.add(mesh); return mesh;
+        if (targetable) { mesh.userData.dummy = dummy; mesh.userData.damageMultiplier = multiplier; }
+        else mesh.raycast = () => {};
+        dummy.add(mesh); return mesh;
       };
       // Torso, plate carrier, pouches, belt and backpack.
       addLimb(new THREE.BoxGeometry(0.6, 0.78, 0.3), 0, 1.38, 0, 1, fabricMat);
@@ -183,14 +186,18 @@ export function FpsGame() {
         const boot = addLimb(new THREE.BoxGeometry(0.24, 0.14, 0.38), side * 0.19, 0.08, -0.08, 1, armorMat);
         dummy.userData.rig.push({ kind: "leg", side, upper: thigh, lower: shin, joint: knee, end: boot });
       });
-      const barBack = new THREE.Mesh(new THREE.PlaneGeometry(1.05, 0.09), new THREE.MeshBasicMaterial({ color: 0x151a1b, side: THREE.DoubleSide }));
-      barBack.position.set(0, 2.48, 0); barBack.raycast = () => {}; dummy.add(barBack);
-      const bar = new THREE.Mesh(new THREE.PlaneGeometry(1, 0.055), new THREE.MeshBasicMaterial({ color: 0x63e690, side: THREE.DoubleSide }));
-      bar.position.set(0, 2.48, -0.006); bar.raycast = () => {}; dummy.add(bar); dummy.userData.healthBar = bar;
-      scene.add(dummy); dummies.push(dummy);
+      if (targetable) {
+        const barBack = new THREE.Mesh(new THREE.PlaneGeometry(1.05, 0.09), new THREE.MeshBasicMaterial({ color: 0x151a1b, side: THREE.DoubleSide }));
+        barBack.position.set(0, 2.48, 0); barBack.raycast = () => {}; dummy.add(barBack);
+        const bar = new THREE.Mesh(new THREE.PlaneGeometry(1, 0.055), new THREE.MeshBasicMaterial({ color: 0x63e690, side: THREE.DoubleSide }));
+        bar.position.set(0, 2.48, -0.006); bar.raycast = () => {}; dummy.add(bar); dummy.userData.healthBar = bar;
+      }
+      scene.add(dummy); if (targetable) dummies.push(dummy); return dummy;
     };
     addDummy(-7, -14, 0x4d7182); addDummy(0, -14, 0x706347); addDummy(7, -14, 0x754b4b);
     addDummy(15, -15, 0x38785d, "walk"); addDummy(26, -15, 0x804f32, "sprint");
+    const localPlayer = addDummy(0, 15, 0x435e70, "static", false);
+    localPlayer.visible = false;
 
     // Landmark tower and emissive arena lights
     addBox(22, 4, -20, 5, 8, 5, 0x343f43);
@@ -313,8 +320,10 @@ export function FpsGame() {
     const projectiles: { mesh: THREE.Mesh; velocity: THREE.Vector3; age: number; type: string }[] = [];
     let currentFireMode: FireMode = "AUTO", triggerHeld = false, lastShot = 0, currentSlot = 1, movementSpread = 1;
     let playerHealth = 100, nextPadTick = 0, healEnd = 0;
+    const playerPosition = new THREE.Vector3(0, PLAYER_HEIGHT, 15);
+    let isThirdPerson = false;
     respawnRef.current = () => {
-      camera.position.set(0, PLAYER_HEIGHT, 15);
+      playerPosition.set(0, PLAYER_HEIGHT, 15); camera.position.copy(playerPosition);
       yaw = 0; pitch = 0; verticalVelocity = 0; playerHealth = 100;
       keys.clear();
     };
@@ -328,6 +337,10 @@ export function FpsGame() {
 
     const onKeyDown = (e: KeyboardEvent) => {
       keys.add(e.code);
+      if (e.code === "Tab" && !e.repeat) {
+        e.preventDefault(); isThirdPerson = !isThirdPerson; setThirdPerson(isThirdPerson);
+        localPlayer.visible = isThirdPerson;
+      }
       if (e.code === "Space" && grounded) { verticalVelocity = 5.7; grounded = false; }
       if (e.code === "KeyR" && currentSlot <= 2 && !reloadEnd) {
         const stats = currentSlot === 1 ? primaryStats : secondaryStats;
@@ -385,7 +398,7 @@ export function FpsGame() {
     };
     const getThrow = () => {
       const direction = new THREE.Vector3(); camera.getWorldDirection(direction);
-      const start = camera.position.clone().addScaledVector(direction, 0.65).add(new THREE.Vector3(0, -0.18, 0));
+      const start = (isThirdPerson ? playerPosition : camera.position).clone().addScaledVector(direction, 0.65).add(new THREE.Vector3(0, -0.18, 0));
       const velocity = direction.multiplyScalar(13).add(new THREE.Vector3(0, 3.8, 0));
       return { start, velocity };
     };
@@ -415,7 +428,7 @@ export function FpsGame() {
         let scale = 1;
         const expand = window.setInterval(() => { scale += 0.8; blast.scale.setScalar(scale); }, 20);
         window.setTimeout(() => { window.clearInterval(expand); scene.remove(blast); }, 260);
-        if (projectile.type === "FLASHBANG" && camera.position.distanceTo(position) < 13) {
+        if (projectile.type === "FLASHBANG" && playerPosition.distanceTo(position) < 13) {
           setFlashed(true); window.setTimeout(() => setFlashed(false), 1700);
         }
       }
@@ -537,12 +550,12 @@ export function FpsGame() {
       const sin = Math.sin(yaw), cos = Math.cos(yaw);
       const dx = (input.x * cos - input.y * sin) * speed * dt;
       const dz = (-input.x * sin - input.y * cos) * speed * dt;
-      if (!collides(camera.position.x + dx, camera.position.z)) camera.position.x += dx;
-      if (!collides(camera.position.x, camera.position.z + dz)) camera.position.z += dz;
+      if (!collides(playerPosition.x + dx, playerPosition.z)) playerPosition.x += dx;
+      if (!collides(playerPosition.x, playerPosition.z + dz)) playerPosition.z += dz;
 
       if (now >= nextPadTick) {
         nextPadTick = now + 250;
-        const onPad = (x: number) => Math.abs(camera.position.x - x) < 2 && Math.abs(camera.position.z - 23) < 2;
+        const onPad = (x: number) => Math.abs(playerPosition.x - x) < 2 && Math.abs(playerPosition.z - 23) < 2;
         if (onPad(-8)) playerHealth = Math.max(0, playerHealth - 8);
         if (onPad(0)) playerHealth = 0;
         if (onPad(8)) playerHealth = Math.min(100, playerHealth + 12);
@@ -554,22 +567,29 @@ export function FpsGame() {
       }
 
       verticalVelocity -= 14.5 * dt;
-      camera.position.y += verticalVelocity * dt;
-      if (camera.position.y <= PLAYER_HEIGHT) { camera.position.y = PLAYER_HEIGHT; verticalVelocity = 0; grounded = true; }
+      playerPosition.y += verticalVelocity * dt;
+      if (playerPosition.y <= PLAYER_HEIGHT) { playerPosition.y = PLAYER_HEIGHT; verticalVelocity = 0; grounded = true; }
 
       const moving = input.lengthSq() > 0 && grounded;
       movementSpread = input.lengthSq() > 0 ? 1.55 : 1;
       const t = clock.getElapsedTime();
-      dummies.forEach((dummy) => {
+      localPlayer.userData.movement = sprinting ? "sprint" : moving ? "walk" : "static";
+      [...dummies, localPlayer].forEach((dummy) => {
         const movement = dummy.userData.movement as "static" | "walk" | "sprint";
-        if (movement === "static" || !dummy.visible) return;
+        const isLocal = dummy === localPlayer;
+        if (!dummy.visible || (movement === "static" && !isLocal)) return;
         const speed = movement === "sprint" ? 4.2 : 1.75;
         const travel = (t * speed) % 24;
-        dummy.position.z = dummy.userData.laneOrigin + (travel <= 12 ? -6 + travel : 18 - travel);
-        dummy.rotation.y = travel <= 12 ? Math.PI : 0;
-        const stride = Math.sin(t * (movement === "sprint" ? 12 : 6.5));
-        const amplitude = movement === "sprint" ? 0.92 : 0.5;
-        dummy.position.y = Math.abs(Math.sin(t * (movement === "sprint" ? 12 : 6.5))) * (movement === "sprint" ? .075 : .035);
+        if (isLocal) {
+          dummy.position.set(playerPosition.x, playerPosition.y - PLAYER_HEIGHT, playerPosition.z);
+          dummy.rotation.y = yaw;
+        } else {
+          dummy.position.z = dummy.userData.laneOrigin + (travel <= 12 ? -6 + travel : 18 - travel);
+          dummy.rotation.y = travel <= 12 ? Math.PI : 0;
+        }
+        const stride = movement === "static" ? 0 : Math.sin(t * (movement === "sprint" ? 12 : 6.5));
+        const amplitude = movement === "static" ? 0 : movement === "sprint" ? 0.92 : 0.5;
+        if (!isLocal) dummy.position.y = Math.abs(Math.sin(t * (movement === "sprint" ? 12 : 6.5))) * (movement === "sprint" ? .075 : .035);
         const rig = dummy.userData.rig as { kind: "arm" | "leg"; side: number; upper: THREE.Mesh; lower: THREE.Mesh; joint?: THREE.Mesh; end: THREE.Mesh }[];
         rig.forEach((limb) => {
           if (limb.kind === "arm") {
@@ -666,11 +686,18 @@ export function FpsGame() {
       const slashArc = secondaryIsMelee && currentSlot === 2 ? Math.sin(meleeSwing * Math.PI) : 0;
       gun.rotation.y = THREE.MathUtils.lerp(gun.rotation.y, -slashArc * 0.85, Math.min(1, dt * 22));
       if (secondaryIsMelee && currentSlot === 2) gun.position.x += slashArc * 0.18;
-      gun.visible = currentSlot <= 2;
+      gun.visible = currentSlot <= 2 && !isThirdPerson;
       primaryWeapon.model.visible = currentSlot === 1;
       secondaryWeapon.model.visible = currentSlot === 2;
       camera.fov = THREE.MathUtils.lerp(camera.fov, aiming ? 58 : sprinting ? 84 : 78, Math.min(1, dt * 10));
       camera.updateProjectionMatrix();
+      if (isThirdPerson) {
+        camera.position.set(
+          playerPosition.x + Math.sin(yaw) * 4.2,
+          playerPosition.y + 1.15,
+          playerPosition.z + Math.cos(yaw) * 4.2
+        );
+      } else camera.position.copy(playerPosition);
       renderer.render(scene, camera);
     };
     animate();
@@ -717,7 +744,7 @@ export function FpsGame() {
       <div className={`flash-effect${flashed ? " active" : ""}`} />
       <div className={`heal-effect${healingEffect ? " active" : ""}`} />
       <div className="test-legend"><span className="damage-dot" /> DAMAGE PAD <span className="kill-dot" /> KILL PAD <span className="heal-dot" /> HEAL PAD</div>
-      <div className="controls"><kbd>WASD</kbd> MOVE <kbd>SHIFT</kbd> SPRINT <kbd>RMB</kbd> AIM <kbd>LMB</kbd> FIRE <kbd>B</kbd> MODE <kbd>R</kbd> RELOAD</div>
+      <div className="controls"><kbd>WASD</kbd> MOVE <kbd>SHIFT</kbd> SPRINT <kbd>RMB</kbd> AIM <kbd>LMB</kbd> FIRE <kbd>TAB</kbd> {thirdPerson ? "1ST PERSON" : "3RD PERSON"}</div>
       {dead && <div className="death-screen">
         <div className="death-code">KIA</div><h2>OPERATOR DOWN</h2><p>TEST CONDITION: FATAL DAMAGE</p>
         <button onClick={() => {
@@ -785,6 +812,7 @@ export function FpsGame() {
               setHealing(false);
               setHealth(100);
               setDead(false);
+              setThirdPerson(false);
               setSessionId((current) => current + 1);
             }}>
               <span>LEAVE SERVER</span>
