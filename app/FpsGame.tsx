@@ -144,7 +144,7 @@ export function FpsGame() {
       const dummy = new THREE.Group(); dummy.position.set(x, 0, z);
       dummy.userData.health = 150; dummy.userData.maxHealth = 150;
       dummy.userData.movement = movement; dummy.userData.laneOrigin = z;
-      dummy.userData.animatedLimbs = [] as { mesh: THREE.Mesh; side: number; amount: number }[];
+      dummy.userData.rig = [] as { kind: "arm" | "leg"; side: number; upper: THREE.Mesh; lower: THREE.Mesh; joint?: THREE.Mesh; end: THREE.Mesh }[];
       const dummyMat = material(color, 0.55, 0.15);
       const armorMat = material(0x20292b, 0.7, 0.28);
       const fabricMat = material(0x303a3b, 0.92, 0.02);
@@ -172,16 +172,16 @@ export function FpsGame() {
         addLimb(new THREE.SphereGeometry(0.17, 10, 8), side * 0.43, 1.65, 0, 1, armorMat);
         const upper = addLimb(new THREE.CylinderGeometry(0.105, 0.095, 0.44, 9), side * 0.45, 1.42, 0, 1, fabricMat); upper.rotation.z = side * -0.08;
         const forearm = addLimb(new THREE.CylinderGeometry(0.09, 0.075, 0.38, 9), side * 0.47, 1.04, -0.02, 1, fabricMat);
-        addLimb(new THREE.BoxGeometry(0.17, 0.16, 0.18), side * 0.48, 0.8, -0.02, 1, armorMat);
-        dummy.userData.animatedLimbs.push({ mesh: upper, side, amount: 1 }, { mesh: forearm, side, amount: .55 });
+        const glove = addLimb(new THREE.BoxGeometry(0.17, 0.16, 0.18), side * 0.48, 0.8, -0.02, 1, armorMat);
+        dummy.userData.rig.push({ kind: "arm", side, upper, lower: forearm, end: glove });
       });
       // Thighs, knee pads, lower legs and boots.
       [-1, 1].forEach((side) => {
         const thigh = addLimb(new THREE.CylinderGeometry(0.13, 0.115, 0.46, 9), side * 0.19, 0.74, 0, 1, fabricMat);
-        addLimb(new THREE.BoxGeometry(0.23, 0.18, 0.14), side * 0.19, 0.47, -0.1, 1, armorMat);
+        const knee = addLimb(new THREE.BoxGeometry(0.23, 0.18, 0.14), side * 0.19, 0.47, -0.1, 1, armorMat);
         const shin = addLimb(new THREE.CylinderGeometry(0.11, 0.09, 0.4, 9), side * 0.19, 0.25, 0, 1, fabricMat);
-        addLimb(new THREE.BoxGeometry(0.24, 0.14, 0.38), side * 0.19, 0.08, -0.08, 1, armorMat);
-        dummy.userData.animatedLimbs.push({ mesh: thigh, side: -side, amount: 1 }, { mesh: shin, side: -side, amount: .7 });
+        const boot = addLimb(new THREE.BoxGeometry(0.24, 0.14, 0.38), side * 0.19, 0.08, -0.08, 1, armorMat);
+        dummy.userData.rig.push({ kind: "leg", side, upper: thigh, lower: shin, joint: knee, end: boot });
       });
       const barBack = new THREE.Mesh(new THREE.PlaneGeometry(1.05, 0.09), new THREE.MeshBasicMaterial({ color: 0x151a1b, side: THREE.DoubleSide }));
       barBack.position.set(0, 2.48, 0); barBack.raycast = () => {}; dummy.add(barBack);
@@ -570,8 +570,37 @@ export function FpsGame() {
         const stride = Math.sin(t * (movement === "sprint" ? 12 : 6.5));
         const amplitude = movement === "sprint" ? 0.92 : 0.5;
         dummy.position.y = Math.abs(Math.sin(t * (movement === "sprint" ? 12 : 6.5))) * (movement === "sprint" ? .075 : .035);
-        (dummy.userData.animatedLimbs as { mesh: THREE.Mesh; side: number; amount: number }[]).forEach((limb) => {
-          limb.mesh.rotation.x = stride * amplitude * limb.side * limb.amount;
+        const rig = dummy.userData.rig as { kind: "arm" | "leg"; side: number; upper: THREE.Mesh; lower: THREE.Mesh; joint?: THREE.Mesh; end: THREE.Mesh }[];
+        rig.forEach((limb) => {
+          if (limb.kind === "arm") {
+            const angle = stride * amplitude * limb.side;
+            const elbowAngle = angle * .55 - (movement === "sprint" ? .3 : .12);
+            const shoulderY = 1.62, upperLength = .44, lowerLength = .38;
+            limb.upper.position.set(limb.side * .45, shoulderY - Math.cos(angle) * upperLength / 2, -Math.sin(angle) * upperLength / 2);
+            limb.upper.rotation.x = angle;
+            const elbowY = shoulderY - Math.cos(angle) * upperLength;
+            const elbowZ = -Math.sin(angle) * upperLength;
+            limb.lower.position.set(limb.side * .47, elbowY - Math.cos(elbowAngle) * lowerLength / 2, elbowZ - Math.sin(elbowAngle) * lowerLength / 2);
+            limb.lower.rotation.x = elbowAngle;
+            limb.end.position.set(limb.side * .48, elbowY - Math.cos(elbowAngle) * lowerLength, elbowZ - Math.sin(elbowAngle) * lowerLength);
+          } else {
+            const phase = stride * -limb.side;
+            const thighAngle = phase * amplitude;
+            const kneeBend = Math.max(0, phase) * (movement === "sprint" ? .95 : .55);
+            const shinAngle = thighAngle - kneeBend;
+            const hipY = .97, thighLength = .46, shinLength = .4;
+            limb.upper.position.set(limb.side * .19, hipY - Math.cos(thighAngle) * thighLength / 2, -Math.sin(thighAngle) * thighLength / 2);
+            limb.upper.rotation.x = thighAngle;
+            const kneeY = hipY - Math.cos(thighAngle) * thighLength;
+            const kneeZ = -Math.sin(thighAngle) * thighLength;
+            if (limb.joint) { limb.joint.position.set(limb.side * .19, kneeY, kneeZ - .08); limb.joint.rotation.x = shinAngle; }
+            limb.lower.position.set(limb.side * .19, kneeY - Math.cos(shinAngle) * shinLength / 2, kneeZ - Math.sin(shinAngle) * shinLength / 2);
+            limb.lower.rotation.x = shinAngle;
+            const footY = Math.max(.08, kneeY - Math.cos(shinAngle) * shinLength);
+            const footZ = kneeZ - Math.sin(shinAngle) * shinLength - .08;
+            limb.end.position.set(limb.side * .19, footY, footZ);
+            limb.end.rotation.x = -shinAngle * .35;
+          }
         });
       });
       if (healEnd && now >= healEnd) {
