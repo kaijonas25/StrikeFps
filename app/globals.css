@@ -22,6 +22,10 @@ button { font: inherit; }
 .mission strong { display: block; margin-top: 4px; font-size: 12px; letter-spacing: .16em; }
 .status { font-size: 9px; letter-spacing: .16em; color: #9fb0b1; }
 .status i { display: inline-block; width: 6px; height: 6px; margin-right: 8px; border-radius: 50%; background: #69e09b; box-shadow: 0 0 12px #69e09b; }
+.kill-feed { position:fixed; z-index:7; top:94px; right:28px; display:flex; flex-direction:column; align-items:flex-end; gap:6px; pointer-events:none; }
+.kill-feed > div { display:flex; align-items:center; gap:9px; min-width:270px; padding:8px 11px; border-right:2px solid #ff6336; color:#87999c; background:linear-gradient(90deg,transparent,rgba(5,11,14,.82)); animation:kill-feed-in .18s ease-out; font-size:7px; letter-spacing:.08em; }
+.kill-feed b { color:#fff; }.kill-feed span { padding:3px 6px; color:#ff805b; border:1px solid rgba(255,99,54,.22); font-size:6px; }.kill-feed i { color:#ffb24b; font-size:6px; font-style:normal; }.kill-feed strong { margin-left:auto; color:#c0cdca; font-weight:600; }
+@keyframes kill-feed-in { from { opacity:0; transform:translateX(20px); } to { opacity:1; transform:none; } }
 .crosshair { position: fixed; left: 50%; top: 50%; width: 18px; height: 18px; transform: translate(-50%,-50%); pointer-events: none; }
 .crosshair span::before, .crosshair span::after { content: ""; position: absolute; background: rgba(238,247,243,.9); box-shadow: 0 0 3px #132024; }
 .crosshair span::before { width: 6px; height: 1px; top: 8px; } .crosshair span:first-child::before { left: 0; } .crosshair span:last-child::before { right: 0; }

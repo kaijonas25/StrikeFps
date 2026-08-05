@@ -6,6 +6,7 @@ import * as THREE from "three";
 type Box = { minX: number; maxX: number; minZ: number; maxZ: number; height: number };
 type FireMode = "SEMI" | "BURST" | "AUTO";
 type MenuPage = "HOME" | "LOADOUT" | "CHARACTER";
+type KillFeedEntry = { id: number; victim: string; weapon: string; headshot: boolean };
 
 const WEAPON_STATS: Record<string, { damage: number; fireRate: number; capacity: number; reload: number; range: number; mobility: number; spread: number; pellets?: number }> = {
   "VXR-4 CARBINE": { damage: 16, fireRate: 72, capacity: 30, reload: 2.35, range: 74, mobility: 68, spread: 1.25 },
@@ -59,6 +60,7 @@ export function FpsGame() {
   const [thirdPerson, setThirdPerson] = useState(false);
   const [adsActive, setAdsActive] = useState(false);
   const [crouching, setCrouching] = useState(false);
+  const [killFeed, setKillFeed] = useState<KillFeedEntry[]>([]);
   const [characterSkin, setCharacterSkin] = useState("#a9795e");
   const [characterUniform, setCharacterUniform] = useState("#303a3b");
   const [characterArmor, setCharacterArmor] = useState("#20292b");
@@ -213,8 +215,9 @@ export function FpsGame() {
       }
       scene.add(dummy); if (targetable) dummies.push(dummy); return dummy;
     };
-    addDummy(-7, -14, 0x4d7182); addDummy(0, -14, 0x706347); addDummy(7, -14, 0x754b4b);
-    addDummy(15, -15, 0x38785d, "walk"); addDummy(26, -15, 0x804f32, "sprint");
+    const namedDummy = (dummy: THREE.Group, callsign: string) => { dummy.userData.callsign = callsign; return dummy; };
+    namedDummy(addDummy(-7, -14, 0x4d7182), "TARGET ALPHA"); namedDummy(addDummy(0, -14, 0x706347), "TARGET BRAVO"); namedDummy(addDummy(7, -14, 0x754b4b), "TARGET CHARLIE");
+    namedDummy(addDummy(15, -15, 0x38785d, "walk"), "WALKER ONE"); namedDummy(addDummy(26, -15, 0x804f32, "sprint"), "RUNNER ONE");
     const localPlayer = addDummy(0, 15, 0x435e70, "static", false);
     localPlayer.visible = false;
 
@@ -459,7 +462,12 @@ export function FpsGame() {
     laserLine.raycast = () => {}; laserDot.raycast = () => {}; laserLine.visible = laserDot.visible = false; scene.add(laserLine, laserDot);
     const impactGeometry = new THREE.SphereGeometry(0.045, 6, 6);
     const impactMaterial = new THREE.MeshBasicMaterial({ color: 0xff9a55 });
-    const damageDummyGroup = (dummy: THREE.Group | undefined, damage: number) => {
+    const addKill = (dummy: THREE.Group, weapon: string, headshot: boolean) => {
+      const entry = { id: Date.now() + Math.random(), victim: dummy.userData.callsign ?? "TRAINING TARGET", weapon, headshot };
+      setKillFeed((current) => [...current.slice(-3), entry]);
+      window.setTimeout(() => setKillFeed((current) => current.filter((item) => item.id !== entry.id)), 5000);
+    };
+    const damageDummyGroup = (dummy: THREE.Group | undefined, damage: number, weapon = "FRAG GRENADE", headshot = false) => {
       if (!dummy || !dummy.visible) return;
       dummy.userData.health = Math.max(0, dummy.userData.health - damage);
       const ratio = dummy.userData.health / dummy.userData.maxHealth;
@@ -468,6 +476,7 @@ export function FpsGame() {
         (bar.material as THREE.MeshBasicMaterial).color.set(ratio > .5 ? 0x63e690 : ratio > .2 ? 0xffb347 : 0xff4057);
       });
       if (dummy.userData.health <= 0) {
+        addKill(dummy, weapon, headshot);
         dummy.visible = false;
         window.setTimeout(() => {
           dummy.userData.health = dummy.userData.maxHealth;
@@ -477,7 +486,9 @@ export function FpsGame() {
       }
     };
     const damageDummy = (hit: THREE.Intersection, damage: number) => {
-      damageDummyGroup(hit.object.userData.dummy as THREE.Group | undefined, damage * (hit.object.userData.damageMultiplier ?? 1));
+      const multiplier = hit.object.userData.damageMultiplier ?? 1;
+      const weapon = currentSlot === 1 ? primary : secondary;
+      damageDummyGroup(hit.object.userData.dummy as THREE.Group | undefined, damage * multiplier, weapon, multiplier >= 2);
     };
     const getThrow = () => {
       const direction = new THREE.Vector3(); camera.getWorldDirection(direction);
@@ -518,7 +529,7 @@ export function FpsGame() {
           const blastRadius = 7;
           dummies.forEach((dummy) => {
             const distance = dummy.position.distanceTo(position);
-            if (distance < blastRadius) damageDummyGroup(dummy, Math.round(110 * (1 - distance / blastRadius)));
+            if (distance < blastRadius) damageDummyGroup(dummy, Math.round(110 * (1 - distance / blastRadius)), "FRAG GRENADE");
           });
           const playerDistance = playerPosition.distanceTo(position);
           if (playerDistance < blastRadius) {
@@ -898,6 +909,9 @@ export function FpsGame() {
         <div className="mission"><small>TRAINING SECTOR 01</small><strong>FREE ROAM</strong></div>
         <div className="status"><i /> SYSTEMS ONLINE</div>
       </header>
+      <div className="kill-feed" aria-live="polite">
+        {killFeed.map((entry) => <div key={entry.id}><b>YOU</b><span>{entry.weapon}</span>{entry.headshot && <i>HEADSHOT</i>}<strong>{entry.victim}</strong></div>)}
+      </div>
       <div className="crosshair" style={{ left: thirdPerson ? "54%" : "50%" }}><span /><span /></div>
       <div className="hud-left"><small>VITALS</small><strong>{health}</strong><div className="health"><i style={{ width: `${health}%` }} /></div></div>
       {crouching && <div className="stance-status">CROUCHED · <kbd>C</kbd> STAND</div>}
@@ -1015,6 +1029,7 @@ export function FpsGame() {
               setThirdPerson(false);
               setAdsActive(false);
               setCrouching(false);
+              setKillFeed([]);
               setSessionId((current) => current + 1);
             }}>
               <span>LEAVE SERVER</span>
