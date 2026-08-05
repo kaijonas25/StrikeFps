@@ -27,6 +27,7 @@ button { font: inherit; }
 .crosshair span::before { width: 6px; height: 1px; top: 8px; } .crosshair span:first-child::before { left: 0; } .crosshair span:last-child::before { right: 0; }
 .crosshair span::after { width: 1px; height: 6px; left: 8px; } .crosshair span:first-child::after { top: 0; } .crosshair span:last-child::after { bottom: 0; }
 .hud-left, .hud-right { position: fixed; bottom: 38px; pointer-events: none; }
+.stance-status { position:fixed; left:30px; bottom:102px; color:#a9b9b8; font-size:7px; letter-spacing:.14em; pointer-events:none; }.stance-status kbd { margin:0 3px; }
 .hud-left { left: 30px; } .hud-right { right: 30px; text-align: right; }
 .hud-left strong, .hud-right strong { display: block; font-family: var(--font-geist-sans), sans-serif; font-size: 34px; line-height: 1; font-weight: 650; }
 .hud-right em { color: #8fa0a2; font-style: normal; font-size: 14px; font-weight: 400; }
