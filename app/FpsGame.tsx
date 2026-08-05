@@ -181,7 +181,7 @@ export function FpsGame() {
         barrel.rotation.x = Math.PI / 2; barrel.position.set(x, -0.25, isSniper ? -1.82 : isRifle || isShotgun ? -1.73 : -1.43); model.add(barrel);
         muzzleZ = isSniper ? -2.21 : isRifle || isShotgun ? -2.02 : -1.64;
         if (isSniper) {
-          const scope = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.52, 12), weaponMaterial(0x151b1d));
+          const scope = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.52, 12, 1, true), weaponMaterial(0x151b1d));
           scope.rotation.x = Math.PI / 2; scope.position.set(x, -0.105, -0.7); model.add(scope);
         }
         if (isShotgun) addPart(0.16, 0.17, 0.34, x, -0.28, -1.48, 0x665044);
@@ -199,6 +199,10 @@ export function FpsGame() {
         addPart(0.012, 0.065, 0.02, x, -0.175, muzzleZ + 0.15, 0xff6b3c);
       }
       const muzzleAnchor = new THREE.Object3D(); muzzleAnchor.position.set(x, -0.25, muzzleZ); model.add(muzzleAnchor);
+      // First-person geometry is visual only and must never intercept a weapon ray.
+      model.traverse((object) => {
+        if (object instanceof THREE.Mesh) object.raycast = () => {};
+      });
       return { model, muzzleAnchor };
     };
     const primaryWeapon = buildWeapon(primary);
