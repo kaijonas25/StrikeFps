@@ -701,7 +701,7 @@ export function FpsGame() {
         const amplitude = movement === "static" ? 0 : movement === "sprint" ? 0.92 : 0.5;
         if (!isLocal) dummy.position.y = Math.abs(Math.sin(t * (movement === "sprint" ? 12 : 6.5))) * (movement === "sprint" ? .075 : .035);
         const headRig = dummy.userData.headRig as THREE.Group;
-        const holdingWeaponPose = isLocal && currentSlot <= 2;
+        const holdingWeaponPose = isLocal && currentSlot <= 2 && aiming;
         const holdingLongWeaponPose = holdingWeaponPose && (currentSlot === 1 || secondary === "DB-2 SAWED-OFF");
         headRig.rotation.x = THREE.MathUtils.lerp(headRig.rotation.x, holdingWeaponPose ? holdingLongWeaponPose ? -.13 : -.07 : 0, Math.min(1, dt * 10));
         headRig.rotation.z = THREE.MathUtils.lerp(headRig.rotation.z, holdingWeaponPose ? holdingLongWeaponPose ? -.15 : -.09 : 0, Math.min(1, dt * 10));
