@@ -31,6 +31,10 @@ kbd:first-child { margin-left: 0; }
 .start { display: block; width: 310px; height: 76px; margin-top: 40px; border: 1px solid rgba(255,111,66,.8); color: #f1f6f3; background: rgba(255,91,45,.12); cursor: pointer; letter-spacing: .13em; clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px); transition: .2s ease; }
 .start:hover { background: rgba(255,91,45,.9); transform: scale(1.02); }
 .start span, .start small { display: block; }.start span { font-weight: 700; font-size: 12px; }.start small { margin-top: 8px; opacity: .62; font-size: 8px; }
+.menu-actions { display:flex; align-items:flex-end; gap:12px; }
+.leave { width: 210px; height: 76px; border: 1px solid rgba(188,207,207,.25); color: #a8b5b5; background: rgba(10,17,20,.44); cursor: pointer; letter-spacing: .13em; transition: .2s ease; }
+.leave:hover { color:#fff; border-color:rgba(255,111,66,.65); background:rgba(255,91,45,.1); }
+.leave span, .leave small { display:block; }.leave span { font-size:11px; font-weight:700; }.leave small { margin-top:8px; opacity:.55; font-size:7px; }
 .menu-screen { position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; padding: 8vw; background: linear-gradient(90deg, rgba(5,10,12,.97) 0%, rgba(5,10,12,.91) 43%, rgba(5,10,12,.28) 76%, rgba(5,10,12,.52) 100%); backdrop-filter: blur(3px); }
 .menu-screen::before { content:""; position:absolute; inset:0; pointer-events:none; background: repeating-linear-gradient(0deg, transparent 0 3px, rgba(255,255,255,.012) 4px); }
 .menu-rule { position: absolute; left: 5.4vw; top: 15%; bottom: 15%; width: 2px; background: linear-gradient(transparent, #ff6336 20% 80%, transparent); box-shadow: 0 0 22px rgba(255,99,54,.55); }

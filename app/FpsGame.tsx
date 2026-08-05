@@ -15,6 +15,7 @@ export function FpsGame() {
   const [started, setStarted] = useState(false);
   const [ammo, setAmmo] = useState(30);
   const [fireMode, setFireMode] = useState<FireMode>("AUTO");
+  const [sessionId, setSessionId] = useState(0);
 
   useEffect(() => {
     const mount = mountRef.current;
@@ -254,7 +255,7 @@ export function FpsGame() {
       renderer.dispose();
       mount.removeChild(renderer.domElement);
     };
-  }, []);
+  }, [sessionId]);
 
   return (
     <main className="game-shell">
@@ -275,13 +276,24 @@ export function FpsGame() {
           <div className="menu-kicker">TACTICAL TRAINING SIMULATION</div>
           <h1><span>STRIKE</span>YARD</h1>
           <p>{started ? "SIMULATION PAUSED" : "SECTOR 01 · COMBAT READINESS COURSE"}</p>
-          <button className="start" onClick={() => {
-            setStarted(true);
-            mountRef.current?.querySelector("canvas")?.requestPointerLock();
-          }}>
-            <span>{started ? "RESUME OPERATION" : "DEPLOY TO YARD"}</span>
-            <small>CLICK TO LOCK CURSOR</small>
-          </button>
+          <div className="menu-actions">
+            <button className="start" onClick={() => {
+              setStarted(true);
+              mountRef.current?.querySelector("canvas")?.requestPointerLock();
+            }}>
+              <span>{started ? "RESUME OPERATION" : "DEPLOY TO YARD"}</span>
+              <small>CLICK TO LOCK CURSOR</small>
+            </button>
+            {started && <button className="leave" onClick={() => {
+              setStarted(false);
+              setAmmo(30);
+              setFireMode("AUTO");
+              setSessionId((current) => current + 1);
+            }}>
+              <span>LEAVE SERVER</span>
+              <small>RETURN TO MAIN MENU</small>
+            </button>}
+          </div>
           <div className="menu-controls">
             <div><kbd>WASD</kbd><span>MOVE</span></div>
             <div><kbd>SHIFT</kbd><span>SPRINT</span></div>
