@@ -173,14 +173,20 @@ export function FpsGame() {
       addLimb(new THREE.BoxGeometry(0.17, 0.14, 0.12), 0.2, 1.18, -0.25, 1, armorMat);
       addLimb(new THREE.BoxGeometry(0.56, 0.1, 0.34), 0, 0.98, 0, 1, armorMat);
       addLimb(new THREE.BoxGeometry(0.5, 0.58, 0.2), 0, 1.48, 0.24, 1, armorMat);
-      // Helmet, face, visor, headset and neck.
-      addLimb(new THREE.CylinderGeometry(0.13, 0.15, 0.16, 10), 0, 1.77, 0, 1.5, fabricMat);
-      addLimb(new THREE.SphereGeometry(0.235, 16, 11), 0, 2.03, 0, 2, dummyMat);
+      // Connected head rig pivots from the neck for a natural weapon cheek weld.
+      const headRig = new THREE.Group(); headRig.position.set(0, 1.78, 0); dummy.add(headRig); dummy.userData.headRig = headRig;
+      const addHeadLimb = (geometry: THREE.BufferGeometry, px: number, py: number, pz: number, multiplier: number, partMaterial: THREE.Material) => {
+        const mesh = new THREE.Mesh(geometry, partMaterial); mesh.position.set(px, py, pz); mesh.castShadow = true;
+        if (targetable) { mesh.userData.dummy = dummy; mesh.userData.damageMultiplier = multiplier; } else mesh.raycast = () => {};
+        headRig.add(mesh); return mesh;
+      };
+      addHeadLimb(new THREE.CylinderGeometry(0.13, 0.15, 0.16, 10), 0, -.01, 0, 1.5, fabricMat);
+      addHeadLimb(new THREE.SphereGeometry(0.235, 16, 11), 0, .25, 0, 2, dummyMat);
       const helmetScale = !targetable && characterHelmet === "LIGHT" ? 0.92 : !targetable && characterHelmet === "HEAVY" ? 1.1 : 1;
-      const helmet = addLimb(new THREE.SphereGeometry(0.265, 16, 8, 0, Math.PI * 2, 0, Math.PI * 0.54), 0, 2.12, 0.01, 2, armorMat);
+      const helmet = addHeadLimb(new THREE.SphereGeometry(0.265, 16, 8, 0, Math.PI * 2, 0, Math.PI * 0.54), 0, .34, .01, 2, armorMat);
       helmet.scale.set(helmetScale, !targetable && characterHelmet === "HEAVY" ? 1.08 : 1, helmetScale);
-      addLimb(new THREE.BoxGeometry(0.34, 0.095, 0.04), 0, 2.04, -0.222, 2, visorMat);
-      addLimb(new THREE.BoxGeometry(0.055, 0.18, 0.08), -0.255, 2.04, 0, 2, armorMat);
+      addHeadLimb(new THREE.BoxGeometry(0.34, 0.095, 0.04), 0, .26, -.222, 2, visorMat);
+      addHeadLimb(new THREE.BoxGeometry(0.055, 0.18, 0.08), -.255, .26, 0, 2, armorMat);
       // Segmented arms, shoulder armor and gloves.
       [-1, 1].forEach((side) => {
         addLimb(new THREE.SphereGeometry(0.17, 10, 8), side * 0.43, 1.65, 0, 1, armorMat);
@@ -694,6 +700,12 @@ export function FpsGame() {
         const stride = movement === "static" ? 0 : Math.sin(t * (movement === "sprint" ? 12 : 6.5));
         const amplitude = movement === "static" ? 0 : movement === "sprint" ? 0.92 : 0.5;
         if (!isLocal) dummy.position.y = Math.abs(Math.sin(t * (movement === "sprint" ? 12 : 6.5))) * (movement === "sprint" ? .075 : .035);
+        const headRig = dummy.userData.headRig as THREE.Group;
+        const holdingWeaponPose = isLocal && currentSlot <= 2;
+        const holdingLongWeaponPose = holdingWeaponPose && (currentSlot === 1 || secondary === "DB-2 SAWED-OFF");
+        headRig.rotation.x = THREE.MathUtils.lerp(headRig.rotation.x, holdingWeaponPose ? holdingLongWeaponPose ? -.13 : -.07 : 0, Math.min(1, dt * 10));
+        headRig.rotation.z = THREE.MathUtils.lerp(headRig.rotation.z, holdingWeaponPose ? holdingLongWeaponPose ? -.15 : -.09 : 0, Math.min(1, dt * 10));
+        headRig.position.x = THREE.MathUtils.lerp(headRig.position.x, holdingWeaponPose ? holdingLongWeaponPose ? .065 : .035 : 0, Math.min(1, dt * 10));
         const rig = dummy.userData.rig as { kind: "arm" | "leg"; side: number; upper: THREE.Mesh; lower: THREE.Mesh; joint?: THREE.Mesh; end: THREE.Mesh }[];
         rig.forEach((limb) => {
           if (limb.kind === "arm") {
