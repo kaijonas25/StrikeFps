@@ -33,6 +33,8 @@ export function FpsGame() {
   const [activeSlot, setActiveSlot] = useState(1);
   const [reloading, setReloading] = useState(false);
   const [reloadDuration, setReloadDuration] = useState(0);
+  const [utilityCount, setUtilityCount] = useState(2);
+  const [flashed, setFlashed] = useState(false);
 
   useEffect(() => {
     const mount = mountRef.current;
@@ -178,6 +180,11 @@ export function FpsGame() {
     camera.add(gun);
     scene.add(camera);
 
+    const trajectoryMaterial = new THREE.LineBasicMaterial({ color: 0x8fe7ff, transparent: true, opacity: 0.8 });
+    const trajectory = new THREE.Line(new THREE.BufferGeometry(), trajectoryMaterial);
+    trajectory.visible = false;
+    scene.add(trajectory);
+
     const keys = new Set<string>();
     let yaw = 0, pitch = 0, verticalVelocity = 0, grounded = true;
     const primaryStats = WEAPON_STATS[primary];
@@ -186,6 +193,8 @@ export function FpsGame() {
     const ammoCounts = [primaryStats.capacity, secondaryStats.capacity];
     setAmmo(primaryStats.capacity);
     let ammoCount = ammoCounts[0], recoil = 0, muzzleTimer = 0, aiming = false, sprinting = false, reloadEnd = 0, meleeSwing = 0, lastMelee = 0;
+    let throwableAiming = false, grenadesLeft = 2;
+    const projectiles: { mesh: THREE.Mesh; velocity: THREE.Vector3; age: number; type: string }[] = [];
     let currentFireMode: FireMode = "AUTO", triggerHeld = false, lastShot = 0, currentSlot = 1;
     let last = performance.now();
     const clock = new THREE.Clock();
@@ -219,6 +228,8 @@ export function FpsGame() {
         if (currentSlot <= 2) { ammoCount = ammoCounts[currentSlot - 1]; setAmmo(ammoCount); }
         aiming = false;
         triggerHeld = false;
+        throwableAiming = false;
+        trajectory.visible = false;
         reloadEnd = 0;
         setReloading(false);
       }
@@ -232,6 +243,43 @@ export function FpsGame() {
     const raycaster = new THREE.Raycaster();
     const impactGeometry = new THREE.SphereGeometry(0.045, 6, 6);
     const impactMaterial = new THREE.MeshBasicMaterial({ color: 0xff9a55 });
+    const getThrow = () => {
+      const direction = new THREE.Vector3(); camera.getWorldDirection(direction);
+      const start = camera.position.clone().addScaledVector(direction, 0.65).add(new THREE.Vector3(0, -0.18, 0));
+      const velocity = direction.multiplyScalar(13).add(new THREE.Vector3(0, 3.8, 0));
+      return { start, velocity };
+    };
+    const throwUtility = () => {
+      if (grenadesLeft <= 0) return;
+      const { start, velocity } = getThrow();
+      const color = utility === "FRAG GRENADE" ? 0x53634d : utility === "SMOKE GRENADE" ? 0xa6afb0 : 0x617585;
+      const grenade = new THREE.Mesh(new THREE.SphereGeometry(0.12, 10, 8), weaponMaterial(color, 0.5));
+      grenade.position.copy(start); grenade.castShadow = true; scene.add(grenade);
+      projectiles.push({ mesh: grenade, velocity, age: 0, type: utility });
+      grenadesLeft -= 1; setUtilityCount(grenadesLeft);
+    };
+    const detonate = (projectile: { mesh: THREE.Mesh; type: string }) => {
+      const position = projectile.mesh.position.clone();
+      scene.remove(projectile.mesh);
+      if (projectile.type === "SMOKE GRENADE") {
+        const cloud = new THREE.Group(); cloud.position.copy(position); scene.add(cloud);
+        for (let i = 0; i < 18; i++) {
+          const puff = new THREE.Mesh(new THREE.SphereGeometry(0.7 + Math.random() * 0.5, 8, 6), new THREE.MeshBasicMaterial({ color: 0x899597, transparent: true, opacity: 0.2, depthWrite: false }));
+          puff.position.set((Math.random() - .5) * 4, Math.random() * 2, (Math.random() - .5) * 4); cloud.add(puff);
+        }
+        window.setTimeout(() => scene.remove(cloud), 9000);
+      } else {
+        const blastColor = projectile.type === "FLASHBANG" ? 0xeaffff : 0xff6a32;
+        const blast = new THREE.Mesh(new THREE.SphereGeometry(0.35, 12, 8), new THREE.MeshBasicMaterial({ color: blastColor, transparent: true, opacity: 0.85, wireframe: true }));
+        blast.position.copy(position); scene.add(blast);
+        let scale = 1;
+        const expand = window.setInterval(() => { scale += 0.8; blast.scale.setScalar(scale); }, 20);
+        window.setTimeout(() => { window.clearInterval(expand); scene.remove(blast); }, 260);
+        if (projectile.type === "FLASHBANG" && camera.position.distanceTo(position) < 13) {
+          setFlashed(true); window.setTimeout(() => setFlashed(false), 1700);
+        }
+      }
+    };
     const fireRound = () => {
       if (document.pointerLockElement !== renderer.domElement || sprinting || currentSlot > 2 || reloadEnd > 0) return;
       if (currentSlot === 2 && secondaryIsMelee) {
@@ -280,6 +328,7 @@ export function FpsGame() {
       if (document.pointerLockElement !== renderer.domElement) return;
       if (e.button === 2) { aiming = true; return; }
       if (e.button !== 0 || sprinting) return;
+      if (currentSlot === 4) { throwableAiming = grenadesLeft > 0; trajectory.visible = throwableAiming; return; }
       triggerHeld = true;
       if (currentFireMode === "SEMI") fireRound();
       if (currentFireMode === "BURST") [0, 85, 170].forEach((delay) => window.setTimeout(() => {
@@ -288,14 +337,17 @@ export function FpsGame() {
       if (currentFireMode === "AUTO") { fireRound(); lastShot = performance.now(); }
     };
     const onMouseUp = (e: MouseEvent) => {
-      if (e.button === 0) triggerHeld = false;
+      if (e.button === 0) {
+        triggerHeld = false;
+        if (throwableAiming) { throwableAiming = false; trajectory.visible = false; throwUtility(); }
+      }
       if (e.button === 2) aiming = false;
     };
     const onContextMenu = (e: MouseEvent) => e.preventDefault();
     const onLockChange = () => {
       const isLocked = document.pointerLockElement === renderer.domElement;
       setLocked(isLocked);
-      if (!isLocked) { aiming = false; triggerHeld = false; keys.clear(); }
+      if (!isLocked) { aiming = false; triggerHeld = false; throwableAiming = false; trajectory.visible = false; keys.clear(); }
     };
     const onResize = () => {
       camera.aspect = mount.clientWidth / mount.clientHeight;
@@ -340,6 +392,31 @@ export function FpsGame() {
 
       const moving = input.lengthSq() > 0 && grounded;
       const t = clock.getElapsedTime();
+      if (throwableAiming) {
+        const { start, velocity } = getThrow();
+        const points: THREE.Vector3[] = [];
+        for (let step = 0; step <= 18; step++) {
+          const time = step * 0.09;
+          const point = start.clone().addScaledVector(velocity, time);
+          point.y -= 7.25 * time * time;
+          if (point.y < 0.08) { point.y = 0.08; points.push(point); break; }
+          points.push(point);
+        }
+        trajectory.geometry.dispose(); trajectory.geometry = new THREE.BufferGeometry().setFromPoints(points);
+      }
+      for (let i = projectiles.length - 1; i >= 0; i--) {
+        const projectile = projectiles[i]; projectile.age += dt;
+        projectile.velocity.y -= 14.5 * dt;
+        projectile.mesh.position.addScaledVector(projectile.velocity, dt);
+        projectile.mesh.rotation.x += dt * 8; projectile.mesh.rotation.z += dt * 6;
+        if (projectile.mesh.position.y <= 0.12) {
+          projectile.mesh.position.y = 0.12;
+          projectile.velocity.y = Math.abs(projectile.velocity.y) * 0.42;
+          projectile.velocity.x *= 0.82; projectile.velocity.z *= 0.82;
+        }
+        const fuse = projectile.type === "FRAG GRENADE" ? 2.5 : projectile.type === "SMOKE GRENADE" ? 1.5 : 1.8;
+        if (projectile.age >= fuse) { detonate(projectile); projectiles.splice(i, 1); }
+      }
       meleeSwing = Math.max(0, meleeSwing - dt * 4.6);
       if (reloadEnd && now >= reloadEnd) {
         const stats = currentSlot === 1 ? primaryStats : secondaryStats;
@@ -394,7 +471,7 @@ export function FpsGame() {
       renderer.dispose();
       mount.removeChild(renderer.domElement);
     };
-  }, [sessionId, primary, secondary]);
+  }, [sessionId, primary, secondary, utility]);
 
   const equippedItems = [primary, secondary, medical, utility];
   const activeIsMelee = activeSlot === 2 && secondary === "COMBAT KNIFE";
@@ -410,7 +487,7 @@ export function FpsGame() {
       </header>
       <div className="crosshair"><span /><span /></div>
       <div className="hud-left"><small>VITALS</small><strong>100</strong><div className="health"><i /></div></div>
-      <div className="hud-right"><small>{equippedItems[activeSlot - 1]}{activeIsMelee ? " · MELEE" : activeSlot <= 2 ? ` · ${fireMode}` : " · READY"}</small><strong>{activeIsMelee || activeSlot > 2 ? "—" : ammo} <em>{activeIsMelee || activeSlot > 2 ? "" : "/ 120"}</em></strong></div>
+      <div className="hud-right"><small>{equippedItems[activeSlot - 1]}{activeIsMelee ? " · MELEE" : activeSlot <= 2 ? ` · ${fireMode}` : " · READY"}</small><strong>{activeSlot === 4 ? utilityCount : activeIsMelee || activeSlot > 2 ? "—" : ammo} <em>{activeSlot === 4 ? "THROWABLES" : activeIsMelee || activeSlot > 2 ? "" : "/ 120"}</em></strong></div>
       {reloading && <div className="reload-status"><span>RELOADING</span><i style={{ animationDuration: `${reloadDuration}s` }} /></div>}
       <div className="quick-slots">
         {([
@@ -419,6 +496,7 @@ export function FpsGame() {
           <kbd>{slot}</kbd><span><small>{label}</small><b>{item}</b></span>
         </div>)}
       </div>
+      <div className={`flash-effect${flashed ? " active" : ""}`} />
       <div className="controls"><kbd>WASD</kbd> MOVE <kbd>SHIFT</kbd> SPRINT <kbd>RMB</kbd> AIM <kbd>LMB</kbd> FIRE <kbd>B</kbd> MODE <kbd>R</kbd> RELOAD</div>
       {!locked && <div className={`menu-screen${!started ? " main-menu-screen" : " pause-screen"}`}>
         <div className="menu-rule" />
@@ -471,6 +549,8 @@ export function FpsGame() {
               setFireMode("AUTO");
               setActiveSlot(1);
               setReloading(false);
+              setUtilityCount(2);
+              setFlashed(false);
               setSessionId((current) => current + 1);
             }}>
               <span>LEAVE SERVER</span>
