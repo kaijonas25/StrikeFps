@@ -8,6 +8,12 @@ button { font: inherit; }
 .game-shell, .viewport { position: fixed; inset: 0; }
 .viewport canvas { display: block; width: 100%; height: 100%; }
 .vignette { position: fixed; inset: 0; pointer-events: none; background: radial-gradient(circle, transparent 42%, rgba(2,7,9,.48) 115%); }
+.scope-overlay { position:fixed; inset:0; z-index:8; display:grid; place-items:center; pointer-events:none; background:radial-gradient(circle at center,transparent 0 min(38vh,38vw),rgba(0,0,0,.97) min(39vh,39vw)); }
+.scope-view { position:relative; width:min(76vh,76vw); aspect-ratio:1; border:7px solid #090d0e; border-radius:50%; box-shadow:inset 0 0 45px rgba(0,0,0,.72),0 0 0 3px #283235; overflow:hidden; }
+.scope-view::after { content:""; position:absolute; inset:0; border-radius:50%; background:radial-gradient(circle,transparent 54%,rgba(11,24,27,.3)); }
+.scope-line { position:absolute; z-index:2; display:block; left:50%; top:50%; background:rgba(18,23,23,.92); transform:translate(-50%,-50%); }.scope-line.horizontal { width:100%; height:1px; }.scope-line.vertical { width:1px; height:100%; }
+.scope-view b { position:absolute; z-index:3; left:50%; top:50%; width:7px; height:7px; border:1px solid #ff6540; border-radius:50%; transform:translate(-50%,-50%); box-shadow:0 0 5px #ff6540; }.scope-view span { position:absolute; z-index:3; right:12%; bottom:10%; color:rgba(255,255,255,.42); font-size:9px; letter-spacing:.12em; }
+.game-shell:has(.scope-overlay) > .crosshair { opacity:0; }
 .topbar { position: fixed; top: 0; left: 0; right: 0; height: 78px; display: flex; align-items: center; justify-content: space-between; padding: 0 30px; border-bottom: 1px solid rgba(177,215,218,.17); background: linear-gradient(180deg, rgba(7,13,16,.8), transparent); pointer-events: none; }
 .brand { display: flex; align-items: baseline; gap: 8px; letter-spacing: -.04em; font-family: var(--font-geist-sans), sans-serif; font-size: 21px; }
 .brand span { font-weight: 300; } .brand b { color: #ff6336; font-weight: 850; }

@@ -57,6 +57,7 @@ export function FpsGame() {
   const [healing, setHealing] = useState(false);
   const [healDuration, setHealDuration] = useState(0);
   const [thirdPerson, setThirdPerson] = useState(false);
+  const [adsActive, setAdsActive] = useState(false);
   const [characterSkin, setCharacterSkin] = useState("#a9795e");
   const [characterUniform, setCharacterUniform] = useState("#303a3b");
   const [characterArmor, setCharacterArmor] = useState("#20292b");
@@ -294,16 +295,23 @@ export function FpsGame() {
           addPart(0.012, 0.065, 0.02, x, -0.175, muzzleZ + 0.15, 0xff6b3c);
         } else if (weaponSight === "RED DOT") {
           addPart(.18, .055, .24, x, -.135, -.65, 0x171e20);
-          const lens = new THREE.Mesh(new THREE.CylinderGeometry(.075, .075, .035, 16), new THREE.MeshStandardMaterial({ color: 0x7fb5b8, emissive: 0xff2618, emissiveIntensity: 1.8, transparent: true, opacity: .72, metalness: .25, roughness: .12 }));
+          const lens = new THREE.Mesh(new THREE.CylinderGeometry(.075, .075, .035, 16), new THREE.MeshStandardMaterial({ color: 0x7fb5b8, transparent: true, opacity: .38, metalness: .25, roughness: .12 }));
           lens.rotation.x = Math.PI / 2; lens.position.set(x, -.07, -.67); model.add(lens);
+          const dot = new THREE.Mesh(new THREE.SphereGeometry(.009, 8, 6), new THREE.MeshBasicMaterial({ color: 0xff2018, depthTest: false })); dot.position.set(x, -.07, -.647); model.add(dot);
         } else if (weaponSight === "HOLOGRAPHIC") {
           addPart(.24, .055, .27, x, -.135, -.68, 0x182124);
           addPart(.025, .22, .04, x - .11, -.04, -.68, 0x202a2d); addPart(.025, .22, .04, x + .11, -.04, -.68, 0x202a2d);
           const glass = addPart(.18, .15, .018, x, -.04, -.69, 0x618b91); (glass.material as THREE.MeshStandardMaterial).transparent = true; (glass.material as THREE.MeshStandardMaterial).opacity = .42;
+          const holoRing = new THREE.Mesh(new THREE.TorusGeometry(.034, .004, 7, 20), new THREE.MeshBasicMaterial({ color: 0xff542d, depthTest: false })); holoRing.position.set(x, -.04, -.675); model.add(holoRing);
+          const holoDot = new THREE.Mesh(new THREE.SphereGeometry(.007, 8, 6), new THREE.MeshBasicMaterial({ color: 0xffb047, depthTest: false })); holoDot.position.set(x, -.04, -.669); model.add(holoDot);
         } else {
           const scope = new THREE.Mesh(new THREE.CylinderGeometry(.09, .105, .58, 18, 1, true), weaponMaterial(0x111719));
           scope.rotation.x = Math.PI / 2; scope.position.set(x, -.08, -.74); model.add(scope);
           addPart(.16, .07, .08, x, -.14, -.55, 0x171e20); addPart(.16, .07, .08, x, -.14, -.94, 0x171e20);
+          const scopeLens = new THREE.Mesh(new THREE.CircleGeometry(.085, 24), new THREE.MeshBasicMaterial({ color: 0x42646a, transparent: true, opacity: .48 })); scopeLens.position.set(x, -.08, -.435); model.add(scopeLens);
+          const scopeCross = new THREE.Group(); scopeCross.position.set(x, -.08, -.428);
+          const crossMaterial = new THREE.MeshBasicMaterial({ color: 0xff7048, depthTest: false });
+          const vertical = new THREE.Mesh(new THREE.BoxGeometry(.004, .12, .002), crossMaterial); const horizontal = new THREE.Mesh(new THREE.BoxGeometry(.12, .004, .002), crossMaterial); scopeCross.add(vertical, horizontal); model.add(scopeCross);
         }
         if (muzzleAttachment === "SUPPRESSOR") {
           const suppressor = new THREE.Mesh(new THREE.CylinderGeometry(.055, .065, .48, 14), weaponMaterial(0x151b1d));
@@ -376,6 +384,7 @@ export function FpsGame() {
       keys.add(e.code);
       if (e.code === "Tab" && !e.repeat) {
         e.preventDefault(); isThirdPerson = !isThirdPerson; setThirdPerson(isThirdPerson);
+        aiming = false; setAdsActive(false);
         if (isThirdPerson) { cameraYaw = yaw; cameraPitch = 0.2; }
         else { yaw = cameraYaw; pitch = 0; }
         localPlayer.visible = isThirdPerson;
@@ -386,7 +395,7 @@ export function FpsGame() {
         if (ammoCounts[currentSlot - 1] < stats.capacity) {
           reloadEnd = performance.now() + stats.reload * 1000;
           triggerHeld = false;
-          aiming = false;
+          aiming = false; setAdsActive(false);
           setReloadDuration(stats.reload);
           setReloading(true);
         }
@@ -400,7 +409,7 @@ export function FpsGame() {
         currentSlot = Number(e.code.slice(-1));
         setActiveSlot(currentSlot);
         if (currentSlot <= 2) { ammoCount = ammoCounts[currentSlot - 1]; setAmmo(ammoCount); }
-        aiming = false;
+        aiming = false; setAdsActive(false);
         triggerHeld = false;
         throwableAiming = false;
         trajectory.visible = false;
@@ -537,7 +546,7 @@ export function FpsGame() {
     };
     const onMouseDown = (e: MouseEvent) => {
       if (document.pointerLockElement !== renderer.domElement) return;
-      if (e.button === 2) { if (isThirdPerson) orbiting = true; else aiming = true; return; }
+      if (e.button === 2) { if (isThirdPerson) orbiting = true; else { aiming = true; setAdsActive(true); } return; }
       if (e.button !== 0 || sprinting) return;
       if (currentSlot === 3) {
         if (medicalCharges > 0 && playerHealth < 100 && !healEnd) {
@@ -560,13 +569,13 @@ export function FpsGame() {
         triggerHeld = false;
         if (throwableAiming) { throwableAiming = false; trajectory.visible = false; throwUtility(); }
       }
-      if (e.button === 2) { aiming = false; orbiting = false; }
+      if (e.button === 2) { aiming = false; orbiting = false; setAdsActive(false); }
     };
     const onContextMenu = (e: MouseEvent) => e.preventDefault();
     const onLockChange = () => {
       const isLocked = document.pointerLockElement === renderer.domElement;
       setLocked(isLocked);
-      if (!isLocked) { aiming = false; orbiting = false; triggerHeld = false; throwableAiming = false; trajectory.visible = false; keys.clear(); }
+      if (!isLocked) { aiming = false; setAdsActive(false); orbiting = false; triggerHeld = false; throwableAiming = false; trajectory.visible = false; keys.clear(); }
     };
     const onResize = () => {
       camera.aspect = mount.clientWidth / mount.clientHeight;
@@ -597,7 +606,7 @@ export function FpsGame() {
       );
       if (input.lengthSq() > 0) input.normalize();
       sprinting = (keys.has("ShiftLeft") || keys.has("ShiftRight")) && input.y > 0 && input.lengthSq() > 0;
-      if (sprinting) aiming = false;
+      if (sprinting) { aiming = false; setAdsActive(false); }
       const speed = sprinting ? 8.2 : aiming ? 3.8 : 5.2;
       const movementYaw = isThirdPerson ? cameraYaw : yaw;
       const sin = Math.sin(movementYaw), cos = Math.cos(movementYaw);
@@ -740,7 +749,8 @@ export function FpsGame() {
       const reloadPhase = reloadEnd ? 1 - Math.max(0, reloadEnd - now) / ((currentSlot === 1 ? primaryStats.reload : secondaryStats.reload) * 1000) : 0;
       const reloadDip = reloadEnd ? Math.sin(Math.min(1, reloadPhase) * Math.PI) : 0;
       const targetX = reloadEnd ? 0.16 : sprinting ? -0.13 : aiming ? -0.34 : (moving ? Math.cos(t * 6.5) * 0.008 : 0);
-      const targetY = reloadEnd ? -0.52 * reloadDip : sprinting ? -0.2 : aiming ? 0.15 : bobY - recoil * 0.3;
+      const opticAimY = weaponSight === "IRON SIGHTS" ? 0.145 : weaponSight === "RED DOT" ? 0.07 : weaponSight === "HOLOGRAPHIC" ? 0.04 : 0.08;
+      const targetY = reloadEnd ? -0.52 * reloadDip : sprinting ? -0.2 : aiming ? opticAimY : bobY - recoil * 0.3;
       const targetZ = reloadEnd ? 0.24 : sprinting ? 0.16 : aiming ? 0.2 + recoil : recoil;
       gun.position.x = THREE.MathUtils.lerp(gun.position.x, targetX, Math.min(1, dt * 12));
       gun.position.y = THREE.MathUtils.lerp(gun.position.y, targetY, Math.min(1, dt * 12));
@@ -755,7 +765,7 @@ export function FpsGame() {
       secondaryWeapon.model.visible = currentSlot === 2;
       worldPrimary.visible = isThirdPerson && currentSlot === 1;
       worldSecondary.visible = isThirdPerson && currentSlot === 2;
-      camera.fov = THREE.MathUtils.lerp(camera.fov, aiming ? 58 : sprinting ? 84 : 78, Math.min(1, dt * 10));
+      camera.fov = THREE.MathUtils.lerp(camera.fov, aiming ? weaponSight === "4X SCOPE" ? 20 : 58 : sprinting ? 84 : 78, Math.min(1, dt * 10));
       camera.updateProjectionMatrix();
       if (isThirdPerson) {
         const orbitDistance = 4.2;
@@ -806,6 +816,7 @@ export function FpsGame() {
     <main className={`game-shell${!started ? " game-menu" : ""}`}>
       <div ref={mountRef} className="viewport" aria-label="3D first-person training arena" />
       <div className="vignette" />
+      {adsActive && weaponSight === "4X SCOPE" && !thirdPerson && <div className="scope-overlay"><div className="scope-view"><i className="scope-line horizontal" /><i className="scope-line vertical" /><b /><span>4×</span></div></div>}
       <header className="topbar">
         <div className="brand"><span>STRIKE</span><b>YARD</b></div>
         <div className="mission"><small>TRAINING SECTOR 01</small><strong>FREE ROAM</strong></div>
@@ -925,6 +936,7 @@ export function FpsGame() {
               setHealth(100);
               setDead(false);
               setThirdPerson(false);
+              setAdsActive(false);
               setSessionId((current) => current + 1);
             }}>
               <span>LEAVE SERVER</span>
