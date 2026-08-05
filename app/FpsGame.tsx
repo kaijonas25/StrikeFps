@@ -700,6 +700,23 @@ export function FpsGame() {
             const holdingWeapon = isLocal && currentSlot <= 2;
             const holdingLongGun = holdingWeapon && (currentSlot === 1 || secondary === "DB-2 SAWED-OFF");
             const isRightArm = limb.side === 1;
+            if (holdingWeapon) {
+              const shoulder = new THREE.Vector3(limb.side * .43, 1.65, 0);
+              const elbow = isRightArm
+                ? new THREE.Vector3(.48, 1.38, -.32)
+                : holdingLongGun ? new THREE.Vector3(-.2, 1.35, -.33) : new THREE.Vector3(-.18, 1.37, -.2);
+              const hand = isRightArm
+                ? new THREE.Vector3(.19, 1.25, -.31)
+                : holdingLongGun ? new THREE.Vector3(.1, 1.38, -.55) : new THREE.Vector3(.1, 1.24, -.32);
+              const alignLimb = (mesh: THREE.Mesh, start: THREE.Vector3, end: THREE.Vector3) => {
+                mesh.position.copy(start).add(end).multiplyScalar(.5);
+                mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), end.clone().sub(start).normalize());
+              };
+              alignLimb(limb.upper, shoulder, elbow);
+              alignLimb(limb.lower, elbow, hand);
+              limb.end.position.copy(hand); limb.end.quaternion.identity();
+              return;
+            }
             const angle = holdingWeapon
               ? isRightArm ? 1.18 + stride * .035 : holdingLongGun ? 1.12 - stride * .03 : 1.08
               : stride * amplitude * limb.side;
