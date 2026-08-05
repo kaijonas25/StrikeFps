@@ -23,6 +23,11 @@ const WEAPON_STATS: Record<string, { damage: number; fireRate: number; capacity:
   "G18 AUTO PISTOL": { damage: 19, fireRate: 95, capacity: 24, reload: 1.75, range: 35, mobility: 96, spread: 2.65 },
   "DB-2 SAWED-OFF": { damage: 22, fireRate: 18, capacity: 2, reload: 2.6, range: 20, mobility: 81, spread: 7.2, pellets: 6 },
 };
+const MEDICAL_STATS: Record<string, { healing: number; duration: number }> = {
+  "FIELD MEDKIT": { healing: 60, duration: 2.5 },
+  "STIM INJECTOR": { healing: 35, duration: 1.15 },
+  "TRAUMA KIT": { healing: 100, duration: 4.0 },
+};
 
 const PLAYER_HEIGHT = 1.7;
 const PLAYER_RADIUS = 0.38;
@@ -49,6 +54,8 @@ export function FpsGame() {
   const [dead, setDead] = useState(false);
   const [medicalCount, setMedicalCount] = useState(2);
   const [healingEffect, setHealingEffect] = useState(false);
+  const [healing, setHealing] = useState(false);
+  const [healDuration, setHealDuration] = useState(0);
 
   useEffect(() => {
     const mount = mountRef.current;
@@ -275,7 +282,7 @@ export function FpsGame() {
     let throwableAiming = false, grenadesLeft = 2, medicalCharges = 2;
     const projectiles: { mesh: THREE.Mesh; velocity: THREE.Vector3; age: number; type: string }[] = [];
     let currentFireMode: FireMode = "AUTO", triggerHeld = false, lastShot = 0, currentSlot = 1, movementSpread = 1;
-    let playerHealth = 100, nextPadTick = 0;
+    let playerHealth = 100, nextPadTick = 0, healEnd = 0;
     respawnRef.current = () => {
       camera.position.set(0, PLAYER_HEIGHT, 15);
       yaw = 0; pitch = 0; verticalVelocity = 0; playerHealth = 100;
@@ -317,6 +324,7 @@ export function FpsGame() {
         trajectory.visible = false;
         reloadEnd = 0;
         setReloading(false);
+        if (currentSlot !== 3 && healEnd) { healEnd = 0; setHealing(false); }
       }
     };
     const onKeyUp = (e: KeyboardEvent) => keys.delete(e.code);
@@ -437,12 +445,10 @@ export function FpsGame() {
       if (e.button === 2) { aiming = true; return; }
       if (e.button !== 0 || sprinting) return;
       if (currentSlot === 3) {
-        if (medicalCharges > 0 && playerHealth < 100) {
-          const healing = medical === "FIELD MEDKIT" ? 60 : medical === "STIM INJECTOR" ? 35 : 100;
-          playerHealth = Math.min(100, playerHealth + healing);
-          medicalCharges -= 1;
-          setHealth(playerHealth); setMedicalCount(medicalCharges); setHealingEffect(true);
-          window.setTimeout(() => setHealingEffect(false), 650);
+        if (medicalCharges > 0 && playerHealth < 100 && !healEnd) {
+          const medicalStats = MEDICAL_STATS[medical];
+          healEnd = performance.now() + medicalStats.duration * 1000;
+          setHealDuration(medicalStats.duration); setHealing(true);
         }
         return;
       }
@@ -512,7 +518,7 @@ export function FpsGame() {
         if (onPad(8)) playerHealth = Math.min(100, playerHealth + 12);
         setHealth(playerHealth);
         if (playerHealth <= 0) {
-          setDead(true); triggerHeld = false; keys.clear();
+          setDead(true); triggerHeld = false; healEnd = 0; setHealing(false); keys.clear();
           if (document.pointerLockElement) document.exitPointerLock();
         }
       }
@@ -524,6 +530,12 @@ export function FpsGame() {
       const moving = input.lengthSq() > 0 && grounded;
       movementSpread = input.lengthSq() > 0 ? 1.55 : 1;
       const t = clock.getElapsedTime();
+      if (healEnd && now >= healEnd) {
+        playerHealth = Math.min(100, playerHealth + MEDICAL_STATS[medical].healing);
+        medicalCharges -= 1; healEnd = 0;
+        setHealth(playerHealth); setMedicalCount(medicalCharges); setHealing(false); setHealingEffect(true);
+        window.setTimeout(() => setHealingEffect(false), 650);
+      }
       if (throwableAiming) {
         const { start, velocity } = getThrow();
         const points: THREE.Vector3[] = [];
@@ -621,6 +633,7 @@ export function FpsGame() {
       <div className="hud-left"><small>VITALS</small><strong>{health}</strong><div className="health"><i style={{ width: `${health}%` }} /></div></div>
       <div className="hud-right"><small>{equippedItems[activeSlot - 1]}{activeIsMelee ? " · MELEE" : activeSlot <= 2 ? ` · ${fireMode}` : " · READY"}</small><strong>{activeSlot === 4 ? utilityCount : activeSlot === 3 ? medicalCount : activeIsMelee ? "—" : ammo} <em>{activeSlot === 4 ? "THROWABLES" : activeSlot === 3 ? "MEDICAL" : activeIsMelee ? "" : "/ 120"}</em></strong></div>
       {reloading && <div className="reload-status"><span>RELOADING</span><i style={{ animationDuration: `${reloadDuration}s` }} /></div>}
+      {healing && <div className="heal-status"><span>USING {medical}</span><small>SWITCH EQUIPMENT TO CANCEL</small><i style={{ animationDuration: `${healDuration}s` }} /></div>}
       <div className="quick-slots">
         {([
           [1, primary, "PRIMARY"], [2, secondary, "SECONDARY"], [3, medical, "MEDICAL"], [4, utility, "UTILITY"]
@@ -696,6 +709,7 @@ export function FpsGame() {
               setMedicalCount(2);
               setFlashed(false);
               setHealingEffect(false);
+              setHealing(false);
               setHealth(100);
               setDead(false);
               setSessionId((current) => current + 1);
