@@ -11,7 +11,7 @@ const WEAPON_STATS: Record<string, { damage: number; fireRate: number; capacity:
   "VXR-4 CARBINE": { damage: 16, fireRate: 72, capacity: 30, reload: 2.35, range: 74, mobility: 68, spread: 1.25 },
   "M12 SMG": { damage: 12, fireRate: 91, capacity: 36, reload: 1.85, range: 48, mobility: 90, spread: 2.1 },
   "BR-7 RIFLE": { damage: 29, fireRate: 43, capacity: 20, reload: 2.8, range: 94, mobility: 51, spread: 0.65 },
-  "SNR-90 SNIPER": { damage: 50, fireRate: 16, capacity: 5, reload: 3.4, range: 100, mobility: 34, spread: 0.12 },
+  "SNR-90 SNIPER": { damage: 50, fireRate: 10, capacity: 5, reload: 3.4, range: 100, mobility: 34, spread: 0.12 },
   "KSG-12 SHOTGUN": { damage: 9, fireRate: 22, capacity: 8, reload: 4.1, range: 30, mobility: 58, spread: 5.8, pellets: 8 },
   "HMG-6 LMG": { damage: 19, fireRate: 66, capacity: 60, reload: 5.2, range: 78, mobility: 27, spread: 1.75 },
   "AKR-47 ASSAULT": { damage: 22, fireRate: 61, capacity: 30, reload: 2.65, range: 76, mobility: 61, spread: 1.6 },
@@ -440,10 +440,9 @@ export function FpsGame() {
     laserLine.raycast = () => {}; laserDot.raycast = () => {}; laserLine.visible = laserDot.visible = false; scene.add(laserLine, laserDot);
     const impactGeometry = new THREE.SphereGeometry(0.045, 6, 6);
     const impactMaterial = new THREE.MeshBasicMaterial({ color: 0xff9a55 });
-    const damageDummy = (hit: THREE.Intersection, damage: number) => {
-      const dummy = hit.object.userData.dummy as THREE.Group | undefined;
+    const damageDummyGroup = (dummy: THREE.Group | undefined, damage: number) => {
       if (!dummy || !dummy.visible) return;
-      dummy.userData.health = Math.max(0, dummy.userData.health - damage * (hit.object.userData.damageMultiplier ?? 1));
+      dummy.userData.health = Math.max(0, dummy.userData.health - damage);
       const ratio = dummy.userData.health / dummy.userData.maxHealth;
       (dummy.userData.healthBars as THREE.Mesh[]).forEach((bar) => {
         bar.scale.x = Math.max(0.001, ratio);
@@ -457,6 +456,9 @@ export function FpsGame() {
           dummy.visible = true;
         }, 3000);
       }
+    };
+    const damageDummy = (hit: THREE.Intersection, damage: number) => {
+      damageDummyGroup(hit.object.userData.dummy as THREE.Group | undefined, damage * (hit.object.userData.damageMultiplier ?? 1));
     };
     const getThrow = () => {
       const direction = new THREE.Vector3(); camera.getWorldDirection(direction);
@@ -478,9 +480,9 @@ export function FpsGame() {
       scene.remove(projectile.mesh);
       if (projectile.type === "SMOKE GRENADE") {
         const cloud = new THREE.Group(); cloud.position.copy(position); scene.add(cloud);
-        for (let i = 0; i < 18; i++) {
-          const puff = new THREE.Mesh(new THREE.SphereGeometry(0.7 + Math.random() * 0.5, 8, 6), new THREE.MeshBasicMaterial({ color: 0x899597, transparent: true, opacity: 0.2, depthWrite: false }));
-          puff.position.set((Math.random() - .5) * 4, Math.random() * 2, (Math.random() - .5) * 4); cloud.add(puff);
+        for (let i = 0; i < 36; i++) {
+          const puff = new THREE.Mesh(new THREE.SphereGeometry(0.9 + Math.random() * 0.7, 8, 6), new THREE.MeshBasicMaterial({ color: 0x7f898b, transparent: true, opacity: 0.38, depthWrite: false }));
+          puff.raycast = () => {}; puff.position.set((Math.random() - .5) * 4.6, Math.random() * 2.8, (Math.random() - .5) * 4.6); cloud.add(puff);
         }
         window.setTimeout(() => scene.remove(cloud), 9000);
       } else {
@@ -492,6 +494,19 @@ export function FpsGame() {
         window.setTimeout(() => { window.clearInterval(expand); scene.remove(blast); }, 260);
         if (projectile.type === "FLASHBANG" && playerPosition.distanceTo(position) < 13) {
           setFlashed(true); window.setTimeout(() => setFlashed(false), 1700);
+        }
+        if (projectile.type === "FRAG GRENADE") {
+          const blastRadius = 7;
+          dummies.forEach((dummy) => {
+            const distance = dummy.position.distanceTo(position);
+            if (distance < blastRadius) damageDummyGroup(dummy, Math.round(110 * (1 - distance / blastRadius)));
+          });
+          const playerDistance = playerPosition.distanceTo(position);
+          if (playerDistance < blastRadius) {
+            playerHealth = Math.max(0, playerHealth - Math.round(110 * (1 - playerDistance / blastRadius)));
+            setHealth(playerHealth);
+            if (playerHealth <= 0) { setDead(true); document.exitPointerLock(); }
+          }
         }
       }
     };
