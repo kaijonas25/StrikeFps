@@ -5,6 +5,7 @@ import * as THREE from "three";
 
 type Box = { minX: number; maxX: number; minZ: number; maxZ: number; height: number };
 type FireMode = "SEMI" | "BURST" | "AUTO";
+type MenuPage = "HOME" | "LOADOUT";
 
 const PLAYER_HEIGHT = 1.7;
 const PLAYER_RADIUS = 0.38;
@@ -16,6 +17,11 @@ export function FpsGame() {
   const [ammo, setAmmo] = useState(30);
   const [fireMode, setFireMode] = useState<FireMode>("AUTO");
   const [sessionId, setSessionId] = useState(0);
+  const [menuPage, setMenuPage] = useState<MenuPage>("HOME");
+  const [primary, setPrimary] = useState("VXR-4 CARBINE");
+  const [secondary, setSecondary] = useState("P9 SIDEARM");
+  const [medical, setMedical] = useState("FIELD MEDKIT");
+  const [utility, setUtility] = useState("FRAG GRENADE");
 
   useEffect(() => {
     const mount = mountRef.current;
@@ -268,24 +274,46 @@ export function FpsGame() {
       </header>
       <div className="crosshair"><span /><span /></div>
       <div className="hud-left"><small>VITALS</small><strong>100</strong><div className="health"><i /></div></div>
-      <div className="hud-right"><small>CARBINE · {fireMode}</small><strong>{ammo} <em>/ 120</em></strong></div>
+      <div className="hud-right"><small>{primary} · {fireMode}</small><strong>{ammo} <em>/ 120</em></strong></div>
       <div className="controls"><kbd>WASD</kbd> MOVE <kbd>SHIFT</kbd> SPRINT <kbd>RMB</kbd> AIM <kbd>LMB</kbd> FIRE <kbd>B</kbd> MODE <kbd>R</kbd> RELOAD</div>
       {!locked && <div className={`menu-screen${!started ? " main-menu-screen" : " pause-screen"}`}>
         <div className="menu-rule" />
         <section className="menu-card">
           <div className="menu-kicker">TACTICAL TRAINING SIMULATION</div>
+          {(!started && menuPage === "HOME") && <>
           <h1><span>STRIKE</span>YARD</h1>
-          <p>{started ? "SIMULATION PAUSED" : "SECTOR 01 · COMBAT READINESS COURSE"}</p>
-          {!started && <nav className="main-nav" aria-label="Main menu">
+          <p>SECTOR 01 · COMBAT READINESS COURSE</p>
+          <nav className="main-nav" aria-label="Main menu">
             <button className="nav-active" onClick={() => {
               mountRef.current?.querySelector("canvas")?.requestPointerLock();
               setStarted(true);
             }}><b>01</b><span>PLAY</span><small>ENTER TRAINING YARD</small></button>
-            <button disabled><b>02</b><span>LOADOUT</span><small>COMING SOON</small></button>
+            <button onClick={() => setMenuPage("LOADOUT")}><b>02</b><span>LOADOUT</span><small>EDIT EQUIPMENT</small></button>
             <button disabled><b>03</b><span>OPERATORS</span><small>COMING SOON</small></button>
             <button disabled><b>04</b><span>SETTINGS</span><small>COMING SOON</small></button>
-          </nav>}
+          </nav></>}
+          {(!started && menuPage === "LOADOUT") && <div className="loadout-panel">
+            <button className="back-button" onClick={() => setMenuPage("HOME")}>← MAIN MENU</button>
+            <div className="loadout-heading"><div><span>COMBAT</span> LOADOUT</div><small>SELECT ONE ITEM PER SLOT</small></div>
+            <div className="loadout-grid">
+              <LoadoutSlot label="PRIMARY WEAPON" selected={primary} options={[
+                ["VXR-4 CARBINE", "BALANCED · AUTO"], ["M12 SMG", "MOBILE · CLOSE RANGE"], ["BR-7 RIFLE", "PRECISION · SEMI"]
+              ]} onSelect={setPrimary} />
+              <LoadoutSlot label="SECONDARY" selected={secondary} options={[
+                ["P9 SIDEARM", "RELIABLE · 15 ROUNDS"], ["R45 REVOLVER", "HEAVY · 6 ROUNDS"], ["COMBAT KNIFE", "FAST · SILENT"]
+              ]} onSelect={setSecondary} />
+              <LoadoutSlot label="MEDICAL" selected={medical} options={[
+                ["FIELD MEDKIT", "RESTORE 60 HEALTH"], ["STIM INJECTOR", "FAST HEAL + SPEED"], ["TRAUMA KIT", "FULL HEAL · SLOW"]
+              ]} onSelect={setMedical} />
+              <LoadoutSlot label="UTILITY" selected={utility} options={[
+                ["FRAG GRENADE", "LETHAL EXPLOSIVE"], ["SMOKE GRENADE", "VISION COVER"], ["FLASHBANG", "DISORIENT TARGETS"]
+              ]} onSelect={setUtility} />
+            </div>
+            <button className="confirm-loadout" onClick={() => setMenuPage("HOME")}>CONFIRM LOADOUT</button>
+          </div>}
           {started && <>
+          <h1><span>STRIKE</span>YARD</h1>
+          <p>SIMULATION PAUSED</p>
           <div className="menu-actions">
             <button className="start" onClick={() => {
               mountRef.current?.querySelector("canvas")?.requestPointerLock();
@@ -317,4 +345,20 @@ export function FpsGame() {
       </div>}
     </main>
   );
+}
+
+function LoadoutSlot({ label, selected, options, onSelect }: {
+  label: string;
+  selected: string;
+  options: [string, string][];
+  onSelect: (value: string) => void;
+}) {
+  return <section className="loadout-slot">
+    <h2>{label}</h2>
+    {options.map(([name, detail]) => <button key={name} className={selected === name ? "selected" : ""} onClick={() => onSelect(name)}>
+      <i />
+      <span><b>{name}</b><small>{detail}</small></span>
+      <em>{selected === name ? "EQUIPPED" : "SELECT"}</em>
+    </button>)}
+  </section>;
 }
