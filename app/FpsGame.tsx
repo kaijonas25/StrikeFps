@@ -10,7 +10,8 @@ const PLAYER_RADIUS = 0.38;
 
 export function FpsGame() {
   const mountRef = useRef<HTMLDivElement>(null);
-  const [playing, setPlaying] = useState(false);
+  const [locked, setLocked] = useState(false);
+  const [ammo, setAmmo] = useState(30);
 
   useEffect(() => {
     const mount = mountRef.current;
@@ -98,11 +99,15 @@ export function FpsGame() {
     const sight = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.08, 0.1), material(0xef5e2f, 0.5, 0.2));
     sight.position.set(0.34, -0.15, -0.72);
     gun.add(sight);
+    const muzzle = new THREE.PointLight(0xff7b35, 0, 2.5, 2);
+    muzzle.position.set(0.34, -0.2, -0.95);
+    gun.add(muzzle);
     camera.add(gun);
     scene.add(camera);
 
     const keys = new Set<string>();
-    let yaw = 0, pitch = 0, verticalVelocity = 0, grounded = true, dragging = false;
+    let yaw = 0, pitch = 0, verticalVelocity = 0, grounded = true;
+    let ammoCount = 30, recoil = 0, muzzleTimer = 0;
     let last = performance.now();
     const clock = new THREE.Clock();
 
@@ -111,15 +116,37 @@ export function FpsGame() {
       z + PLAYER_RADIUS > b.minZ && z - PLAYER_RADIUS < b.maxZ && b.height > 0.25
     );
 
-    const onKeyDown = (e: KeyboardEvent) => { keys.add(e.code); if (e.code === "Space" && grounded) { verticalVelocity = 5.7; grounded = false; } };
+    const onKeyDown = (e: KeyboardEvent) => {
+      keys.add(e.code);
+      if (e.code === "Space" && grounded) { verticalVelocity = 5.7; grounded = false; }
+      if (e.code === "KeyR") { ammoCount = 30; setAmmo(30); }
+    };
     const onKeyUp = (e: KeyboardEvent) => keys.delete(e.code);
     const onMouseMove = (e: MouseEvent) => {
-      if (!dragging && document.pointerLockElement !== renderer.domElement) return;
+      if (document.pointerLockElement !== renderer.domElement) return;
       yaw -= e.movementX * 0.0022;
       pitch = Math.max(-1.48, Math.min(1.48, pitch - e.movementY * 0.0022));
     };
-    const onMouseDown = () => { dragging = true; };
-    const onMouseUp = () => { dragging = false; };
+    const raycaster = new THREE.Raycaster();
+    const impactGeometry = new THREE.SphereGeometry(0.045, 6, 6);
+    const impactMaterial = new THREE.MeshBasicMaterial({ color: 0xff9a55 });
+    const shoot = (e: MouseEvent) => {
+      if (e.button !== 0 || document.pointerLockElement !== renderer.domElement || ammoCount <= 0) return;
+      ammoCount -= 1;
+      setAmmo(ammoCount);
+      recoil = Math.min(recoil + 0.055, 0.11);
+      muzzle.intensity = 35;
+      muzzleTimer = 0.045;
+      raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+      const hit = raycaster.intersectObjects(scene.children, false).find((result) => result.object !== camera && result.distance > 1);
+      if (hit) {
+        const impact = new THREE.Mesh(impactGeometry, impactMaterial);
+        impact.position.copy(hit.point).addScaledVector(hit.face?.normal ?? new THREE.Vector3(0, 1, 0), 0.025);
+        scene.add(impact);
+        window.setTimeout(() => scene.remove(impact), 1800);
+      }
+    };
+    const onLockChange = () => setLocked(document.pointerLockElement === renderer.domElement);
     const onResize = () => {
       camera.aspect = mount.clientWidth / mount.clientHeight;
       camera.updateProjectionMatrix();
@@ -128,9 +155,9 @@ export function FpsGame() {
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
     window.addEventListener("mousemove", onMouseMove);
-    window.addEventListener("mouseup", onMouseUp);
     window.addEventListener("resize", onResize);
-    renderer.domElement.addEventListener("mousedown", onMouseDown);
+    document.addEventListener("pointerlockchange", onLockChange);
+    renderer.domElement.addEventListener("mousedown", shoot);
 
     let frame = 0;
     const animate = () => {
@@ -159,7 +186,12 @@ export function FpsGame() {
 
       const moving = input.lengthSq() > 0 && grounded;
       const t = clock.getElapsedTime();
-      gun.position.y = moving ? Math.sin(t * (speed > 6 ? 13 : 9)) * 0.012 : Math.sin(t * 2) * 0.003;
+      recoil = THREE.MathUtils.lerp(recoil, 0, Math.min(1, dt * 14));
+      muzzleTimer -= dt;
+      if (muzzleTimer <= 0) muzzle.intensity = 0;
+      gun.position.z = recoil;
+      gun.rotation.x = recoil * 0.7;
+      gun.position.y = (moving ? Math.sin(t * (speed > 6 ? 13 : 9)) * 0.012 : Math.sin(t * 2) * 0.003) - recoil * 0.3;
       gun.position.x = moving ? Math.cos(t * 6.5) * 0.008 : 0;
       renderer.render(scene, camera);
     };
@@ -170,9 +202,9 @@ export function FpsGame() {
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
       window.removeEventListener("mousemove", onMouseMove);
-      window.removeEventListener("mouseup", onMouseUp);
       window.removeEventListener("resize", onResize);
-      renderer.domElement.removeEventListener("mousedown", onMouseDown);
+      document.removeEventListener("pointerlockchange", onLockChange);
+      renderer.domElement.removeEventListener("mousedown", shoot);
       renderer.dispose();
       mount.removeChild(renderer.domElement);
     };
@@ -189,12 +221,12 @@ export function FpsGame() {
       </header>
       <div className="crosshair"><span /><span /></div>
       <div className="hud-left"><small>VITALS</small><strong>100</strong><div className="health"><i /></div></div>
-      <div className="hud-right"><small>CARBINE</small><strong>30 <em>/ 120</em></strong></div>
-      <div className="controls"><kbd>WASD</kbd> MOVE <kbd>SHIFT</kbd> SPRINT <kbd>SPACE</kbd> JUMP <kbd>DRAG</kbd> LOOK</div>
-      {!playing && (
-        <button className="start" onClick={() => setPlaying(true)}>
+      <div className="hud-right"><small>CARBINE</small><strong>{ammo} <em>/ 120</em></strong></div>
+      <div className="controls"><kbd>WASD</kbd> MOVE <kbd>SHIFT</kbd> SPRINT <kbd>SPACE</kbd> JUMP <kbd>LMB</kbd> FIRE <kbd>R</kbd> RELOAD</div>
+      {!locked && (
+        <button className="start" onClick={() => mountRef.current?.querySelector("canvas")?.requestPointerLock()}>
           <span>ENTER TRAINING YARD</span>
-          <small>HOLD CLICK + DRAG TO LOOK</small>
+          <small>CLICK TO LOCK CURSOR</small>
         </button>
       )}
     </main>
