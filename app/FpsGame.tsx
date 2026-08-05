@@ -684,7 +684,8 @@ export function FpsGame() {
         const speed = movement === "sprint" ? 4.2 : 1.75;
         const travel = (t * speed) % 24;
         if (isLocal) {
-          dummy.position.set(playerPosition.x, playerPosition.y - PLAYER_HEIGHT, playerPosition.z);
+          const crouchDrop = Math.max(0, -stanceOffset * .58);
+          dummy.position.set(playerPosition.x, playerPosition.y - PLAYER_HEIGHT - crouchDrop, playerPosition.z);
           dummy.rotation.y = yaw;
         } else {
           dummy.position.z = dummy.userData.laneOrigin + (travel <= 12 ? -6 + travel : 18 - travel);
@@ -718,8 +719,11 @@ export function FpsGame() {
             limb.end.position.set(handX, elbowY - Math.cos(elbowAngle) * lowerLength, elbowZ - Math.sin(elbowAngle) * lowerLength);
           } else {
             const phase = stride * -limb.side;
-            const thighAngle = phase * amplitude;
-            const kneeBend = Math.max(0, phase) * (movement === "sprint" ? .95 : .55);
+            const crouchAmount = isLocal ? THREE.MathUtils.clamp(-stanceOffset / .65, 0, 1) : 0;
+            const walkThighAngle = phase * amplitude;
+            const walkKneeBend = Math.max(0, phase) * (movement === "sprint" ? .95 : .55);
+            const thighAngle = THREE.MathUtils.lerp(walkThighAngle, .75 + phase * .08, crouchAmount);
+            const kneeBend = THREE.MathUtils.lerp(walkKneeBend, 1.88, crouchAmount);
             const shinAngle = thighAngle - kneeBend;
             const hipY = .97, thighLength = .46, shinLength = .4;
             limb.upper.position.set(limb.side * .19, hipY - Math.cos(thighAngle) * thighLength / 2, -Math.sin(thighAngle) * thighLength / 2);
@@ -809,7 +813,7 @@ export function FpsGame() {
       camera.fov = THREE.MathUtils.lerp(camera.fov, aiming ? weaponSight === "4X SCOPE" ? 20 : 58 : fastMovement ? 84 : 78, Math.min(1, dt * 10));
       camera.updateProjectionMatrix();
       stanceOffset = THREE.MathUtils.lerp(stanceOffset, isCrouching ? -.65 : 0, Math.min(1, dt * 12));
-      localPlayer.scale.y = THREE.MathUtils.lerp(localPlayer.scale.y, isCrouching ? .72 : 1, Math.min(1, dt * 12));
+      localPlayer.scale.set(1, 1, 1);
       if (isThirdPerson) {
         const orbitDistance = 4.2;
         const horizontalDistance = Math.cos(cameraPitch) * orbitDistance;
