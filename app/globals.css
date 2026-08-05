@@ -49,4 +49,17 @@ kbd:first-child { margin-left: 0; }
 .menu-controls span { color:#829497; font-size:8px; letter-spacing:.14em; }
 .menu-footer { position:absolute; left:8vw; right:32px; bottom:28px; color:#57666a; font-size:8px; letter-spacing:.13em; }
 .menu-footer span { float:right; }
+.game-menu { background: #071014; }
+.game-menu .viewport, .game-menu .vignette, .game-menu > .topbar, .game-menu > .crosshair, .game-menu > .hud-left, .game-menu > .hud-right, .game-menu > .controls { visibility:hidden; }
+.main-menu-screen { background:
+  linear-gradient(90deg, rgba(4,10,13,.98) 0%, rgba(4,10,13,.94) 48%, rgba(4,10,13,.7) 100%),
+  repeating-linear-gradient(118deg, transparent 0 70px, rgba(255,99,54,.055) 71px 72px),
+  radial-gradient(circle at 82% 42%, #263d43 0, #0d1b20 34%, #071014 70%); backdrop-filter:none; }
+.main-menu-screen::after { content:"01"; position:absolute; right:7vw; bottom:4vh; color:rgba(255,255,255,.025); font-family:var(--font-geist-sans),sans-serif; font-size:42vw; line-height:.75; font-weight:900; letter-spacing:-.12em; pointer-events:none; }
+.main-nav { position:relative; z-index:1; display:flex; flex-direction:column; width:390px; margin-top:42px; border-top:1px solid rgba(180,207,207,.14); }
+.main-nav button { display:grid; grid-template-columns:42px 120px 1fr; align-items:center; height:58px; padding:0 14px; border:0; border-bottom:1px solid rgba(180,207,207,.11); color:#758589; background:transparent; text-align:left; cursor:pointer; transition:.18s ease; }
+.main-nav button b { color:#4d5d61; font-size:8px; font-weight:400; }.main-nav button span { font-family:var(--font-geist-sans),sans-serif; font-size:13px; font-weight:700; letter-spacing:.13em; }.main-nav button small { text-align:right; font-size:7px; letter-spacing:.13em; opacity:.55; }
+.main-nav button.nav-active { color:#edf5f2; border-left:2px solid #ff6336; background:linear-gradient(90deg,rgba(255,99,54,.17),transparent); }
+.main-nav button.nav-active b { color:#ff754c; }.main-nav button.nav-active:hover { padding-left:21px; background:linear-gradient(90deg,rgba(255,99,54,.32),transparent); }
+.main-nav button:disabled { cursor:default; opacity:.48; }
 @media (max-width: 650px) { .topbar { padding: 0 16px; }.status { display: none; }.mission { right: 16px; left: auto; transform: none; }.hud-left { left: 16px }.hud-right { right: 16px }.controls { display: none; } }

@@ -258,7 +258,7 @@ export function FpsGame() {
   }, [sessionId]);
 
   return (
-    <main className="game-shell">
+    <main className={`game-shell${!started ? " game-menu" : ""}`}>
       <div ref={mountRef} className="viewport" aria-label="3D first-person training arena" />
       <div className="vignette" />
       <header className="topbar">
@@ -270,21 +270,30 @@ export function FpsGame() {
       <div className="hud-left"><small>VITALS</small><strong>100</strong><div className="health"><i /></div></div>
       <div className="hud-right"><small>CARBINE · {fireMode}</small><strong>{ammo} <em>/ 120</em></strong></div>
       <div className="controls"><kbd>WASD</kbd> MOVE <kbd>SHIFT</kbd> SPRINT <kbd>RMB</kbd> AIM <kbd>LMB</kbd> FIRE <kbd>B</kbd> MODE <kbd>R</kbd> RELOAD</div>
-      {!locked && <div className="menu-screen">
+      {!locked && <div className={`menu-screen${!started ? " main-menu-screen" : " pause-screen"}`}>
         <div className="menu-rule" />
         <section className="menu-card">
           <div className="menu-kicker">TACTICAL TRAINING SIMULATION</div>
           <h1><span>STRIKE</span>YARD</h1>
           <p>{started ? "SIMULATION PAUSED" : "SECTOR 01 · COMBAT READINESS COURSE"}</p>
+          {!started && <nav className="main-nav" aria-label="Main menu">
+            <button className="nav-active" onClick={() => {
+              mountRef.current?.querySelector("canvas")?.requestPointerLock();
+              setStarted(true);
+            }}><b>01</b><span>PLAY</span><small>ENTER TRAINING YARD</small></button>
+            <button disabled><b>02</b><span>LOADOUT</span><small>COMING SOON</small></button>
+            <button disabled><b>03</b><span>OPERATORS</span><small>COMING SOON</small></button>
+            <button disabled><b>04</b><span>SETTINGS</span><small>COMING SOON</small></button>
+          </nav>}
+          {started && <>
           <div className="menu-actions">
             <button className="start" onClick={() => {
-              setStarted(true);
               mountRef.current?.querySelector("canvas")?.requestPointerLock();
             }}>
-              <span>{started ? "RESUME OPERATION" : "DEPLOY TO YARD"}</span>
+              <span>RESUME OPERATION</span>
               <small>CLICK TO LOCK CURSOR</small>
             </button>
-            {started && <button className="leave" onClick={() => {
+            <button className="leave" onClick={() => {
               setStarted(false);
               setAmmo(30);
               setFireMode("AUTO");
@@ -292,8 +301,9 @@ export function FpsGame() {
             }}>
               <span>LEAVE SERVER</span>
               <small>RETURN TO MAIN MENU</small>
-            </button>}
+            </button>
           </div>
+          </>}
           <div className="menu-controls">
             <div><kbd>WASD</kbd><span>MOVE</span></div>
             <div><kbd>SHIFT</kbd><span>SPRINT</span></div>
@@ -303,7 +313,7 @@ export function FpsGame() {
             <div><kbd>R</kbd><span>RELOAD</span></div>
           </div>
         </section>
-        <footer className="menu-footer">BUILD 0.2 · LIVE FIRE ENABLED <span>PRESS ESC TO PAUSE</span></footer>
+        <footer className="menu-footer">BUILD 0.3 · LIVE FIRE ENABLED <span>{started ? "PRESS ESC TO PAUSE" : "LOCAL TRAINING CLIENT"}</span></footer>
       </div>}
     </main>
   );
