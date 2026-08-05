@@ -448,7 +448,7 @@ export function FpsGame() {
       if (isThirdPerson) {
         if (!orbiting) return;
         cameraYaw -= e.movementX * 0.0022;
-        cameraPitch = Math.max(-0.28, Math.min(0.72, cameraPitch - e.movementY * 0.0022));
+        cameraPitch = Math.max(-0.28, Math.min(0.72, cameraPitch + e.movementY * 0.0022));
         return;
       }
       yaw -= e.movementX * 0.0022;
