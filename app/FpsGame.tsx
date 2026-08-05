@@ -65,6 +65,13 @@ export function FpsGame() {
   const [characterUniform, setCharacterUniform] = useState("#303a3b");
   const [characterArmor, setCharacterArmor] = useState("#20292b");
   const [characterHelmet, setCharacterHelmet] = useState<"TACTICAL" | "LIGHT" | "HEAVY">("TACTICAL");
+  const [faceGear, setFaceGear] = useState<"NONE" | "GOGGLES" | "MASK">("GOGGLES");
+  const [headAccessory, setHeadAccessory] = useState<"NONE" | "HEADSET" | "NVG">("HEADSET");
+  const [chestRig, setChestRig] = useState<"LIGHT" | "PLATE CARRIER" | "HEAVY">("PLATE CARRIER");
+  const [backpack, setBackpack] = useState<"NONE" | "ASSAULT PACK" | "RADIO PACK">("ASSAULT PACK");
+  const [pantsColor, setPantsColor] = useState("#303a3b");
+  const [gloveColor, setGloveColor] = useState("#20292b");
+  const [bootColor, setBootColor] = useState("#151b1d");
   const [weaponSight, setWeaponSight] = useState<"IRON SIGHTS" | "RED DOT" | "HOLOGRAPHIC" | "4X SCOPE">("IRON SIGHTS");
   const [muzzleAttachment, setMuzzleAttachment] = useState<"STANDARD BARREL" | "SUPPRESSOR">("STANDARD BARREL");
   const [tacticalAttachment, setTacticalAttachment] = useState<"NONE" | "RED LASER">("NONE");
@@ -160,6 +167,10 @@ export function FpsGame() {
       const dummyMat = material(targetable ? color : Number(`0x${characterSkin.slice(1)}`), 0.55, 0.15);
       const armorMat = material(targetable ? 0x20292b : Number(`0x${characterArmor.slice(1)}`), 0.7, 0.28);
       const fabricMat = material(targetable ? 0x303a3b : Number(`0x${characterUniform.slice(1)}`), 0.92, 0.02);
+      const pantsMat = material(targetable ? 0x303a3b : Number(`0x${pantsColor.slice(1)}`), 0.92, 0.02);
+      const gloveMat = material(targetable ? 0x20292b : Number(`0x${gloveColor.slice(1)}`), 0.72, 0.18);
+      const bootMat = material(targetable ? 0x171d1f : Number(`0x${bootColor.slice(1)}`), 0.8, 0.12);
+      const darkMat = material(0x111719, .62, .38);
       const visorMat = new THREE.MeshStandardMaterial({ color: 0x76b9c7, emissive: 0x173b43, emissiveIntensity: 0.8, metalness: 0.65, roughness: 0.18 });
       const addLimb = (geometry: THREE.BufferGeometry, px: number, py: number, pz: number, multiplier = 1, partMaterial: THREE.Material = dummyMat) => {
         const mesh = new THREE.Mesh(geometry, partMaterial); mesh.position.set(px, py, pz); mesh.castShadow = true;
@@ -169,12 +180,18 @@ export function FpsGame() {
       };
       // Torso, plate carrier, pouches, belt and backpack.
       addLimb(new THREE.BoxGeometry(0.6, 0.78, 0.3), 0, 1.38, 0, 1, fabricMat);
-      addLimb(new THREE.BoxGeometry(0.66, 0.56, 0.16), 0, 1.48, -0.19, 1, armorMat);
+      const chestWidth = !targetable && chestRig === "LIGHT" ? .56 : !targetable && chestRig === "HEAVY" ? .74 : .66;
+      const chestDepth = !targetable && chestRig === "LIGHT" ? .11 : !targetable && chestRig === "HEAVY" ? .23 : .16;
+      addLimb(new THREE.BoxGeometry(chestWidth, 0.56, chestDepth), 0, 1.48, -0.19, 1, armorMat);
       addLimb(new THREE.BoxGeometry(0.17, 0.14, 0.12), -0.2, 1.18, -0.25, 1, armorMat);
       addLimb(new THREE.BoxGeometry(0.17, 0.14, 0.12), 0, 1.18, -0.25, 1, armorMat);
       addLimb(new THREE.BoxGeometry(0.17, 0.14, 0.12), 0.2, 1.18, -0.25, 1, armorMat);
       addLimb(new THREE.BoxGeometry(0.56, 0.1, 0.34), 0, 0.98, 0, 1, armorMat);
-      addLimb(new THREE.BoxGeometry(0.5, 0.58, 0.2), 0, 1.48, 0.24, 1, armorMat);
+      if (targetable || backpack !== "NONE") {
+        const radioPack = !targetable && backpack === "RADIO PACK";
+        addLimb(new THREE.BoxGeometry(radioPack ? .56 : .5, radioPack ? .68 : .58, radioPack ? .27 : .2), 0, 1.48, radioPack ? .28 : .24, 1, armorMat);
+        if (radioPack) addLimb(new THREE.CylinderGeometry(.018, .018, .72, 7), .2, 1.98, .29, 1, armorMat).rotation.z = -.12;
+      }
       // Connected head rig pivots from the neck for a natural weapon cheek weld.
       const headRig = new THREE.Group(); headRig.position.set(0, 1.78, 0); dummy.add(headRig); dummy.userData.headRig = headRig;
       const addHeadLimb = (geometry: THREE.BufferGeometry, px: number, py: number, pz: number, multiplier: number, partMaterial: THREE.Material) => {
@@ -187,22 +204,28 @@ export function FpsGame() {
       const helmetScale = !targetable && characterHelmet === "LIGHT" ? 0.92 : !targetable && characterHelmet === "HEAVY" ? 1.1 : 1;
       const helmet = addHeadLimb(new THREE.SphereGeometry(0.265, 16, 8, 0, Math.PI * 2, 0, Math.PI * 0.54), 0, .34, .01, 2, armorMat);
       helmet.scale.set(helmetScale, !targetable && characterHelmet === "HEAVY" ? 1.08 : 1, helmetScale);
-      addHeadLimb(new THREE.BoxGeometry(0.34, 0.095, 0.04), 0, .26, -.222, 2, visorMat);
-      addHeadLimb(new THREE.BoxGeometry(0.055, 0.18, 0.08), -.255, .26, 0, 2, armorMat);
+      if (targetable || faceGear === "GOGGLES") addHeadLimb(new THREE.BoxGeometry(0.34, 0.095, 0.04), 0, .26, -.222, 2, visorMat);
+      if (!targetable && faceGear === "MASK") addHeadLimb(new THREE.BoxGeometry(.29, .2, .08), 0, .16, -.22, 2, fabricMat);
+      if (targetable || headAccessory === "HEADSET") addHeadLimb(new THREE.BoxGeometry(0.055, 0.18, 0.08), -.255, .26, 0, 2, armorMat);
+      if (!targetable && headAccessory === "NVG") {
+        addHeadLimb(new THREE.BoxGeometry(.24, .07, .09), 0, .36, -.23, 2, armorMat);
+        addHeadLimb(new THREE.CylinderGeometry(.045, .055, .16, 9), -.075, .31, -.31, 2, darkMat).rotation.x = Math.PI / 2;
+        addHeadLimb(new THREE.CylinderGeometry(.045, .055, .16, 9), .075, .31, -.31, 2, darkMat).rotation.x = Math.PI / 2;
+      }
       // Segmented arms, shoulder armor and gloves.
       [-1, 1].forEach((side) => {
-        addLimb(new THREE.SphereGeometry(0.17, 10, 8), side * 0.43, 1.65, 0, 1, armorMat);
+        if (targetable || chestRig !== "LIGHT") addLimb(new THREE.SphereGeometry(0.17, 10, 8), side * 0.43, 1.65, 0, 1, armorMat);
         const upper = addLimb(new THREE.CylinderGeometry(0.105, 0.095, 0.44, 9), side * 0.45, 1.42, 0, 1, fabricMat); upper.rotation.z = side * -0.08;
         const forearm = addLimb(new THREE.CylinderGeometry(0.09, 0.075, 0.38, 9), side * 0.47, 1.04, -0.02, 1, fabricMat);
-        const glove = addLimb(new THREE.BoxGeometry(0.17, 0.16, 0.18), side * 0.48, 0.8, -0.02, 1, armorMat);
+        const glove = addLimb(new THREE.BoxGeometry(0.17, 0.16, 0.18), side * 0.48, 0.8, -0.02, 1, gloveMat);
         dummy.userData.rig.push({ kind: "arm", side, upper, lower: forearm, end: glove });
       });
       // Thighs, knee pads, lower legs and boots.
       [-1, 1].forEach((side) => {
-        const thigh = addLimb(new THREE.CylinderGeometry(0.13, 0.115, 0.46, 9), side * 0.19, 0.74, 0, 1, fabricMat);
+        const thigh = addLimb(new THREE.CylinderGeometry(0.13, 0.115, 0.46, 9), side * 0.19, 0.74, 0, 1, pantsMat);
         const knee = addLimb(new THREE.BoxGeometry(0.23, 0.18, 0.14), side * 0.19, 0.47, -0.1, 1, armorMat);
-        const shin = addLimb(new THREE.CylinderGeometry(0.11, 0.09, 0.4, 9), side * 0.19, 0.25, 0, 1, fabricMat);
-        const boot = addLimb(new THREE.BoxGeometry(0.24, 0.14, 0.38), side * 0.19, 0.08, -0.08, 1, armorMat);
+        const shin = addLimb(new THREE.CylinderGeometry(0.11, 0.09, 0.4, 9), side * 0.19, 0.25, 0, 1, pantsMat);
+        const boot = addLimb(new THREE.BoxGeometry(0.24, 0.14, 0.38), side * 0.19, 0.08, -0.08, 1, bootMat);
         dummy.userData.rig.push({ kind: "leg", side, upper: thigh, lower: shin, joint: knee, end: boot });
       });
       if (targetable) {
@@ -897,7 +920,7 @@ export function FpsGame() {
       renderer.dispose();
       mount.removeChild(renderer.domElement);
     };
-  }, [sessionId, primary, secondary, medical, utility, characterSkin, characterUniform, characterArmor, characterHelmet, weaponSight, muzzleAttachment, tacticalAttachment]);
+  }, [sessionId, primary, secondary, medical, utility, characterSkin, characterUniform, characterArmor, characterHelmet, faceGear, headAccessory, chestRig, backpack, pantsColor, gloveColor, bootColor, weaponSight, muzzleAttachment, tacticalAttachment]);
 
   const equippedItems = [primary, secondary, medical, utility];
   const activeIsMelee = activeSlot === 2 && secondary === "COMBAT KNIFE";
@@ -943,7 +966,7 @@ export function FpsGame() {
         <div className="menu-rule" />
         {!started && menuPage !== "LOADOUT" && <button className="character-preview" onClick={() => setMenuPage("CHARACTER")} aria-label="Customize character">
           <div className="preview-glow" />
-          <OperatorPreview3D skin={characterSkin} uniform={characterUniform} armor={characterArmor} helmet={characterHelmet} />
+          <OperatorPreview3D skin={characterSkin} uniform={characterUniform} armor={characterArmor} helmet={characterHelmet} faceGear={faceGear} headAccessory={headAccessory} chestRig={chestRig} backpack={backpack} pants={pantsColor} gloves={gloveColor} boots={bootColor} />
           <span>{menuPage === "CHARACTER" ? "OPERATOR PREVIEW" : "CLICK OPERATOR TO CUSTOMIZE"}</span>
         </button>}
         <section className="menu-card">
@@ -998,12 +1021,21 @@ export function FpsGame() {
             <CharacterOption label="UNIFORM" value={characterUniform} options={[
               ["#303a3b", "URBAN"], ["#394331", "FOREST"], ["#514839", "DESERT"], ["#26374a", "NAVY"]
             ]} onSelect={setCharacterUniform} />
+            <CharacterOption label="PANTS" value={pantsColor} options={[
+              ["#303a3b", "URBAN"], ["#35422e", "WOODLAND"], ["#665944", "DESERT"], ["#242c35", "BLACK"]
+            ]} onSelect={setPantsColor} />
             <CharacterOption label="ARMOR" value={characterArmor} options={[
               ["#20292b", "BLACK"], ["#4b5143", "OLIVE"], ["#675747", "TAN"], ["#3c4653", "SLATE"]
             ]} onSelect={setCharacterArmor} />
-            <div className="character-option"><h2>HELMET</h2><div className="helmet-options">
-              {(["LIGHT", "TACTICAL", "HEAVY"] as const).map((helmet) => <button key={helmet} className={characterHelmet === helmet ? "selected" : ""} onClick={() => setCharacterHelmet(helmet)}>{helmet}</button>)}
-            </div></div>
+            <CharacterOption label="GLOVES" value={gloveColor} options={[["#20292b", "BLACK"], ["#564a38", "TAN"], ["#46503d", "OLIVE"]]} onSelect={setGloveColor} />
+            <CharacterOption label="BOOTS" value={bootColor} options={[["#151b1d", "BLACK"], ["#493d31", "BROWN"], ["#555142", "FIELD"]]} onSelect={setBootColor} />
+            <div className="gear-editor-grid">
+              <GearOption label="HELMET" value={characterHelmet} options={["LIGHT", "TACTICAL", "HEAVY"]} onSelect={(value) => setCharacterHelmet(value as typeof characterHelmet)} />
+              <GearOption label="FACE GEAR" value={faceGear} options={["NONE", "GOGGLES", "MASK"]} onSelect={(value) => setFaceGear(value as typeof faceGear)} />
+              <GearOption label="HEAD ACCESSORY" value={headAccessory} options={["NONE", "HEADSET", "NVG"]} onSelect={(value) => setHeadAccessory(value as typeof headAccessory)} />
+              <GearOption label="CHEST RIG" value={chestRig} options={["LIGHT", "PLATE CARRIER", "HEAVY"]} onSelect={(value) => setChestRig(value as typeof chestRig)} />
+              <GearOption label="BACKPACK" value={backpack} options={["NONE", "ASSAULT PACK", "RADIO PACK"]} onSelect={(value) => setBackpack(value as typeof backpack)} />
+            </div>
             <button className="confirm-loadout" onClick={() => setMenuPage("HOME")}>SAVE OPERATOR</button>
           </div>}
           {started && <>
@@ -1055,7 +1087,7 @@ export function FpsGame() {
   );
 }
 
-function OperatorPreview3D({ skin, uniform, armor, helmet }: { skin: string; uniform: string; armor: string; helmet: string }) {
+function OperatorPreview3D({ skin, uniform, armor, helmet, faceGear, headAccessory, chestRig, backpack, pants, gloves, boots }: { skin: string; uniform: string; armor: string; helmet: string; faceGear: string; headAccessory: string; chestRig: string; backpack: string; pants: string; gloves: string; boots: string }) {
   const previewRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const mount = previewRef.current;
@@ -1072,13 +1104,14 @@ function OperatorPreview3D({ skin, uniform, armor, helmet }: { skin: string; uni
     const rim = new THREE.PointLight(0x54cce8, 14, 8); rim.position.set(3, 2.5, -2); scene.add(rim);
     const operator = new THREE.Group(); operator.position.y = -1.2; scene.add(operator);
     const mat = (color: string | number, roughness = .72, metalness = .08) => new THREE.MeshStandardMaterial({ color, roughness, metalness });
-    const skinMat = mat(skin, .62), uniformMat = mat(uniform, .9), armorMat = mat(armor, .55, .28), darkMat = mat(0x111719, .65, .35);
+    const skinMat = mat(skin, .62), uniformMat = mat(uniform, .9), armorMat = mat(armor, .55, .28), pantsMat = mat(pants, .9), gloveMat = mat(gloves, .7, .16), bootMat = mat(boots, .78, .14), darkMat = mat(0x111719, .65, .35);
     const add = (geometry: THREE.BufferGeometry, material: THREE.Material, x: number, y: number, z: number) => {
       const mesh = new THREE.Mesh(geometry, material); mesh.position.set(x, y, z); mesh.castShadow = true; operator.add(mesh); return mesh;
     };
     add(new THREE.BoxGeometry(.72, .88, .38), uniformMat, 0, 1.65, 0);
-    add(new THREE.BoxGeometry(.78, .62, .22), armorMat, 0, 1.73, .24);
-    add(new THREE.BoxGeometry(.62, .62, .22), armorMat, 0, 1.7, -.27);
+    const previewChestWidth = chestRig === "LIGHT" ? .62 : chestRig === "HEAVY" ? .86 : .78;
+    add(new THREE.BoxGeometry(previewChestWidth, .62, chestRig === "LIGHT" ? .14 : chestRig === "HEAVY" ? .28 : .22), armorMat, 0, 1.73, .24);
+    if (backpack !== "NONE") add(new THREE.BoxGeometry(backpack === "RADIO PACK" ? .7 : .62, backpack === "RADIO PACK" ? .78 : .62, backpack === "RADIO PACK" ? .3 : .22), armorMat, 0, 1.7, -.27);
     [-.23, 0, .23].forEach((x) => add(new THREE.BoxGeometry(.18, .18, .14), armorMat, x, 1.38, .38));
     add(new THREE.BoxGeometry(.7, .12, .4), darkMat, 0, 1.16, 0);
     add(new THREE.CylinderGeometry(.15, .17, .18, 12), skinMat, 0, 2.17, 0);
@@ -1086,16 +1119,19 @@ function OperatorPreview3D({ skin, uniform, armor, helmet }: { skin: string; uni
     const helmetSize = helmet === "LIGHT" ? .29 : helmet === "HEAVY" ? .36 : .33;
     const helmetMesh = add(new THREE.SphereGeometry(helmetSize, 20, 10, 0, Math.PI * 2, 0, Math.PI * .55), armorMat, 0, 2.57, 0);
     if (helmet === "HEAVY") helmetMesh.scale.y = 1.08;
-    if (helmet !== "LIGHT") add(new THREE.BoxGeometry(helmet === "HEAVY" ? .48 : .4, .105, .055), mat(0x5ca8b5, .18, .65), 0, 2.48, .275);
+    if (faceGear === "GOGGLES") add(new THREE.BoxGeometry(helmet === "HEAVY" ? .48 : .4, .105, .055), mat(0x5ca8b5, .18, .65), 0, 2.48, .275);
+    if (faceGear === "MASK") add(new THREE.BoxGeometry(.34, .22, .09), uniformMat, 0, 2.36, .265);
+    if (headAccessory === "HEADSET") add(new THREE.BoxGeometry(.07, .22, .1), armorMat, -.3, 2.49, 0);
+    if (headAccessory === "NVG") { add(new THREE.BoxGeometry(.28, .08, .1), armorMat, 0, 2.62, .25); add(new THREE.CylinderGeometry(.05, .06, .18, 9), darkMat, -.08, 2.55, .34).rotation.x = Math.PI / 2; add(new THREE.CylinderGeometry(.05, .06, .18, 9), darkMat, .08, 2.55, .34).rotation.x = Math.PI / 2; }
     [-1, 1].forEach((side) => {
-      add(new THREE.SphereGeometry(.19, 12, 9), armorMat, side * .49, 1.9, 0);
+      if (chestRig !== "LIGHT") add(new THREE.SphereGeometry(.19, 12, 9), armorMat, side * .49, 1.9, 0);
       const upper = add(new THREE.CylinderGeometry(.12, .105, .5, 10), uniformMat, side * .53, 1.62, 0); upper.rotation.z = side * -.07;
       add(new THREE.CylinderGeometry(.105, .085, .44, 10), uniformMat, side * .55, 1.18, .02);
-      add(new THREE.BoxGeometry(.2, .2, .22), armorMat, side * .56, .91, .03);
-      add(new THREE.CylinderGeometry(.15, .13, .54, 10), uniformMat, side * .22, .86, 0);
+      add(new THREE.BoxGeometry(.2, .2, .22), gloveMat, side * .56, .91, .03);
+      add(new THREE.CylinderGeometry(.15, .13, .54, 10), pantsMat, side * .22, .86, 0);
       add(new THREE.BoxGeometry(.25, .2, .16), armorMat, side * .22, .58, .12);
-      add(new THREE.CylinderGeometry(.13, .105, .52, 10), uniformMat, side * .22, .3, 0);
-      add(new THREE.BoxGeometry(.27, .17, .43), darkMat, side * .22, .02, .08);
+      add(new THREE.CylinderGeometry(.13, .105, .52, 10), pantsMat, side * .22, .3, 0);
+      add(new THREE.BoxGeometry(.27, .17, .43), bootMat, side * .22, .02, .08);
     });
     const floor = new THREE.Mesh(new THREE.CircleGeometry(1.45, 40), new THREE.MeshStandardMaterial({ color: 0x17252a, roughness: .8, transparent: true, opacity: .82 }));
     floor.rotation.x = -Math.PI / 2; floor.position.y = -1.19; floor.receiveShadow = true; scene.add(floor);
@@ -1106,7 +1142,7 @@ function OperatorPreview3D({ skin, uniform, armor, helmet }: { skin: string; uni
     const resize = () => { if (!mount.clientWidth || !mount.clientHeight) return; camera.aspect = mount.clientWidth / mount.clientHeight; camera.updateProjectionMatrix(); renderer.setSize(mount.clientWidth, mount.clientHeight); };
     window.addEventListener("resize", resize);
     return () => { cancelAnimationFrame(frame); window.removeEventListener("resize", resize); renderer.dispose(); scene.traverse((object) => { if (object instanceof THREE.Mesh) { object.geometry.dispose(); if (Array.isArray(object.material)) object.material.forEach((m) => m.dispose()); else object.material.dispose(); } }); if (renderer.domElement.parentElement === mount) mount.removeChild(renderer.domElement); };
-  }, [skin, uniform, armor, helmet]);
+  }, [skin, uniform, armor, helmet, faceGear, headAccessory, chestRig, backpack, pants, gloves, boots]);
   return <div ref={previewRef} className="operator-preview-3d" />;
 }
 
@@ -1115,6 +1151,12 @@ function CharacterOption({ label, value, options, onSelect }: { label: string; v
     {options.map(([color, name]) => <button key={color} className={value === color ? "selected" : ""} onClick={() => onSelect(color)}>
       <i style={{ background: color }} /><span>{name}</span>
     </button>)}
+  </div></div>;
+}
+
+function GearOption({ label, value, options, onSelect }: { label: string; value: string; options: string[]; onSelect: (value: string) => void }) {
+  return <div className="character-option gear-option"><h2>{label}</h2><div className="helmet-options">
+    {options.map((option) => <button key={option} className={value === option ? "selected" : ""} onClick={() => onSelect(option)}>{option}</button>)}
   </div></div>;
 }
 

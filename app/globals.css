@@ -118,9 +118,12 @@ kbd:first-child { margin-left: 0; }
 .swatch-options button i { display:block; width:24px; height:24px; margin:0 auto 5px; border-radius:50%; box-shadow:0 0 0 2px rgba(255,255,255,.08); }
 .swatch-options button span { display:block; }.swatch-options button.selected,.helmet-options button.selected { color:#fff; border-color:#ff6336; background:rgba(255,99,54,.12); }
 .helmet-options { grid-template-columns:repeat(3,1fr); }.helmet-options button { height:45px; }
+.gear-editor-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }.gear-editor-grid .character-option { margin:0; }.gear-editor-grid .helmet-options { grid-template-columns:repeat(3,minmax(0,1fr)); }.gear-editor-grid .helmet-options button { min-width:0; padding:4px; font-size:6px; }
 .loadout-panel { position:relative; z-index:2; width:min(920px,84vw); }
 .main-menu-screen:has(.loadout-panel) { align-items:flex-start; padding-top:5vh; overflow-y:auto; }
 .main-menu-screen:has(.loadout-panel) .menu-card { width:min(920px,88vw); }
+.main-menu-screen:has(.character-editor) { align-items:flex-start; padding-top:4vh; overflow-y:auto; }
+.main-menu-screen:has(.character-editor) .menu-card { width:min(620px,88vw); padding-bottom:8vh; }
 .back-button { border:0; padding:8px 0; color:#829497; background:transparent; cursor:pointer; font-size:8px; letter-spacing:.18em; }
 .back-button:hover { color:#ff754c; }
 .loadout-heading { display:flex; justify-content:space-between; align-items:flex-end; margin:18px 0 22px; padding-bottom:16px; border-bottom:1px solid rgba(180,207,207,.16); }
