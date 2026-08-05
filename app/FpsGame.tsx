@@ -14,8 +14,14 @@ const WEAPON_STATS: Record<string, { damage: number; fireRate: number; capacity:
   "SNR-90 SNIPER": { damage: 96, fireRate: 16, capacity: 5, reload: 3.4, range: 100, mobility: 34, spread: 0.12 },
   "KSG-12 SHOTGUN": { damage: 18, fireRate: 22, capacity: 8, reload: 4.1, range: 30, mobility: 58, spread: 5.8, pellets: 8 },
   "HMG-6 LMG": { damage: 38, fireRate: 66, capacity: 60, reload: 5.2, range: 78, mobility: 27, spread: 1.75 },
+  "AKR-47 ASSAULT": { damage: 44, fireRate: 61, capacity: 30, reload: 2.65, range: 76, mobility: 61, spread: 1.6 },
+  "M8 BURST RIFLE": { damage: 35, fireRate: 78, capacity: 27, reload: 2.25, range: 72, mobility: 70, spread: 1.05 },
+  "DMR-11 MARKSMAN": { damage: 67, fireRate: 34, capacity: 12, reload: 2.9, range: 96, mobility: 45, spread: 0.32 },
+  "VX-9 PDW": { damage: 21, fireRate: 98, capacity: 42, reload: 2.05, range: 42, mobility: 93, spread: 2.35 },
   "P9 SIDEARM": { damage: 28, fireRate: 58, capacity: 15, reload: 1.45, range: 45, mobility: 94, spread: 1.55 },
   "R45 REVOLVER": { damage: 72, fireRate: 29, capacity: 6, reload: 3.1, range: 61, mobility: 76, spread: 0.9 },
+  "G18 AUTO PISTOL": { damage: 19, fireRate: 95, capacity: 24, reload: 1.75, range: 35, mobility: 96, spread: 2.65 },
+  "DB-2 SAWED-OFF": { damage: 22, fireRate: 18, capacity: 2, reload: 2.6, range: 20, mobility: 81, spread: 7.2, pellets: 6 },
 };
 
 const PLAYER_HEIGHT = 1.7;
@@ -129,31 +135,40 @@ export function FpsGame() {
       const x = 0.34;
       let muzzleZ = -1.22;
 
-      if (name === "P9 SIDEARM" || name === "R45 REVOLVER") {
+      if (["P9 SIDEARM", "R45 REVOLVER", "G18 AUTO PISTOL", "DB-2 SAWED-OFF"].includes(name)) {
         const revolver = name === "R45 REVOLVER";
-        addPart(revolver ? 0.22 : 0.18, 0.14, revolver ? 0.48 : 0.52, x, -0.25, -0.62, revolver ? 0x343638 : 0x1d2427);
-        const grip = addPart(0.15, 0.38, 0.2, x, -0.48, -0.48, revolver ? 0x5b3727 : 0x252d2f);
+        const sawedOff = name === "DB-2 SAWED-OFF";
+        const autoPistol = name === "G18 AUTO PISTOL";
+        addPart(sawedOff ? 0.28 : revolver ? 0.22 : 0.18, sawedOff ? 0.2 : 0.14, sawedOff ? 0.78 : revolver ? 0.48 : 0.52, x, -0.25, sawedOff ? -0.75 : -0.62, revolver ? 0x343638 : sawedOff ? 0x4b382d : 0x1d2427);
+        const grip = addPart(sawedOff ? 0.19 : 0.15, sawedOff ? 0.3 : 0.38, 0.2, x, -0.48, sawedOff ? -0.48 : -0.48, revolver || sawedOff ? 0x5b3727 : 0x252d2f);
         grip.rotation.x = -0.25;
         if (revolver) {
           const cylinder = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.22, 10), weaponMaterial(0x4b5051));
           cylinder.rotation.z = Math.PI / 2; cylinder.position.set(x, -0.27, -0.64); model.add(cylinder);
-        } else {
-          const magazine = addPart(0.115, 0.31, 0.14, x, -0.53, -0.48, 0x111719);
+        } else if (!sawedOff) {
+          const magazine = addPart(autoPistol ? 0.125 : 0.115, autoPistol ? 0.44 : 0.31, 0.14, x, autoPistol ? -0.59 : -0.53, -0.48, 0x111719);
           magazine.rotation.x = -0.25;
           addPart(0.15, 0.025, 0.17, x, -0.7, -0.43, 0x343d3f);
         }
-        muzzleZ = revolver ? -0.91 : -0.93;
+        if (autoPistol) addPart(0.07, 0.08, 0.18, x, -0.17, -0.7, 0x263437);
+        if (sawedOff) {
+          const secondBarrel = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.5, 10), weaponMaterial(0x171c1d));
+          secondBarrel.rotation.x = Math.PI / 2; secondBarrel.position.set(x + 0.065, -0.24, -1.32); model.add(secondBarrel);
+        }
+        muzzleZ = sawedOff ? -1.58 : revolver ? -0.91 : -0.93;
       } else if (name === "COMBAT KNIFE") {
         addPart(0.12, 0.12, 0.42, x, -0.32, -0.46, 0x272f30);
         const blade = addPart(0.045, 0.15, 0.7, x, -0.25, -0.98, 0x9ca6a4);
         blade.rotation.z = 0.08; muzzleZ = -1.34;
       } else {
-        const isSmg = name === "M12 SMG";
+        const isSmg = name === "M12 SMG" || name === "VX-9 PDW";
         const isSniper = name === "SNR-90 SNIPER";
         const isShotgun = name === "KSG-12 SHOTGUN";
         const isLmg = name === "HMG-6 LMG";
-        const isRifle = name === "BR-7 RIFLE" || isSniper;
-        const accent = isSmg ? 0x2f4a4e : isRifle ? 0x584f3c : isShotgun ? 0x3f3430 : isLmg ? 0x384638 : 0x343e40;
+        const isAkr = name === "AKR-47 ASSAULT";
+        const isBurst = name === "M8 BURST RIFLE";
+        const isRifle = name === "BR-7 RIFLE" || name === "DMR-11 MARKSMAN" || isSniper;
+        const accent = isAkr ? 0x76513a : isBurst ? 0x4b555d : isSmg ? 0x2f4a4e : isRifle ? 0x584f3c : isShotgun ? 0x3f3430 : isLmg ? 0x384638 : 0x343e40;
         addPart(isSmg ? 0.21 : isLmg ? 0.3 : 0.23, isLmg ? 0.25 : 0.2, isRifle ? 0.72 : isShotgun ? 0.78 : 0.6, x, -0.28, -0.57, 0x1b2224);
         addPart(isSmg ? 0.19 : isShotgun ? 0.23 : 0.18, isShotgun ? 0.2 : 0.16, isRifle ? 0.62 : isShotgun ? 0.72 : 0.46, x, -0.27, isRifle ? -1.18 : isShotgun ? -1.24 : -1.04, accent);
         const stock = addPart(isSmg ? 0.08 : 0.2, isSmg ? 0.1 : 0.22, isSmg ? 0.38 : 0.5, x, -0.3, -0.08, 0x242c2e);
@@ -171,6 +186,8 @@ export function FpsGame() {
         }
         if (isShotgun) addPart(0.16, 0.17, 0.34, x, -0.28, -1.48, 0x665044);
         if (isLmg) addPart(0.28, 0.05, 0.68, x, -0.13, -0.7, 0x525e50);
+        if (isAkr) { magazine.rotation.x = -0.38; addPart(0.19, 0.12, 0.34, x, -0.23, -1.34, 0x76513a); }
+        if (isBurst) addPart(0.2, 0.05, 0.45, x, -0.14, -0.75, 0x63717a);
       }
 
       // Firearms get an open rear aperture and front post; melee weapons do not.
@@ -538,10 +555,11 @@ export function FpsGame() {
             <div className="loadout-grid">
               <LoadoutSlot label="PRIMARY WEAPON" selected={primary} options={[
                 ["VXR-4 CARBINE", "BALANCED · AUTO"], ["M12 SMG", "MOBILE · CLOSE RANGE"], ["BR-7 RIFLE", "PRECISION · SEMI"],
-                ["SNR-90 SNIPER", "EXTREME RANGE · BOLT ACTION"], ["KSG-12 SHOTGUN", "8 PELLETS · CLOSE RANGE"], ["HMG-6 LMG", "60 ROUNDS · SUPPRESSION"]
+                ["SNR-90 SNIPER", "EXTREME RANGE · BOLT ACTION"], ["KSG-12 SHOTGUN", "8 PELLETS · CLOSE RANGE"], ["HMG-6 LMG", "60 ROUNDS · SUPPRESSION"],
+                ["AKR-47 ASSAULT", "HEAVY DAMAGE · HARD RECOIL"], ["M8 BURST RIFLE", "CONTROLLED · THREE ROUND"], ["DMR-11 MARKSMAN", "SEMI AUTO · LONG RANGE"], ["VX-9 PDW", "EXTREME RATE · MOBILE"]
               ]} onSelect={setPrimary} />
               <LoadoutSlot label="SECONDARY" selected={secondary} options={[
-                ["P9 SIDEARM", "RELIABLE · 15 ROUNDS"], ["R45 REVOLVER", "HEAVY · 6 ROUNDS"], ["COMBAT KNIFE", "FAST · SILENT"]
+                ["P9 SIDEARM", "RELIABLE · 15 ROUNDS"], ["R45 REVOLVER", "HEAVY · 6 ROUNDS"], ["G18 AUTO PISTOL", "24 ROUNDS · FULL AUTO"], ["DB-2 SAWED-OFF", "TWO SHELLS · 6 PELLETS"], ["COMBAT KNIFE", "FAST · SILENT"]
               ]} onSelect={setSecondary} />
               <LoadoutSlot label="MEDICAL" selected={medical} options={[
                 ["FIELD MEDKIT", "RESTORE 60 HEALTH"], ["STIM INJECTOR", "FAST HEAL + SPEED"], ["TRAUMA KIT", "FULL HEAL · SLOW"]
