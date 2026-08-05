@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import * as THREE from "three";
 
 type Box = { minX: number; maxX: number; minZ: number; maxZ: number; height: number };
 type FireMode = "SEMI" | "BURST" | "AUTO";
-type MenuPage = "HOME" | "LOADOUT";
+type MenuPage = "HOME" | "LOADOUT" | "CHARACTER";
 
 const WEAPON_STATS: Record<string, { damage: number; fireRate: number; capacity: number; reload: number; range: number; mobility: number; spread: number; pellets?: number }> = {
   "VXR-4 CARBINE": { damage: 16, fireRate: 72, capacity: 30, reload: 2.35, range: 74, mobility: 68, spread: 1.25 },
@@ -57,6 +57,10 @@ export function FpsGame() {
   const [healing, setHealing] = useState(false);
   const [healDuration, setHealDuration] = useState(0);
   const [thirdPerson, setThirdPerson] = useState(false);
+  const [characterSkin, setCharacterSkin] = useState("#a9795e");
+  const [characterUniform, setCharacterUniform] = useState("#303a3b");
+  const [characterArmor, setCharacterArmor] = useState("#20292b");
+  const [characterHelmet, setCharacterHelmet] = useState<"TACTICAL" | "LIGHT" | "HEAVY">("TACTICAL");
 
   useEffect(() => {
     const mount = mountRef.current;
@@ -146,9 +150,9 @@ export function FpsGame() {
       dummy.userData.health = 150; dummy.userData.maxHealth = 150;
       dummy.userData.movement = movement; dummy.userData.laneOrigin = z;
       dummy.userData.rig = [] as { kind: "arm" | "leg"; side: number; upper: THREE.Mesh; lower: THREE.Mesh; joint?: THREE.Mesh; end: THREE.Mesh }[];
-      const dummyMat = material(color, 0.55, 0.15);
-      const armorMat = material(0x20292b, 0.7, 0.28);
-      const fabricMat = material(0x303a3b, 0.92, 0.02);
+      const dummyMat = material(targetable ? color : Number(`0x${characterSkin.slice(1)}`), 0.55, 0.15);
+      const armorMat = material(targetable ? 0x20292b : Number(`0x${characterArmor.slice(1)}`), 0.7, 0.28);
+      const fabricMat = material(targetable ? 0x303a3b : Number(`0x${characterUniform.slice(1)}`), 0.92, 0.02);
       const visorMat = new THREE.MeshStandardMaterial({ color: 0x76b9c7, emissive: 0x173b43, emissiveIntensity: 0.8, metalness: 0.65, roughness: 0.18 });
       const addLimb = (geometry: THREE.BufferGeometry, px: number, py: number, pz: number, multiplier = 1, partMaterial: THREE.Material = dummyMat) => {
         const mesh = new THREE.Mesh(geometry, partMaterial); mesh.position.set(px, py, pz); mesh.castShadow = true;
@@ -167,7 +171,9 @@ export function FpsGame() {
       // Helmet, face, visor, headset and neck.
       addLimb(new THREE.CylinderGeometry(0.13, 0.15, 0.16, 10), 0, 1.77, 0, 1.5, fabricMat);
       addLimb(new THREE.SphereGeometry(0.235, 16, 11), 0, 2.03, 0, 1.75, dummyMat);
-      addLimb(new THREE.SphereGeometry(0.265, 16, 8, 0, Math.PI * 2, 0, Math.PI * 0.54), 0, 2.12, 0.01, 1.75, armorMat);
+      const helmetScale = !targetable && characterHelmet === "LIGHT" ? 0.92 : !targetable && characterHelmet === "HEAVY" ? 1.1 : 1;
+      const helmet = addLimb(new THREE.SphereGeometry(0.265, 16, 8, 0, Math.PI * 2, 0, Math.PI * 0.54), 0, 2.12, 0.01, 1.75, armorMat);
+      helmet.scale.set(helmetScale, !targetable && characterHelmet === "HEAVY" ? 1.08 : 1, helmetScale);
       addLimb(new THREE.BoxGeometry(0.34, 0.095, 0.04), 0, 2.04, -0.222, 1.75, visorMat);
       addLimb(new THREE.BoxGeometry(0.055, 0.18, 0.08), -0.255, 2.04, 0, 1.75, armorMat);
       // Segmented arms, shoulder armor and gloves.
@@ -752,7 +758,7 @@ export function FpsGame() {
       renderer.dispose();
       mount.removeChild(renderer.domElement);
     };
-  }, [sessionId, primary, secondary, medical, utility]);
+  }, [sessionId, primary, secondary, medical, utility, characterSkin, characterUniform, characterArmor, characterHelmet]);
 
   const equippedItems = [primary, secondary, medical, utility];
   const activeIsMelee = activeSlot === 2 && secondary === "COMBAT KNIFE";
@@ -791,6 +797,11 @@ export function FpsGame() {
       </div>}
       {!locked && !dead && <div className={`menu-screen${!started ? " main-menu-screen" : " pause-screen"}`}>
         <div className="menu-rule" />
+        {!started && menuPage !== "LOADOUT" && <button className="character-preview" onClick={() => setMenuPage("CHARACTER")} aria-label="Customize character">
+          <div className="preview-glow" />
+          <CharacterFigure skin={characterSkin} uniform={characterUniform} armor={characterArmor} helmet={characterHelmet} />
+          <span>{menuPage === "CHARACTER" ? "OPERATOR PREVIEW" : "CLICK OPERATOR TO CUSTOMIZE"}</span>
+        </button>}
         <section className="menu-card">
           <div className="menu-kicker">TACTICAL TRAINING SIMULATION</div>
           {(!started && menuPage === "HOME") && <>
@@ -802,7 +813,7 @@ export function FpsGame() {
               setStarted(true);
             }}><b>01</b><span>PLAY</span><small>ENTER TRAINING YARD</small></button>
             <button onClick={() => setMenuPage("LOADOUT")}><b>02</b><span>LOADOUT</span><small>EDIT EQUIPMENT</small></button>
-            <button disabled><b>03</b><span>OPERATORS</span><small>COMING SOON</small></button>
+            <button onClick={() => setMenuPage("CHARACTER")}><b>03</b><span>OPERATOR</span><small>CUSTOMIZE CHARACTER</small></button>
             <button disabled><b>04</b><span>SETTINGS</span><small>COMING SOON</small></button>
           </nav></>}
           {(!started && menuPage === "LOADOUT") && <div className="loadout-panel">
@@ -825,6 +836,23 @@ export function FpsGame() {
               ]} onSelect={setUtility} />
             </div>
             <button className="confirm-loadout" onClick={() => setMenuPage("HOME")}>CONFIRM LOADOUT</button>
+          </div>}
+          {(!started && menuPage === "CHARACTER") && <div className="character-editor">
+            <button className="back-button" onClick={() => setMenuPage("HOME")}>← MAIN MENU</button>
+            <div className="loadout-heading"><div><span>OPERATOR</span> EDITOR</div><small>LIVE CHARACTER PREVIEW</small></div>
+            <CharacterOption label="SKIN TONE" value={characterSkin} options={[
+              ["#f1c7a5", "LIGHT"], ["#c58c68", "MEDIUM"], ["#8f5d43", "TAN"], ["#5c382b", "DEEP"]
+            ]} onSelect={setCharacterSkin} />
+            <CharacterOption label="UNIFORM" value={characterUniform} options={[
+              ["#303a3b", "URBAN"], ["#394331", "FOREST"], ["#514839", "DESERT"], ["#26374a", "NAVY"]
+            ]} onSelect={setCharacterUniform} />
+            <CharacterOption label="ARMOR" value={characterArmor} options={[
+              ["#20292b", "BLACK"], ["#4b5143", "OLIVE"], ["#675747", "TAN"], ["#3c4653", "SLATE"]
+            ]} onSelect={setCharacterArmor} />
+            <div className="character-option"><h2>HELMET</h2><div className="helmet-options">
+              {(["LIGHT", "TACTICAL", "HEAVY"] as const).map((helmet) => <button key={helmet} className={characterHelmet === helmet ? "selected" : ""} onClick={() => setCharacterHelmet(helmet)}>{helmet}</button>)}
+            </div></div>
+            <button className="confirm-loadout" onClick={() => setMenuPage("HOME")}>SAVE OPERATOR</button>
           </div>}
           {started && <>
           <h1><span>STRIKE</span>YARD</h1>
@@ -870,6 +898,27 @@ export function FpsGame() {
       </div>}
     </main>
   );
+}
+
+function CharacterFigure({ skin, uniform, armor, helmet }: { skin: string; uniform: string; armor: string; helmet: string }) {
+  const style = { "--skin": skin, "--uniform": uniform, "--armor": armor } as CSSProperties;
+  return <div className={`character-figure helmet-${helmet.toLowerCase()}`} style={style}>
+    <i className="figure-head" /><i className="figure-helmet" /><i className="figure-visor" />
+    <i className="figure-neck" /><i className="figure-torso" /><i className="figure-vest" />
+    <i className="figure-pack" /><i className="figure-belt" />
+    <i className="figure-arm left" /><i className="figure-arm right" />
+    <i className="figure-glove left" /><i className="figure-glove right" />
+    <i className="figure-leg left" /><i className="figure-leg right" />
+    <i className="figure-boot left" /><i className="figure-boot right" />
+  </div>;
+}
+
+function CharacterOption({ label, value, options, onSelect }: { label: string; value: string; options: [string, string][]; onSelect: (value: string) => void }) {
+  return <div className="character-option"><h2>{label}</h2><div className="swatch-options">
+    {options.map(([color, name]) => <button key={color} className={value === color ? "selected" : ""} onClick={() => onSelect(color)}>
+      <i style={{ background: color }} /><span>{name}</span>
+    </button>)}
+  </div></div>;
 }
 
 function LoadoutSlot({ label, selected, options, onSelect }: {
