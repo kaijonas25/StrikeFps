@@ -179,10 +179,11 @@ export function FpsGame() {
     const keys = new Set<string>();
     let yaw = 0, pitch = 0, verticalVelocity = 0, grounded = true;
     const primaryStats = WEAPON_STATS[primary];
+    const secondaryIsMelee = secondary === "COMBAT KNIFE";
     const secondaryStats = WEAPON_STATS[secondary] ?? { damage: 100, fireRate: 100, capacity: 1, reload: 0.6, range: 5, mobility: 100 };
     const ammoCounts = [primaryStats.capacity, secondaryStats.capacity];
     setAmmo(primaryStats.capacity);
-    let ammoCount = ammoCounts[0], recoil = 0, muzzleTimer = 0, aiming = false, sprinting = false, reloadEnd = 0;
+    let ammoCount = ammoCounts[0], recoil = 0, muzzleTimer = 0, aiming = false, sprinting = false, reloadEnd = 0, meleeSwing = 0, lastMelee = 0;
     let currentFireMode: FireMode = "AUTO", triggerHeld = false, lastShot = 0, currentSlot = 1;
     let last = performance.now();
     const clock = new THREE.Clock();
@@ -230,7 +231,23 @@ export function FpsGame() {
     const impactGeometry = new THREE.SphereGeometry(0.045, 6, 6);
     const impactMaterial = new THREE.MeshBasicMaterial({ color: 0xff9a55 });
     const fireRound = () => {
-      if (document.pointerLockElement !== renderer.domElement || ammoCount <= 0 || sprinting || currentSlot > 2 || reloadEnd > 0) return;
+      if (document.pointerLockElement !== renderer.domElement || sprinting || currentSlot > 2 || reloadEnd > 0) return;
+      if (currentSlot === 2 && secondaryIsMelee) {
+        const now = performance.now();
+        if (now - lastMelee < 480) return;
+        lastMelee = now;
+        meleeSwing = 1;
+        raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+        const meleeHit = raycaster.intersectObjects(scene.children, false).find((result) => result.object !== camera && result.distance > 0.5 && result.distance <= 2.35);
+        if (meleeHit) {
+          const slash = new THREE.Mesh(new THREE.SphereGeometry(0.075, 6, 6), new THREE.MeshBasicMaterial({ color: 0xe9f7f2 }));
+          slash.position.copy(meleeHit.point);
+          scene.add(slash);
+          window.setTimeout(() => { scene.remove(slash); slash.geometry.dispose(); }, 110);
+        }
+        return;
+      }
+      if (ammoCount <= 0) return;
       ammoCount -= 1;
       ammoCounts[currentSlot - 1] = ammoCount;
       setAmmo(ammoCount);
@@ -321,6 +338,7 @@ export function FpsGame() {
 
       const moving = input.lengthSq() > 0 && grounded;
       const t = clock.getElapsedTime();
+      meleeSwing = Math.max(0, meleeSwing - dt * 4.6);
       if (reloadEnd && now >= reloadEnd) {
         const stats = currentSlot === 1 ? primaryStats : secondaryStats;
         ammoCount = stats.capacity;
@@ -349,6 +367,9 @@ export function FpsGame() {
       gun.position.z = THREE.MathUtils.lerp(gun.position.z, targetZ, Math.min(1, dt * 12));
       gun.rotation.x = THREE.MathUtils.lerp(gun.rotation.x, reloadEnd ? -0.45 : sprinting ? -0.22 : recoil * 0.7, Math.min(1, dt * 12));
       gun.rotation.z = THREE.MathUtils.lerp(gun.rotation.z, reloadEnd ? -0.35 : sprinting ? 0.72 : 0, Math.min(1, dt * 12));
+      const slashArc = secondaryIsMelee && currentSlot === 2 ? Math.sin(meleeSwing * Math.PI) : 0;
+      gun.rotation.y = THREE.MathUtils.lerp(gun.rotation.y, -slashArc * 0.85, Math.min(1, dt * 22));
+      if (secondaryIsMelee && currentSlot === 2) gun.position.x += slashArc * 0.18;
       gun.visible = currentSlot <= 2;
       primaryWeapon.model.visible = currentSlot === 1;
       secondaryWeapon.model.visible = currentSlot === 2;
@@ -374,6 +395,7 @@ export function FpsGame() {
   }, [sessionId, primary, secondary]);
 
   const equippedItems = [primary, secondary, medical, utility];
+  const activeIsMelee = activeSlot === 2 && secondary === "COMBAT KNIFE";
 
   return (
     <main className={`game-shell${!started ? " game-menu" : ""}`}>
@@ -386,7 +408,7 @@ export function FpsGame() {
       </header>
       <div className="crosshair"><span /><span /></div>
       <div className="hud-left"><small>VITALS</small><strong>100</strong><div className="health"><i /></div></div>
-      <div className="hud-right"><small>{equippedItems[activeSlot - 1]}{activeSlot <= 2 ? ` · ${fireMode}` : " · READY"}</small><strong>{activeSlot <= 2 ? ammo : "—"} <em>{activeSlot <= 2 ? "/ 120" : ""}</em></strong></div>
+      <div className="hud-right"><small>{equippedItems[activeSlot - 1]}{activeIsMelee ? " · MELEE" : activeSlot <= 2 ? ` · ${fireMode}` : " · READY"}</small><strong>{activeIsMelee || activeSlot > 2 ? "—" : ammo} <em>{activeIsMelee || activeSlot > 2 ? "" : "/ 120"}</em></strong></div>
       {reloading && <div className="reload-status"><span>RELOADING</span><i style={{ animationDuration: `${reloadDuration}s` }} /></div>}
       <div className="quick-slots">
         {([
