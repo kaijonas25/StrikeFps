@@ -301,7 +301,7 @@ export function FpsGame() {
     const worldSecondary = secondaryWeapon.model.clone(true);
     [worldPrimary, worldSecondary].forEach((weapon) => {
       weapon.scale.setScalar(0.72);
-      weapon.position.set(-0.055, 1.48, 0.08);
+      weapon.position.set(-0.055, 1.58, 0.03);
       weapon.rotation.x = -0.04;
       weapon.traverse((object) => { if (object instanceof THREE.Mesh) object.raycast = () => {}; });
       localPlayer.add(weapon);
@@ -619,15 +619,15 @@ export function FpsGame() {
             const holdingLongGun = holdingWeapon && (currentSlot === 1 || secondary === "DB-2 SAWED-OFF");
             const isRightArm = limb.side === 1;
             const angle = holdingWeapon
-              ? isRightArm ? 0.78 + stride * .05 : holdingLongGun ? 1.28 - stride * .04 : 0.96
+              ? isRightArm ? 1.18 + stride * .035 : holdingLongGun ? 1.12 - stride * .03 : 1.08
               : stride * amplitude * limb.side;
             const elbowAngle = holdingWeapon
-              ? isRightArm ? 0.62 : holdingLongGun ? 1.34 : 1.08
+              ? isRightArm ? 1.42 : holdingLongGun ? 1.48 : 1.38
               : angle * .55 - (movement === "sprint" ? .3 : .12);
             const shoulderY = 1.62, upperLength = .44, lowerLength = .38;
-            const upperX = holdingWeapon ? isRightArm ? .39 : -.34 : limb.side * .45;
-            const lowerX = holdingWeapon ? isRightArm ? .31 : holdingLongGun ? -.08 : -.24 : limb.side * .47;
-            const handX = holdingWeapon ? isRightArm ? .28 : holdingLongGun ? .1 : -.16 : limb.side * .48;
+            const upperX = holdingWeapon ? isRightArm ? .4 : -.36 : limb.side * .45;
+            const lowerX = holdingWeapon ? isRightArm ? .3 : holdingLongGun ? -.12 : -.25 : limb.side * .47;
+            const handX = holdingWeapon ? isRightArm ? .2 : holdingLongGun ? .08 : -.13 : limb.side * .48;
             limb.upper.position.set(upperX, shoulderY - Math.cos(angle) * upperLength / 2, -Math.sin(angle) * upperLength / 2);
             limb.upper.rotation.x = angle;
             const elbowY = shoulderY - Math.cos(angle) * upperLength;
