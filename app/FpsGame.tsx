@@ -729,11 +729,14 @@ export function FpsGame() {
             };
             if (holdingWeapon) {
               const shoulder = new THREE.Vector3(limb.side * .43, 1.65, 0);
-              const elbow = isRightArm
-                ? new THREE.Vector3(.48, 1.38, -.32)
+              const sprintCarry = sprinting || sliding;
+              const elbow = sprintCarry
+                ? isRightArm ? new THREE.Vector3(.46, 1.27, -.12) : new THREE.Vector3(-.2, 1.3, -.2)
+                : isRightArm ? new THREE.Vector3(.48, 1.38, -.32)
                 : holdingLongGun ? new THREE.Vector3(-.2, 1.35, -.33) : new THREE.Vector3(-.18, 1.37, -.2);
-              const hand = isRightArm
-                ? new THREE.Vector3(.19, 1.25, -.31)
+              const hand = sprintCarry
+                ? isRightArm ? new THREE.Vector3(.17, 1.05, -.2) : new THREE.Vector3(.1, 1.13, -.48)
+                : isRightArm ? new THREE.Vector3(.19, 1.25, -.31)
                 : holdingLongGun ? new THREE.Vector3(.1, 1.38, -.55) : new THREE.Vector3(.1, 1.24, -.32);
               alignLimb(limb.upper, shoulder, elbow);
               alignLimb(limb.lower, elbow, hand);
@@ -842,6 +845,14 @@ export function FpsGame() {
       secondaryWeapon.model.visible = currentSlot === 2;
       worldPrimary.visible = isThirdPerson && currentSlot === 1;
       worldSecondary.visible = isThirdPerson && currentSlot === 2;
+      [worldPrimary, worldSecondary].forEach((worldWeapon) => {
+        const carryLow = sprinting || sliding;
+        worldWeapon.position.x = THREE.MathUtils.lerp(worldWeapon.position.x, carryLow ? -.07 : -.055, Math.min(1, dt * 12));
+        worldWeapon.position.y = THREE.MathUtils.lerp(worldWeapon.position.y, carryLow ? 1.25 : 1.58, Math.min(1, dt * 12));
+        worldWeapon.position.z = THREE.MathUtils.lerp(worldWeapon.position.z, carryLow ? .02 : .03, Math.min(1, dt * 12));
+        worldWeapon.rotation.x = THREE.MathUtils.lerp(worldWeapon.rotation.x, carryLow ? -.4 : -.04, Math.min(1, dt * 12));
+        worldWeapon.rotation.z = THREE.MathUtils.lerp(worldWeapon.rotation.z, carryLow ? .1 : 0, Math.min(1, dt * 12));
+      });
       camera.fov = THREE.MathUtils.lerp(camera.fov, aiming ? weaponSight === "4X SCOPE" ? 20 : 58 : fastMovement ? 84 : 78, Math.min(1, dt * 10));
       camera.updateProjectionMatrix();
       stanceOffset = THREE.MathUtils.lerp(stanceOffset, isCrouching ? -.65 : 0, Math.min(1, dt * 12));
