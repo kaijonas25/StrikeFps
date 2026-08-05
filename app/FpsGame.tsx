@@ -535,6 +535,7 @@ export function FpsGame() {
         const tracerEnd = hit?.point.clone() ?? raycaster.ray.at(shotStats.range, new THREE.Vector3());
         const tracerMaterial = new THREE.LineBasicMaterial({ color: pelletCount > 1 ? 0xffd09a : 0xffb06b, transparent: true, opacity: 0.82 });
         const tracer = new THREE.Line(new THREE.BufferGeometry().setFromPoints([tracerStart, tracerEnd]), tracerMaterial);
+        tracer.raycast = () => {};
         scene.add(tracer);
         window.setTimeout(() => {
           scene.remove(tracer); tracer.geometry.dispose(); tracerMaterial.dispose();
@@ -542,6 +543,7 @@ export function FpsGame() {
         if (hit) {
           damageDummy(hit, shotStats.damage);
           const impact = new THREE.Mesh(impactGeometry, impactMaterial);
+          impact.raycast = () => {};
           impact.position.copy(hit.point).addScaledVector(hit.face?.normal ?? new THREE.Vector3(0, 1, 0), 0.025);
           scene.add(impact); window.setTimeout(() => scene.remove(impact), 1800);
         }
