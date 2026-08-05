@@ -47,6 +47,8 @@ export function FpsGame() {
   const [flashed, setFlashed] = useState(false);
   const [health, setHealth] = useState(100);
   const [dead, setDead] = useState(false);
+  const [medicalCount, setMedicalCount] = useState(2);
+  const [healingEffect, setHealingEffect] = useState(false);
 
   useEffect(() => {
     const mount = mountRef.current;
@@ -270,7 +272,7 @@ export function FpsGame() {
     const ammoCounts = [primaryStats.capacity, secondaryStats.capacity];
     setAmmo(primaryStats.capacity);
     let ammoCount = ammoCounts[0], recoil = 0, muzzleTimer = 0, aiming = false, sprinting = false, reloadEnd = 0, meleeSwing = 0, lastMelee = 0;
-    let throwableAiming = false, grenadesLeft = 2;
+    let throwableAiming = false, grenadesLeft = 2, medicalCharges = 2;
     const projectiles: { mesh: THREE.Mesh; velocity: THREE.Vector3; age: number; type: string }[] = [];
     let currentFireMode: FireMode = "AUTO", triggerHeld = false, lastShot = 0, currentSlot = 1, movementSpread = 1;
     let playerHealth = 100, nextPadTick = 0;
@@ -434,6 +436,16 @@ export function FpsGame() {
       if (document.pointerLockElement !== renderer.domElement) return;
       if (e.button === 2) { aiming = true; return; }
       if (e.button !== 0 || sprinting) return;
+      if (currentSlot === 3) {
+        if (medicalCharges > 0 && playerHealth < 100) {
+          const healing = medical === "FIELD MEDKIT" ? 60 : medical === "STIM INJECTOR" ? 35 : 100;
+          playerHealth = Math.min(100, playerHealth + healing);
+          medicalCharges -= 1;
+          setHealth(playerHealth); setMedicalCount(medicalCharges); setHealingEffect(true);
+          window.setTimeout(() => setHealingEffect(false), 650);
+        }
+        return;
+      }
       if (currentSlot === 4) { throwableAiming = grenadesLeft > 0; trajectory.visible = throwableAiming; return; }
       triggerHeld = true;
       if (currentFireMode === "SEMI") fireRound();
@@ -591,7 +603,7 @@ export function FpsGame() {
       renderer.dispose();
       mount.removeChild(renderer.domElement);
     };
-  }, [sessionId, primary, secondary, utility]);
+  }, [sessionId, primary, secondary, medical, utility]);
 
   const equippedItems = [primary, secondary, medical, utility];
   const activeIsMelee = activeSlot === 2 && secondary === "COMBAT KNIFE";
@@ -607,7 +619,7 @@ export function FpsGame() {
       </header>
       <div className="crosshair"><span /><span /></div>
       <div className="hud-left"><small>VITALS</small><strong>{health}</strong><div className="health"><i style={{ width: `${health}%` }} /></div></div>
-      <div className="hud-right"><small>{equippedItems[activeSlot - 1]}{activeIsMelee ? " · MELEE" : activeSlot <= 2 ? ` · ${fireMode}` : " · READY"}</small><strong>{activeSlot === 4 ? utilityCount : activeIsMelee || activeSlot > 2 ? "—" : ammo} <em>{activeSlot === 4 ? "THROWABLES" : activeIsMelee || activeSlot > 2 ? "" : "/ 120"}</em></strong></div>
+      <div className="hud-right"><small>{equippedItems[activeSlot - 1]}{activeIsMelee ? " · MELEE" : activeSlot <= 2 ? ` · ${fireMode}` : " · READY"}</small><strong>{activeSlot === 4 ? utilityCount : activeSlot === 3 ? medicalCount : activeIsMelee ? "—" : ammo} <em>{activeSlot === 4 ? "THROWABLES" : activeSlot === 3 ? "MEDICAL" : activeIsMelee ? "" : "/ 120"}</em></strong></div>
       {reloading && <div className="reload-status"><span>RELOADING</span><i style={{ animationDuration: `${reloadDuration}s` }} /></div>}
       <div className="quick-slots">
         {([
@@ -617,6 +629,7 @@ export function FpsGame() {
         </div>)}
       </div>
       <div className={`flash-effect${flashed ? " active" : ""}`} />
+      <div className={`heal-effect${healingEffect ? " active" : ""}`} />
       <div className="test-legend"><span className="damage-dot" /> DAMAGE PAD <span className="kill-dot" /> KILL PAD <span className="heal-dot" /> HEAL PAD</div>
       <div className="controls"><kbd>WASD</kbd> MOVE <kbd>SHIFT</kbd> SPRINT <kbd>RMB</kbd> AIM <kbd>LMB</kbd> FIRE <kbd>B</kbd> MODE <kbd>R</kbd> RELOAD</div>
       {dead && <div className="death-screen">
@@ -680,7 +693,11 @@ export function FpsGame() {
               setActiveSlot(1);
               setReloading(false);
               setUtilityCount(2);
+              setMedicalCount(2);
               setFlashed(false);
+              setHealingEffect(false);
+              setHealth(100);
+              setDead(false);
               setSessionId((current) => current + 1);
             }}>
               <span>LEAVE SERVER</span>
