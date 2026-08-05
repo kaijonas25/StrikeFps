@@ -17,7 +17,6 @@ button { font: inherit; }
 .status { font-size: 9px; letter-spacing: .16em; color: #9fb0b1; }
 .status i { display: inline-block; width: 6px; height: 6px; margin-right: 8px; border-radius: 50%; background: #69e09b; box-shadow: 0 0 12px #69e09b; }
 .crosshair { position: fixed; left: 50%; top: 50%; width: 18px; height: 18px; transform: translate(-50%,-50%); pointer-events: none; }
-.crosshair.third-person { left: 54%; }
 .crosshair span::before, .crosshair span::after { content: ""; position: absolute; background: rgba(238,247,243,.9); box-shadow: 0 0 3px #132024; }
 .crosshair span::before { width: 6px; height: 1px; top: 8px; } .crosshair span:first-child::before { left: 0; } .crosshair span:last-child::before { right: 0; }
 .crosshair span::after { width: 1px; height: 6px; left: 8px; } .crosshair span:first-child::after { top: 0; } .crosshair span:last-child::after { bottom: 0; }

@@ -766,7 +766,7 @@ export function FpsGame() {
         <div className="mission"><small>TRAINING SECTOR 01</small><strong>FREE ROAM</strong></div>
         <div className="status"><i /> SYSTEMS ONLINE</div>
       </header>
-      <div className={`crosshair${thirdPerson ? " third-person" : ""}`}><span /><span /></div>
+      <div className="crosshair" style={{ left: thirdPerson ? "54%" : "50%" }}><span /><span /></div>
       <div className="hud-left"><small>VITALS</small><strong>{health}</strong><div className="health"><i style={{ width: `${health}%` }} /></div></div>
       <div className="hud-right"><small>{equippedItems[activeSlot - 1]}{activeIsMelee ? " · MELEE" : activeSlot <= 2 ? ` · ${fireMode}` : " · READY"}</small><strong>{activeSlot === 4 ? utilityCount : activeSlot === 3 ? medicalCount : activeIsMelee ? "—" : ammo} <em>{activeSlot === 4 ? "THROWABLES" : activeSlot === 3 ? "MEDICAL" : activeIsMelee ? "" : "/ 120"}</em></strong></div>
       {reloading && <div className="reload-status"><span>RELOADING</span><i style={{ animationDuration: `${reloadDuration}s` }} /></div>}
