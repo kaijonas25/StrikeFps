@@ -287,7 +287,7 @@ export function FpsGame() {
         const frontRight = frontLeft.clone(); frontRight.position.x = x + 0.052; model.add(frontRight);
         addPart(0.012, 0.065, 0.02, x, -0.175, muzzleZ + 0.15, 0xff6b3c);
       }
-      const muzzleAnchor = new THREE.Object3D(); muzzleAnchor.position.set(x, -0.25, muzzleZ); model.add(muzzleAnchor);
+      const muzzleAnchor = new THREE.Object3D(); muzzleAnchor.name = "muzzleAnchor"; muzzleAnchor.position.set(x, -0.25, muzzleZ); model.add(muzzleAnchor);
       // First-person geometry is visual only and must never intercept a weapon ray.
       model.traverse((object) => {
         if (object instanceof THREE.Mesh) object.raycast = () => {};
@@ -297,6 +297,15 @@ export function FpsGame() {
     const primaryWeapon = buildWeapon(primary);
     const secondaryWeapon = buildWeapon(secondary);
     gun.add(primaryWeapon.model, secondaryWeapon.model);
+    const worldPrimary = primaryWeapon.model.clone(true);
+    const worldSecondary = secondaryWeapon.model.clone(true);
+    [worldPrimary, worldSecondary].forEach((weapon) => {
+      weapon.scale.setScalar(0.72);
+      weapon.position.set(-0.245, 1.55, 0.08);
+      weapon.rotation.x = -0.04;
+      weapon.traverse((object) => { if (object instanceof THREE.Mesh) object.raycast = () => {}; });
+      localPlayer.add(weapon);
+    });
     const muzzle = new THREE.PointLight(0xff7b35, 0, 2.5, 2);
     muzzle.position.set(0.34, -0.2, -1.1);
     gun.add(muzzle);
@@ -460,7 +469,8 @@ export function FpsGame() {
       muzzleTimer = 0.045;
       const shotStats = currentSlot === 1 ? primaryStats : secondaryStats;
       const tracerStart = new THREE.Vector3();
-      (currentSlot === 1 ? primaryWeapon.muzzleAnchor : secondaryWeapon.muzzleAnchor).getWorldPosition(tracerStart);
+      const worldMuzzle = (currentSlot === 1 ? worldPrimary : worldSecondary).getObjectByName("muzzleAnchor");
+      (isThirdPerson && worldMuzzle ? worldMuzzle : currentSlot === 1 ? primaryWeapon.muzzleAnchor : secondaryWeapon.muzzleAnchor).getWorldPosition(tracerStart);
       const pelletCount = shotStats.pellets ?? 1;
       const spreadDegrees = shotStats.spread * (aiming ? 0.42 : 1) * movementSpread;
       for (let pellet = 0; pellet < pelletCount; pellet++) {
@@ -593,8 +603,9 @@ export function FpsGame() {
         const rig = dummy.userData.rig as { kind: "arm" | "leg"; side: number; upper: THREE.Mesh; lower: THREE.Mesh; joint?: THREE.Mesh; end: THREE.Mesh }[];
         rig.forEach((limb) => {
           if (limb.kind === "arm") {
-            const angle = stride * amplitude * limb.side;
-            const elbowAngle = angle * .55 - (movement === "sprint" ? .3 : .12);
+            const holdingWeapon = isLocal && currentSlot <= 2;
+            const angle = holdingWeapon ? 0.92 + stride * .08 * limb.side : stride * amplitude * limb.side;
+            const elbowAngle = holdingWeapon ? 1.12 + limb.side * .08 : angle * .55 - (movement === "sprint" ? .3 : .12);
             const shoulderY = 1.62, upperLength = .44, lowerLength = .38;
             limb.upper.position.set(limb.side * .45, shoulderY - Math.cos(angle) * upperLength / 2, -Math.sin(angle) * upperLength / 2);
             limb.upper.rotation.x = angle;
@@ -689,6 +700,8 @@ export function FpsGame() {
       gun.visible = currentSlot <= 2 && !isThirdPerson;
       primaryWeapon.model.visible = currentSlot === 1;
       secondaryWeapon.model.visible = currentSlot === 2;
+      worldPrimary.visible = isThirdPerson && currentSlot === 1;
+      worldSecondary.visible = isThirdPerson && currentSlot === 2;
       camera.fov = THREE.MathUtils.lerp(camera.fov, aiming ? 58 : sprinting ? 84 : 78, Math.min(1, dt * 10));
       camera.updateProjectionMatrix();
       if (isThirdPerson) {
