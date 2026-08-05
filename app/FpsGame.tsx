@@ -11,7 +11,7 @@ const WEAPON_STATS: Record<string, { damage: number; fireRate: number; capacity:
   "VXR-4 CARBINE": { damage: 16, fireRate: 72, capacity: 30, reload: 2.35, range: 74, mobility: 68, spread: 1.25 },
   "M12 SMG": { damage: 12, fireRate: 91, capacity: 36, reload: 1.85, range: 48, mobility: 90, spread: 2.1 },
   "BR-7 RIFLE": { damage: 29, fireRate: 43, capacity: 20, reload: 2.8, range: 94, mobility: 51, spread: 0.65 },
-  "SNR-90 SNIPER": { damage: 48, fireRate: 16, capacity: 5, reload: 3.4, range: 100, mobility: 34, spread: 0.12 },
+  "SNR-90 SNIPER": { damage: 0, fireRate: 16, capacity: 5, reload: 3.4, range: 100, mobility: 34, spread: 0.12 },
   "KSG-12 SHOTGUN": { damage: 9, fireRate: 22, capacity: 8, reload: 4.1, range: 30, mobility: 58, spread: 5.8, pellets: 8 },
   "HMG-6 LMG": { damage: 19, fireRate: 66, capacity: 60, reload: 5.2, range: 78, mobility: 27, spread: 1.75 },
   "AKR-47 ASSAULT": { damage: 22, fireRate: 61, capacity: 30, reload: 2.65, range: 76, mobility: 61, spread: 1.6 },
@@ -174,12 +174,12 @@ export function FpsGame() {
       addLimb(new THREE.BoxGeometry(0.5, 0.58, 0.2), 0, 1.48, 0.24, 1, armorMat);
       // Helmet, face, visor, headset and neck.
       addLimb(new THREE.CylinderGeometry(0.13, 0.15, 0.16, 10), 0, 1.77, 0, 1.5, fabricMat);
-      addLimb(new THREE.SphereGeometry(0.235, 16, 11), 0, 2.03, 0, 1.75, dummyMat);
+      addLimb(new THREE.SphereGeometry(0.235, 16, 11), 0, 2.03, 0, 2, dummyMat);
       const helmetScale = !targetable && characterHelmet === "LIGHT" ? 0.92 : !targetable && characterHelmet === "HEAVY" ? 1.1 : 1;
-      const helmet = addLimb(new THREE.SphereGeometry(0.265, 16, 8, 0, Math.PI * 2, 0, Math.PI * 0.54), 0, 2.12, 0.01, 1.75, armorMat);
+      const helmet = addLimb(new THREE.SphereGeometry(0.265, 16, 8, 0, Math.PI * 2, 0, Math.PI * 0.54), 0, 2.12, 0.01, 2, armorMat);
       helmet.scale.set(helmetScale, !targetable && characterHelmet === "HEAVY" ? 1.08 : 1, helmetScale);
-      addLimb(new THREE.BoxGeometry(0.34, 0.095, 0.04), 0, 2.04, -0.222, 1.75, visorMat);
-      addLimb(new THREE.BoxGeometry(0.055, 0.18, 0.08), -0.255, 2.04, 0, 1.75, armorMat);
+      addLimb(new THREE.BoxGeometry(0.34, 0.095, 0.04), 0, 2.04, -0.222, 2, visorMat);
+      addLimb(new THREE.BoxGeometry(0.055, 0.18, 0.08), -0.255, 2.04, 0, 2, armorMat);
       // Segmented arms, shoulder armor and gloves.
       [-1, 1].forEach((side) => {
         addLimb(new THREE.SphereGeometry(0.17, 10, 8), side * 0.43, 1.65, 0, 1, armorMat);
@@ -197,10 +197,14 @@ export function FpsGame() {
         dummy.userData.rig.push({ kind: "leg", side, upper: thigh, lower: shin, joint: knee, end: boot });
       });
       if (targetable) {
-        const barBack = new THREE.Mesh(new THREE.PlaneGeometry(1.05, 0.09), new THREE.MeshBasicMaterial({ color: 0x151a1b, side: THREE.DoubleSide }));
-        barBack.position.set(0, 2.48, 0); barBack.raycast = () => {}; dummy.add(barBack);
-        const bar = new THREE.Mesh(new THREE.PlaneGeometry(1, 0.055), new THREE.MeshBasicMaterial({ color: 0x63e690, side: THREE.DoubleSide }));
-        bar.position.set(0, 2.48, -0.006); bar.raycast = () => {}; dummy.add(bar); dummy.userData.healthBar = bar;
+        const healthBars: THREE.Mesh[] = [];
+        [-.34, .34].forEach((z, index) => {
+          const barBack = new THREE.Mesh(new THREE.PlaneGeometry(1.05, 0.09), new THREE.MeshBasicMaterial({ color: 0x151a1b, side: THREE.DoubleSide }));
+          barBack.position.set(0, 2.48, z); barBack.rotation.y = index ? Math.PI : 0; barBack.raycast = () => {}; dummy.add(barBack);
+          const bar = new THREE.Mesh(new THREE.PlaneGeometry(1, 0.055), new THREE.MeshBasicMaterial({ color: 0x63e690, side: THREE.DoubleSide }));
+          bar.position.set(0, 2.48, z + (index ? .006 : -.006)); bar.rotation.y = index ? Math.PI : 0; bar.raycast = () => {}; dummy.add(bar); healthBars.push(bar);
+        });
+        dummy.userData.healthBars = healthBars;
       }
       scene.add(dummy); if (targetable) dummies.push(dummy); return dummy;
     };
@@ -443,14 +447,15 @@ export function FpsGame() {
       if (!dummy || !dummy.visible) return;
       dummy.userData.health = Math.max(0, dummy.userData.health - damage * (hit.object.userData.damageMultiplier ?? 1));
       const ratio = dummy.userData.health / dummy.userData.maxHealth;
-      (dummy.userData.healthBar as THREE.Mesh).scale.x = Math.max(0.001, ratio);
-      ((dummy.userData.healthBar as THREE.Mesh).material as THREE.MeshBasicMaterial).color.set(ratio > .5 ? 0x63e690 : ratio > .2 ? 0xffb347 : 0xff4057);
+      (dummy.userData.healthBars as THREE.Mesh[]).forEach((bar) => {
+        bar.scale.x = Math.max(0.001, ratio);
+        (bar.material as THREE.MeshBasicMaterial).color.set(ratio > .5 ? 0x63e690 : ratio > .2 ? 0xffb347 : 0xff4057);
+      });
       if (dummy.userData.health <= 0) {
         dummy.visible = false;
         window.setTimeout(() => {
           dummy.userData.health = dummy.userData.maxHealth;
-          (dummy.userData.healthBar as THREE.Mesh).scale.x = 1;
-          ((dummy.userData.healthBar as THREE.Mesh).material as THREE.MeshBasicMaterial).color.set(0x63e690);
+          (dummy.userData.healthBars as THREE.Mesh[]).forEach((bar) => { bar.scale.x = 1; (bar.material as THREE.MeshBasicMaterial).color.set(0x63e690); });
           dummy.visible = true;
         }, 3000);
       }
