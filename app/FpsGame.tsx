@@ -158,12 +158,14 @@ export function FpsGame() {
         muzzleZ = isRifle ? -2.02 : -1.64;
       }
 
-      // Open rear aperture and front post remain see-through when centered in ADS.
-      const rearSight = new THREE.Mesh(new THREE.TorusGeometry(0.045, 0.009, 8, 18), weaponMaterial(0x101719));
-      rearSight.position.set(x, -0.145, -0.46); model.add(rearSight);
-      const frontLeft = addPart(0.012, 0.085, 0.025, x - 0.052, -0.18, muzzleZ + 0.16, 0x12191b);
-      const frontRight = frontLeft.clone(); frontRight.position.x = x + 0.052; model.add(frontRight);
-      addPart(0.012, 0.065, 0.02, x, -0.175, muzzleZ + 0.15, 0xff6b3c);
+      // Firearms get an open rear aperture and front post; melee weapons do not.
+      if (name !== "COMBAT KNIFE") {
+        const rearSight = new THREE.Mesh(new THREE.TorusGeometry(0.045, 0.009, 8, 18), weaponMaterial(0x101719));
+        rearSight.position.set(x, -0.145, -0.46); model.add(rearSight);
+        const frontLeft = addPart(0.012, 0.085, 0.025, x - 0.052, -0.18, muzzleZ + 0.16, 0x12191b);
+        const frontRight = frontLeft.clone(); frontRight.position.x = x + 0.052; model.add(frontRight);
+        addPart(0.012, 0.065, 0.02, x, -0.175, muzzleZ + 0.15, 0xff6b3c);
+      }
       const muzzleAnchor = new THREE.Object3D(); muzzleAnchor.position.set(x, -0.25, muzzleZ); model.add(muzzleAnchor);
       return { model, muzzleAnchor };
     };
