@@ -10,7 +10,7 @@ const PLAYER_RADIUS = 0.38;
 
 export function FpsGame() {
   const mountRef = useRef<HTMLDivElement>(null);
-  const [locked, setLocked] = useState(false);
+  const [playing, setPlaying] = useState(false);
 
   useEffect(() => {
     const mount = mountRef.current;
@@ -102,7 +102,7 @@ export function FpsGame() {
     scene.add(camera);
 
     const keys = new Set<string>();
-    let yaw = 0, pitch = 0, verticalVelocity = 0, grounded = true;
+    let yaw = 0, pitch = 0, verticalVelocity = 0, grounded = true, dragging = false;
     let last = performance.now();
     const clock = new THREE.Clock();
 
@@ -114,12 +114,12 @@ export function FpsGame() {
     const onKeyDown = (e: KeyboardEvent) => { keys.add(e.code); if (e.code === "Space" && grounded) { verticalVelocity = 5.7; grounded = false; } };
     const onKeyUp = (e: KeyboardEvent) => keys.delete(e.code);
     const onMouseMove = (e: MouseEvent) => {
-      if (document.pointerLockElement !== renderer.domElement) return;
+      if (!dragging && document.pointerLockElement !== renderer.domElement) return;
       yaw -= e.movementX * 0.0022;
       pitch = Math.max(-1.48, Math.min(1.48, pitch - e.movementY * 0.0022));
     };
-    const onLockChange = () => setLocked(document.pointerLockElement === renderer.domElement);
-    const onClick = () => renderer.domElement.requestPointerLock();
+    const onMouseDown = () => { dragging = true; };
+    const onMouseUp = () => { dragging = false; };
     const onResize = () => {
       camera.aspect = mount.clientWidth / mount.clientHeight;
       camera.updateProjectionMatrix();
@@ -128,9 +128,9 @@ export function FpsGame() {
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
     window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
     window.addEventListener("resize", onResize);
-    document.addEventListener("pointerlockchange", onLockChange);
-    renderer.domElement.addEventListener("click", onClick);
+    renderer.domElement.addEventListener("mousedown", onMouseDown);
 
     let frame = 0;
     const animate = () => {
@@ -170,8 +170,9 @@ export function FpsGame() {
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
       window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onMouseUp);
       window.removeEventListener("resize", onResize);
-      document.removeEventListener("pointerlockchange", onLockChange);
+      renderer.domElement.removeEventListener("mousedown", onMouseDown);
       renderer.dispose();
       mount.removeChild(renderer.domElement);
     };
@@ -189,11 +190,11 @@ export function FpsGame() {
       <div className="crosshair"><span /><span /></div>
       <div className="hud-left"><small>VITALS</small><strong>100</strong><div className="health"><i /></div></div>
       <div className="hud-right"><small>CARBINE</small><strong>30 <em>/ 120</em></strong></div>
-      <div className="controls"><kbd>WASD</kbd> MOVE <kbd>SHIFT</kbd> SPRINT <kbd>SPACE</kbd> JUMP <kbd>ESC</kbd> RELEASE</div>
-      {!locked && (
-        <button className="start" onClick={() => mountRef.current?.querySelector("canvas")?.requestPointerLock()}>
+      <div className="controls"><kbd>WASD</kbd> MOVE <kbd>SHIFT</kbd> SPRINT <kbd>SPACE</kbd> JUMP <kbd>DRAG</kbd> LOOK</div>
+      {!playing && (
+        <button className="start" onClick={() => setPlaying(true)}>
           <span>ENTER TRAINING YARD</span>
-          <small>CLICK TO CAPTURE MOUSE</small>
+          <small>HOLD CLICK + DRAG TO LOOK</small>
         </button>
       )}
     </main>
