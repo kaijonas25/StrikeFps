@@ -318,7 +318,7 @@ export function FpsGame() {
     scene.add(trajectory);
 
     const keys = new Set<string>();
-    let yaw = 0, pitch = 0, verticalVelocity = 0, grounded = true;
+    let yaw = 0, pitch = 0, cameraYaw = 0, cameraPitch = 0.2, verticalVelocity = 0, grounded = true;
     const primaryStats = WEAPON_STATS[primary];
     const secondaryIsMelee = secondary === "COMBAT KNIFE";
     const secondaryStats = WEAPON_STATS[secondary] ?? { damage: 100, fireRate: 100, capacity: 1, reload: 0.6, range: 5, mobility: 100, spread: 0 };
@@ -330,7 +330,7 @@ export function FpsGame() {
     let currentFireMode: FireMode = "AUTO", triggerHeld = false, lastShot = 0, currentSlot = 1, movementSpread = 1;
     let playerHealth = 100, nextPadTick = 0, healEnd = 0;
     const playerPosition = new THREE.Vector3(0, PLAYER_HEIGHT, 15);
-    let isThirdPerson = false;
+    let isThirdPerson = false, orbiting = false;
     respawnRef.current = () => {
       playerPosition.set(0, PLAYER_HEIGHT, 15); camera.position.copy(playerPosition);
       yaw = 0; pitch = 0; verticalVelocity = 0; playerHealth = 100;
@@ -348,6 +348,8 @@ export function FpsGame() {
       keys.add(e.code);
       if (e.code === "Tab" && !e.repeat) {
         e.preventDefault(); isThirdPerson = !isThirdPerson; setThirdPerson(isThirdPerson);
+        if (isThirdPerson) { cameraYaw = yaw; cameraPitch = 0.2; }
+        else { yaw = cameraYaw; pitch = 0; }
         localPlayer.visible = isThirdPerson;
       }
       if (e.code === "Space" && grounded) { verticalVelocity = 5.7; grounded = false; }
@@ -382,6 +384,12 @@ export function FpsGame() {
     const onKeyUp = (e: KeyboardEvent) => keys.delete(e.code);
     const onMouseMove = (e: MouseEvent) => {
       if (document.pointerLockElement !== renderer.domElement) return;
+      if (isThirdPerson) {
+        if (!orbiting) return;
+        cameraYaw -= e.movementX * 0.0022;
+        cameraPitch = Math.max(-0.28, Math.min(0.72, cameraPitch - e.movementY * 0.0022));
+        return;
+      }
       yaw -= e.movementX * 0.0022;
       pitch = Math.max(-1.48, Math.min(1.48, pitch - e.movementY * 0.0022));
     };
@@ -495,7 +503,7 @@ export function FpsGame() {
     };
     const onMouseDown = (e: MouseEvent) => {
       if (document.pointerLockElement !== renderer.domElement) return;
-      if (e.button === 2) { aiming = true; return; }
+      if (e.button === 2) { if (isThirdPerson) orbiting = true; else aiming = true; return; }
       if (e.button !== 0 || sprinting) return;
       if (currentSlot === 3) {
         if (medicalCharges > 0 && playerHealth < 100 && !healEnd) {
@@ -518,13 +526,13 @@ export function FpsGame() {
         triggerHeld = false;
         if (throwableAiming) { throwableAiming = false; trajectory.visible = false; throwUtility(); }
       }
-      if (e.button === 2) aiming = false;
+      if (e.button === 2) { aiming = false; orbiting = false; }
     };
     const onContextMenu = (e: MouseEvent) => e.preventDefault();
     const onLockChange = () => {
       const isLocked = document.pointerLockElement === renderer.domElement;
       setLocked(isLocked);
-      if (!isLocked) { aiming = false; triggerHeld = false; throwableAiming = false; trajectory.visible = false; keys.clear(); }
+      if (!isLocked) { aiming = false; orbiting = false; triggerHeld = false; throwableAiming = false; trajectory.visible = false; keys.clear(); }
     };
     const onResize = () => {
       camera.aspect = mount.clientWidth / mount.clientHeight;
@@ -557,11 +565,13 @@ export function FpsGame() {
       sprinting = (keys.has("ShiftLeft") || keys.has("ShiftRight")) && input.y > 0 && input.lengthSq() > 0;
       if (sprinting) aiming = false;
       const speed = sprinting ? 8.2 : aiming ? 3.8 : 5.2;
-      const sin = Math.sin(yaw), cos = Math.cos(yaw);
+      const movementYaw = isThirdPerson ? cameraYaw : yaw;
+      const sin = Math.sin(movementYaw), cos = Math.cos(movementYaw);
       const dx = (input.x * cos - input.y * sin) * speed * dt;
       const dz = (-input.x * sin - input.y * cos) * speed * dt;
       if (!collides(playerPosition.x + dx, playerPosition.z)) playerPosition.x += dx;
       if (!collides(playerPosition.x, playerPosition.z + dz)) playerPosition.z += dz;
+      if (isThirdPerson && input.lengthSq() > 0) yaw = Math.atan2(-dx, -dz);
 
       if (now >= nextPadTick) {
         nextPadTick = now + 250;
@@ -705,11 +715,14 @@ export function FpsGame() {
       camera.fov = THREE.MathUtils.lerp(camera.fov, aiming ? 58 : sprinting ? 84 : 78, Math.min(1, dt * 10));
       camera.updateProjectionMatrix();
       if (isThirdPerson) {
+        const orbitDistance = 4.2;
+        const horizontalDistance = Math.cos(cameraPitch) * orbitDistance;
         camera.position.set(
-          playerPosition.x + Math.sin(yaw) * 4.2,
-          playerPosition.y + 1.15,
-          playerPosition.z + Math.cos(yaw) * 4.2
+          playerPosition.x + Math.sin(cameraYaw) * horizontalDistance,
+          playerPosition.y + 0.7 + Math.sin(cameraPitch) * orbitDistance,
+          playerPosition.z + Math.cos(cameraYaw) * horizontalDistance
         );
+        camera.lookAt(playerPosition.x, playerPosition.y + 0.35, playerPosition.z);
       } else camera.position.copy(playerPosition);
       renderer.render(scene, camera);
     };
@@ -757,7 +770,7 @@ export function FpsGame() {
       <div className={`flash-effect${flashed ? " active" : ""}`} />
       <div className={`heal-effect${healingEffect ? " active" : ""}`} />
       <div className="test-legend"><span className="damage-dot" /> DAMAGE PAD <span className="kill-dot" /> KILL PAD <span className="heal-dot" /> HEAL PAD</div>
-      <div className="controls"><kbd>WASD</kbd> MOVE <kbd>SHIFT</kbd> SPRINT <kbd>RMB</kbd> AIM <kbd>LMB</kbd> FIRE <kbd>TAB</kbd> {thirdPerson ? "1ST PERSON" : "3RD PERSON"}</div>
+      <div className="controls"><kbd>WASD</kbd> MOVE <kbd>SHIFT</kbd> SPRINT <kbd>RMB</kbd> {thirdPerson ? "ORBIT CAMERA" : "AIM"} <kbd>LMB</kbd> FIRE <kbd>TAB</kbd> {thirdPerson ? "1ST PERSON" : "3RD PERSON"}</div>
       {dead && <div className="death-screen">
         <div className="death-code">KIA</div><h2>OPERATOR DOWN</h2><p>TEST CONDITION: FATAL DAMAGE</p>
         <button onClick={() => {
