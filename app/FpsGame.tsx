@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 
 type Box = { minX: number; maxX: number; minZ: number; maxZ: number; height: number };
+type FireMode = "SEMI" | "BURST" | "AUTO";
 
 const PLAYER_HEIGHT = 1.7;
 const PLAYER_RADIUS = 0.38;
@@ -11,7 +12,9 @@ const PLAYER_RADIUS = 0.38;
 export function FpsGame() {
   const mountRef = useRef<HTMLDivElement>(null);
   const [locked, setLocked] = useState(false);
+  const [started, setStarted] = useState(false);
   const [ammo, setAmmo] = useState(30);
+  const [fireMode, setFireMode] = useState<FireMode>("AUTO");
 
   useEffect(() => {
     const mount = mountRef.current;
@@ -107,7 +110,8 @@ export function FpsGame() {
 
     const keys = new Set<string>();
     let yaw = 0, pitch = 0, verticalVelocity = 0, grounded = true;
-    let ammoCount = 30, recoil = 0, muzzleTimer = 0;
+    let ammoCount = 30, recoil = 0, muzzleTimer = 0, aiming = false, sprinting = false;
+    let currentFireMode: FireMode = "AUTO", triggerHeld = false, lastShot = 0;
     let last = performance.now();
     const clock = new THREE.Clock();
 
@@ -120,6 +124,11 @@ export function FpsGame() {
       keys.add(e.code);
       if (e.code === "Space" && grounded) { verticalVelocity = 5.7; grounded = false; }
       if (e.code === "KeyR") { ammoCount = 30; setAmmo(30); }
+      if (e.code === "KeyB" && !e.repeat) {
+        const modes: FireMode[] = ["SEMI", "BURST", "AUTO"];
+        currentFireMode = modes[(modes.indexOf(currentFireMode) + 1) % modes.length];
+        setFireMode(currentFireMode);
+      }
     };
     const onKeyUp = (e: KeyboardEvent) => keys.delete(e.code);
     const onMouseMove = (e: MouseEvent) => {
@@ -130,8 +139,8 @@ export function FpsGame() {
     const raycaster = new THREE.Raycaster();
     const impactGeometry = new THREE.SphereGeometry(0.045, 6, 6);
     const impactMaterial = new THREE.MeshBasicMaterial({ color: 0xff9a55 });
-    const shoot = (e: MouseEvent) => {
-      if (e.button !== 0 || document.pointerLockElement !== renderer.domElement || ammoCount <= 0) return;
+    const fireRound = () => {
+      if (document.pointerLockElement !== renderer.domElement || ammoCount <= 0 || sprinting) return;
       ammoCount -= 1;
       setAmmo(ammoCount);
       recoil = Math.min(recoil + 0.055, 0.11);
@@ -146,7 +155,27 @@ export function FpsGame() {
         window.setTimeout(() => scene.remove(impact), 1800);
       }
     };
-    const onLockChange = () => setLocked(document.pointerLockElement === renderer.domElement);
+    const onMouseDown = (e: MouseEvent) => {
+      if (document.pointerLockElement !== renderer.domElement) return;
+      if (e.button === 2) { aiming = true; return; }
+      if (e.button !== 0 || sprinting) return;
+      triggerHeld = true;
+      if (currentFireMode === "SEMI") fireRound();
+      if (currentFireMode === "BURST") [0, 85, 170].forEach((delay) => window.setTimeout(() => {
+        if (!sprinting) fireRound();
+      }, delay));
+      if (currentFireMode === "AUTO") { fireRound(); lastShot = performance.now(); }
+    };
+    const onMouseUp = (e: MouseEvent) => {
+      if (e.button === 0) triggerHeld = false;
+      if (e.button === 2) aiming = false;
+    };
+    const onContextMenu = (e: MouseEvent) => e.preventDefault();
+    const onLockChange = () => {
+      const isLocked = document.pointerLockElement === renderer.domElement;
+      setLocked(isLocked);
+      if (!isLocked) { aiming = false; triggerHeld = false; keys.clear(); }
+    };
     const onResize = () => {
       camera.aspect = mount.clientWidth / mount.clientHeight;
       camera.updateProjectionMatrix();
@@ -155,9 +184,11 @@ export function FpsGame() {
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
     window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
     window.addEventListener("resize", onResize);
     document.addEventListener("pointerlockchange", onLockChange);
-    renderer.domElement.addEventListener("mousedown", shoot);
+    renderer.domElement.addEventListener("mousedown", onMouseDown);
+    renderer.domElement.addEventListener("contextmenu", onContextMenu);
 
     let frame = 0;
     const animate = () => {
@@ -173,7 +204,9 @@ export function FpsGame() {
         Number(keys.has("KeyW")) - Number(keys.has("KeyS"))
       );
       if (input.lengthSq() > 0) input.normalize();
-      const speed = keys.has("ShiftLeft") || keys.has("ShiftRight") ? 8.2 : 5.2;
+      sprinting = (keys.has("ShiftLeft") || keys.has("ShiftRight")) && input.y > 0 && input.lengthSq() > 0;
+      if (sprinting) aiming = false;
+      const speed = sprinting ? 8.2 : aiming ? 3.8 : 5.2;
       const sin = Math.sin(yaw), cos = Math.cos(yaw);
       const dx = (input.x * cos - input.y * sin) * speed * dt;
       const dz = (-input.x * sin - input.y * cos) * speed * dt;
@@ -186,13 +219,24 @@ export function FpsGame() {
 
       const moving = input.lengthSq() > 0 && grounded;
       const t = clock.getElapsedTime();
+      if (triggerHeld && currentFireMode === "AUTO" && !sprinting && now - lastShot >= 95) {
+        fireRound();
+        lastShot = now;
+      }
       recoil = THREE.MathUtils.lerp(recoil, 0, Math.min(1, dt * 14));
       muzzleTimer -= dt;
       if (muzzleTimer <= 0) muzzle.intensity = 0;
-      gun.position.z = recoil;
-      gun.rotation.x = recoil * 0.7;
-      gun.position.y = (moving ? Math.sin(t * (speed > 6 ? 13 : 9)) * 0.012 : Math.sin(t * 2) * 0.003) - recoil * 0.3;
-      gun.position.x = moving ? Math.cos(t * 6.5) * 0.008 : 0;
+      const bobY = moving ? Math.sin(t * (sprinting ? 13 : 9)) * 0.012 : Math.sin(t * 2) * 0.003;
+      const targetX = sprinting ? -0.13 : aiming ? -0.34 : (moving ? Math.cos(t * 6.5) * 0.008 : 0);
+      const targetY = sprinting ? -0.2 : aiming ? 0.15 : bobY - recoil * 0.3;
+      const targetZ = sprinting ? 0.16 : aiming ? 0.2 + recoil : recoil;
+      gun.position.x = THREE.MathUtils.lerp(gun.position.x, targetX, Math.min(1, dt * 12));
+      gun.position.y = THREE.MathUtils.lerp(gun.position.y, targetY, Math.min(1, dt * 12));
+      gun.position.z = THREE.MathUtils.lerp(gun.position.z, targetZ, Math.min(1, dt * 12));
+      gun.rotation.x = THREE.MathUtils.lerp(gun.rotation.x, sprinting ? -0.22 : recoil * 0.7, Math.min(1, dt * 12));
+      gun.rotation.z = THREE.MathUtils.lerp(gun.rotation.z, sprinting ? 0.72 : 0, Math.min(1, dt * 12));
+      camera.fov = THREE.MathUtils.lerp(camera.fov, aiming ? 58 : sprinting ? 84 : 78, Math.min(1, dt * 10));
+      camera.updateProjectionMatrix();
       renderer.render(scene, camera);
     };
     animate();
@@ -202,9 +246,11 @@ export function FpsGame() {
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
       window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onMouseUp);
       window.removeEventListener("resize", onResize);
       document.removeEventListener("pointerlockchange", onLockChange);
-      renderer.domElement.removeEventListener("mousedown", shoot);
+      renderer.domElement.removeEventListener("mousedown", onMouseDown);
+      renderer.domElement.removeEventListener("contextmenu", onContextMenu);
       renderer.dispose();
       mount.removeChild(renderer.domElement);
     };
@@ -221,14 +267,32 @@ export function FpsGame() {
       </header>
       <div className="crosshair"><span /><span /></div>
       <div className="hud-left"><small>VITALS</small><strong>100</strong><div className="health"><i /></div></div>
-      <div className="hud-right"><small>CARBINE</small><strong>{ammo} <em>/ 120</em></strong></div>
-      <div className="controls"><kbd>WASD</kbd> MOVE <kbd>SHIFT</kbd> SPRINT <kbd>SPACE</kbd> JUMP <kbd>LMB</kbd> FIRE <kbd>R</kbd> RELOAD</div>
-      {!locked && (
-        <button className="start" onClick={() => mountRef.current?.querySelector("canvas")?.requestPointerLock()}>
-          <span>ENTER TRAINING YARD</span>
-          <small>CLICK TO LOCK CURSOR</small>
-        </button>
-      )}
+      <div className="hud-right"><small>CARBINE · {fireMode}</small><strong>{ammo} <em>/ 120</em></strong></div>
+      <div className="controls"><kbd>WASD</kbd> MOVE <kbd>SHIFT</kbd> SPRINT <kbd>RMB</kbd> AIM <kbd>LMB</kbd> FIRE <kbd>B</kbd> MODE <kbd>R</kbd> RELOAD</div>
+      {!locked && <div className="menu-screen">
+        <div className="menu-rule" />
+        <section className="menu-card">
+          <div className="menu-kicker">TACTICAL TRAINING SIMULATION</div>
+          <h1><span>STRIKE</span>YARD</h1>
+          <p>{started ? "SIMULATION PAUSED" : "SECTOR 01 · COMBAT READINESS COURSE"}</p>
+          <button className="start" onClick={() => {
+            setStarted(true);
+            mountRef.current?.querySelector("canvas")?.requestPointerLock();
+          }}>
+            <span>{started ? "RESUME OPERATION" : "DEPLOY TO YARD"}</span>
+            <small>CLICK TO LOCK CURSOR</small>
+          </button>
+          <div className="menu-controls">
+            <div><kbd>WASD</kbd><span>MOVE</span></div>
+            <div><kbd>SHIFT</kbd><span>SPRINT</span></div>
+            <div><kbd>RMB</kbd><span>AIM</span></div>
+            <div><kbd>LMB</kbd><span>FIRE</span></div>
+            <div><kbd>B</kbd><span>FIRE MODE</span></div>
+            <div><kbd>R</kbd><span>RELOAD</span></div>
+          </div>
+        </section>
+        <footer className="menu-footer">BUILD 0.2 · LIVE FIRE ENABLED <span>PRESS ESC TO PAUSE</span></footer>
+      </div>}
     </main>
   );
 }
