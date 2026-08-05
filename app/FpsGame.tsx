@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 
 type Box = { minX: number; maxX: number; minZ: number; maxZ: number; height: number };
@@ -799,7 +799,7 @@ export function FpsGame() {
         <div className="menu-rule" />
         {!started && menuPage !== "LOADOUT" && <button className="character-preview" onClick={() => setMenuPage("CHARACTER")} aria-label="Customize character">
           <div className="preview-glow" />
-          <CharacterFigure skin={characterSkin} uniform={characterUniform} armor={characterArmor} helmet={characterHelmet} />
+          <OperatorPreview3D skin={characterSkin} uniform={characterUniform} armor={characterArmor} helmet={characterHelmet} />
           <span>{menuPage === "CHARACTER" ? "OPERATOR PREVIEW" : "CLICK OPERATOR TO CUSTOMIZE"}</span>
         </button>}
         <section className="menu-card">
@@ -900,17 +900,59 @@ export function FpsGame() {
   );
 }
 
-function CharacterFigure({ skin, uniform, armor, helmet }: { skin: string; uniform: string; armor: string; helmet: string }) {
-  const style = { "--skin": skin, "--uniform": uniform, "--armor": armor } as CSSProperties;
-  return <div className={`character-figure helmet-${helmet.toLowerCase()}`} style={style}>
-    <i className="figure-head" /><i className="figure-helmet" /><i className="figure-visor" />
-    <i className="figure-neck" /><i className="figure-torso" /><i className="figure-vest" />
-    <i className="figure-pack" /><i className="figure-belt" />
-    <i className="figure-arm left" /><i className="figure-arm right" />
-    <i className="figure-glove left" /><i className="figure-glove right" />
-    <i className="figure-leg left" /><i className="figure-leg right" />
-    <i className="figure-boot left" /><i className="figure-boot right" />
-  </div>;
+function OperatorPreview3D({ skin, uniform, armor, helmet }: { skin: string; uniform: string; armor: string; helmet: string }) {
+  const previewRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const mount = previewRef.current;
+    if (!mount) return;
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(32, mount.clientWidth / mount.clientHeight, 0.1, 30);
+    camera.position.set(0, 1.15, 6.8); camera.lookAt(0, 1.05, 0);
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 2)); renderer.setSize(mount.clientWidth, mount.clientHeight);
+    renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.shadowMap.enabled = true;
+    mount.appendChild(renderer.domElement);
+    scene.add(new THREE.HemisphereLight(0xbfe4ef, 0x101719, 2.2));
+    const key = new THREE.DirectionalLight(0xffc09b, 4.5); key.position.set(-3, 5, 4); key.castShadow = true; scene.add(key);
+    const rim = new THREE.PointLight(0x54cce8, 14, 8); rim.position.set(3, 2.5, -2); scene.add(rim);
+    const operator = new THREE.Group(); operator.position.y = -1.2; scene.add(operator);
+    const mat = (color: string | number, roughness = .72, metalness = .08) => new THREE.MeshStandardMaterial({ color, roughness, metalness });
+    const skinMat = mat(skin, .62), uniformMat = mat(uniform, .9), armorMat = mat(armor, .55, .28), darkMat = mat(0x111719, .65, .35);
+    const add = (geometry: THREE.BufferGeometry, material: THREE.Material, x: number, y: number, z: number) => {
+      const mesh = new THREE.Mesh(geometry, material); mesh.position.set(x, y, z); mesh.castShadow = true; operator.add(mesh); return mesh;
+    };
+    add(new THREE.BoxGeometry(.72, .88, .38), uniformMat, 0, 1.65, 0);
+    add(new THREE.BoxGeometry(.78, .62, .22), armorMat, 0, 1.73, .24);
+    add(new THREE.BoxGeometry(.62, .62, .22), armorMat, 0, 1.7, -.27);
+    [-.23, 0, .23].forEach((x) => add(new THREE.BoxGeometry(.18, .18, .14), armorMat, x, 1.38, .38));
+    add(new THREE.BoxGeometry(.7, .12, .4), darkMat, 0, 1.16, 0);
+    add(new THREE.CylinderGeometry(.15, .17, .18, 12), skinMat, 0, 2.17, 0);
+    add(new THREE.SphereGeometry(.28, 20, 14), skinMat, 0, 2.46, 0);
+    const helmetSize = helmet === "LIGHT" ? .29 : helmet === "HEAVY" ? .36 : .33;
+    const helmetMesh = add(new THREE.SphereGeometry(helmetSize, 20, 10, 0, Math.PI * 2, 0, Math.PI * .55), armorMat, 0, 2.57, 0);
+    if (helmet === "HEAVY") helmetMesh.scale.y = 1.08;
+    if (helmet !== "LIGHT") add(new THREE.BoxGeometry(helmet === "HEAVY" ? .48 : .4, .105, .055), mat(0x5ca8b5, .18, .65), 0, 2.48, .275);
+    [-1, 1].forEach((side) => {
+      add(new THREE.SphereGeometry(.19, 12, 9), armorMat, side * .49, 1.9, 0);
+      const upper = add(new THREE.CylinderGeometry(.12, .105, .5, 10), uniformMat, side * .53, 1.62, 0); upper.rotation.z = side * -.07;
+      add(new THREE.CylinderGeometry(.105, .085, .44, 10), uniformMat, side * .55, 1.18, .02);
+      add(new THREE.BoxGeometry(.2, .2, .22), armorMat, side * .56, .91, .03);
+      add(new THREE.CylinderGeometry(.15, .13, .54, 10), uniformMat, side * .22, .86, 0);
+      add(new THREE.BoxGeometry(.25, .2, .16), armorMat, side * .22, .58, .12);
+      add(new THREE.CylinderGeometry(.13, .105, .52, 10), uniformMat, side * .22, .3, 0);
+      add(new THREE.BoxGeometry(.27, .17, .43), darkMat, side * .22, .02, .08);
+    });
+    const floor = new THREE.Mesh(new THREE.CircleGeometry(1.45, 40), new THREE.MeshStandardMaterial({ color: 0x17252a, roughness: .8, transparent: true, opacity: .82 }));
+    floor.rotation.x = -Math.PI / 2; floor.position.y = -1.19; floor.receiveShadow = true; scene.add(floor);
+    let frame = 0;
+    const clock = new THREE.Clock();
+    const animate = () => { frame = requestAnimationFrame(animate); const t = clock.getElapsedTime(); operator.rotation.y = Math.sin(t * .42) * .22; operator.position.y = -1.2 + Math.sin(t * 1.5) * .012; renderer.render(scene, camera); };
+    animate();
+    const resize = () => { if (!mount.clientWidth || !mount.clientHeight) return; camera.aspect = mount.clientWidth / mount.clientHeight; camera.updateProjectionMatrix(); renderer.setSize(mount.clientWidth, mount.clientHeight); };
+    window.addEventListener("resize", resize);
+    return () => { cancelAnimationFrame(frame); window.removeEventListener("resize", resize); renderer.dispose(); scene.traverse((object) => { if (object instanceof THREE.Mesh) { object.geometry.dispose(); if (Array.isArray(object.material)) object.material.forEach((m) => m.dispose()); else object.material.dispose(); } }); if (renderer.domElement.parentElement === mount) mount.removeChild(renderer.domElement); };
+  }, [skin, uniform, armor, helmet]);
+  return <div ref={previewRef} className="operator-preview-3d" />;
 }
 
 function CharacterOption({ label, value, options, onSelect }: { label: string; value: string; options: [string, string][]; onSelect: (value: string) => void }) {

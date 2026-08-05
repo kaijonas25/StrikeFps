@@ -77,6 +77,9 @@ kbd:first-child { margin-left: 0; }
 .character-preview > span { position:absolute; left:50%; bottom:1.5%; transform:translateX(-50%); width:100%; font-size:8px; letter-spacing:.2em; transition:.2s ease; }
 .character-preview:hover > span { color:#ff805b; letter-spacing:.24em; }
 .preview-glow { position:absolute; left:50%; bottom:3%; width:82%; height:70%; transform:translateX(-50%); border-radius:50%; background:radial-gradient(ellipse,rgba(93,145,154,.25),transparent 68%); filter:blur(12px); }
+.operator-preview-3d { position:absolute; inset:0 0 4%; pointer-events:none; transition:transform .25s ease,filter .25s ease; }
+.operator-preview-3d canvas { display:block; width:100%; height:100%; }
+.character-preview:hover .operator-preview-3d { transform:scale(1.025); filter:drop-shadow(0 0 22px rgba(81,190,209,.12)); }
 .character-figure { --skin:#a9795e; --uniform:#303a3b; --armor:#20292b; position:absolute; left:50%; bottom:6%; width:240px; height:650px; transform:translateX(-50%); filter:drop-shadow(0 22px 20px rgba(0,0,0,.65)); transition:transform .25s ease; }
 .character-preview:hover .character-figure { transform:translateX(-50%) scale(1.025); }
 .character-figure i { position:absolute; display:block; }
