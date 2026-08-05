@@ -22,6 +22,7 @@ export function FpsGame() {
   const [secondary, setSecondary] = useState("P9 SIDEARM");
   const [medical, setMedical] = useState("FIELD MEDKIT");
   const [utility, setUtility] = useState("FRAG GRENADE");
+  const [activeSlot, setActiveSlot] = useState(1);
 
   useEffect(() => {
     const mount = mountRef.current;
@@ -118,7 +119,7 @@ export function FpsGame() {
     const keys = new Set<string>();
     let yaw = 0, pitch = 0, verticalVelocity = 0, grounded = true;
     let ammoCount = 30, recoil = 0, muzzleTimer = 0, aiming = false, sprinting = false;
-    let currentFireMode: FireMode = "AUTO", triggerHeld = false, lastShot = 0;
+    let currentFireMode: FireMode = "AUTO", triggerHeld = false, lastShot = 0, currentSlot = 1;
     let last = performance.now();
     const clock = new THREE.Clock();
 
@@ -136,6 +137,12 @@ export function FpsGame() {
         currentFireMode = modes[(modes.indexOf(currentFireMode) + 1) % modes.length];
         setFireMode(currentFireMode);
       }
+      if (["Digit1", "Digit2", "Digit3", "Digit4"].includes(e.code)) {
+        currentSlot = Number(e.code.slice(-1));
+        setActiveSlot(currentSlot);
+        aiming = false;
+        triggerHeld = false;
+      }
     };
     const onKeyUp = (e: KeyboardEvent) => keys.delete(e.code);
     const onMouseMove = (e: MouseEvent) => {
@@ -147,7 +154,7 @@ export function FpsGame() {
     const impactGeometry = new THREE.SphereGeometry(0.045, 6, 6);
     const impactMaterial = new THREE.MeshBasicMaterial({ color: 0xff9a55 });
     const fireRound = () => {
-      if (document.pointerLockElement !== renderer.domElement || ammoCount <= 0 || sprinting) return;
+      if (document.pointerLockElement !== renderer.domElement || ammoCount <= 0 || sprinting || currentSlot > 2) return;
       ammoCount -= 1;
       setAmmo(ammoCount);
       recoil = Math.min(recoil + 0.055, 0.11);
@@ -155,6 +162,17 @@ export function FpsGame() {
       muzzleTimer = 0.045;
       raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
       const hit = raycaster.intersectObjects(scene.children, false).find((result) => result.object !== camera && result.distance > 1);
+      const tracerStart = new THREE.Vector3();
+      gunBody.getWorldPosition(tracerStart);
+      const tracerEnd = hit?.point.clone() ?? raycaster.ray.at(70, new THREE.Vector3());
+      const tracerMaterial = new THREE.LineBasicMaterial({ color: 0xffb06b, transparent: true, opacity: 0.9 });
+      const tracer = new THREE.Line(new THREE.BufferGeometry().setFromPoints([tracerStart, tracerEnd]), tracerMaterial);
+      scene.add(tracer);
+      window.setTimeout(() => {
+        scene.remove(tracer);
+        tracer.geometry.dispose();
+        tracerMaterial.dispose();
+      }, 65);
       if (hit) {
         const impact = new THREE.Mesh(impactGeometry, impactMaterial);
         impact.position.copy(hit.point).addScaledVector(hit.face?.normal ?? new THREE.Vector3(0, 1, 0), 0.025);
@@ -242,6 +260,7 @@ export function FpsGame() {
       gun.position.z = THREE.MathUtils.lerp(gun.position.z, targetZ, Math.min(1, dt * 12));
       gun.rotation.x = THREE.MathUtils.lerp(gun.rotation.x, sprinting ? -0.22 : recoil * 0.7, Math.min(1, dt * 12));
       gun.rotation.z = THREE.MathUtils.lerp(gun.rotation.z, sprinting ? 0.72 : 0, Math.min(1, dt * 12));
+      gun.visible = currentSlot <= 2;
       camera.fov = THREE.MathUtils.lerp(camera.fov, aiming ? 58 : sprinting ? 84 : 78, Math.min(1, dt * 10));
       camera.updateProjectionMatrix();
       renderer.render(scene, camera);
@@ -263,6 +282,8 @@ export function FpsGame() {
     };
   }, [sessionId]);
 
+  const equippedItems = [primary, secondary, medical, utility];
+
   return (
     <main className={`game-shell${!started ? " game-menu" : ""}`}>
       <div ref={mountRef} className="viewport" aria-label="3D first-person training arena" />
@@ -274,7 +295,14 @@ export function FpsGame() {
       </header>
       <div className="crosshair"><span /><span /></div>
       <div className="hud-left"><small>VITALS</small><strong>100</strong><div className="health"><i /></div></div>
-      <div className="hud-right"><small>{primary} · {fireMode}</small><strong>{ammo} <em>/ 120</em></strong></div>
+      <div className="hud-right"><small>{equippedItems[activeSlot - 1]}{activeSlot <= 2 ? ` · ${fireMode}` : " · READY"}</small><strong>{activeSlot <= 2 ? ammo : "—"} <em>{activeSlot <= 2 ? "/ 120" : ""}</em></strong></div>
+      <div className="quick-slots">
+        {([
+          [1, primary, "PRIMARY"], [2, secondary, "SECONDARY"], [3, medical, "MEDICAL"], [4, utility, "UTILITY"]
+        ] as [number, string, string][]).map(([slot, item, label]) => <div key={slot} className={activeSlot === slot ? "active" : ""}>
+          <kbd>{slot}</kbd><span><small>{label}</small><b>{item}</b></span>
+        </div>)}
+      </div>
       <div className="controls"><kbd>WASD</kbd> MOVE <kbd>SHIFT</kbd> SPRINT <kbd>RMB</kbd> AIM <kbd>LMB</kbd> FIRE <kbd>B</kbd> MODE <kbd>R</kbd> RELOAD</div>
       {!locked && <div className={`menu-screen${!started ? " main-menu-screen" : " pause-screen"}`}>
         <div className="menu-rule" />
@@ -325,6 +353,7 @@ export function FpsGame() {
               setStarted(false);
               setAmmo(30);
               setFireMode("AUTO");
+              setActiveSlot(1);
               setSessionId((current) => current + 1);
             }}>
               <span>LEAVE SERVER</span>
