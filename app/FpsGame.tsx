@@ -301,7 +301,7 @@ export function FpsGame() {
     const worldSecondary = secondaryWeapon.model.clone(true);
     [worldPrimary, worldSecondary].forEach((weapon) => {
       weapon.scale.setScalar(0.72);
-      weapon.position.set(-0.245, 1.55, 0.08);
+      weapon.position.set(-0.055, 1.48, 0.08);
       weapon.rotation.x = -0.04;
       weapon.traverse((object) => { if (object instanceof THREE.Mesh) object.raycast = () => {}; });
       localPlayer.add(weapon);
@@ -614,16 +614,25 @@ export function FpsGame() {
         rig.forEach((limb) => {
           if (limb.kind === "arm") {
             const holdingWeapon = isLocal && currentSlot <= 2;
-            const angle = holdingWeapon ? 0.92 + stride * .08 * limb.side : stride * amplitude * limb.side;
-            const elbowAngle = holdingWeapon ? 1.12 + limb.side * .08 : angle * .55 - (movement === "sprint" ? .3 : .12);
+            const holdingLongGun = holdingWeapon && (currentSlot === 1 || secondary === "DB-2 SAWED-OFF");
+            const isRightArm = limb.side === 1;
+            const angle = holdingWeapon
+              ? isRightArm ? 0.78 + stride * .05 : holdingLongGun ? 1.28 - stride * .04 : 0.96
+              : stride * amplitude * limb.side;
+            const elbowAngle = holdingWeapon
+              ? isRightArm ? 0.62 : holdingLongGun ? 1.34 : 1.08
+              : angle * .55 - (movement === "sprint" ? .3 : .12);
             const shoulderY = 1.62, upperLength = .44, lowerLength = .38;
-            limb.upper.position.set(limb.side * .45, shoulderY - Math.cos(angle) * upperLength / 2, -Math.sin(angle) * upperLength / 2);
+            const upperX = holdingWeapon ? isRightArm ? .39 : -.34 : limb.side * .45;
+            const lowerX = holdingWeapon ? isRightArm ? .31 : holdingLongGun ? -.08 : -.24 : limb.side * .47;
+            const handX = holdingWeapon ? isRightArm ? .28 : holdingLongGun ? .1 : -.16 : limb.side * .48;
+            limb.upper.position.set(upperX, shoulderY - Math.cos(angle) * upperLength / 2, -Math.sin(angle) * upperLength / 2);
             limb.upper.rotation.x = angle;
             const elbowY = shoulderY - Math.cos(angle) * upperLength;
             const elbowZ = -Math.sin(angle) * upperLength;
-            limb.lower.position.set(limb.side * .47, elbowY - Math.cos(elbowAngle) * lowerLength / 2, elbowZ - Math.sin(elbowAngle) * lowerLength / 2);
+            limb.lower.position.set(lowerX, elbowY - Math.cos(elbowAngle) * lowerLength / 2, elbowZ - Math.sin(elbowAngle) * lowerLength / 2);
             limb.lower.rotation.x = elbowAngle;
-            limb.end.position.set(limb.side * .48, elbowY - Math.cos(elbowAngle) * lowerLength, elbowZ - Math.sin(elbowAngle) * lowerLength);
+            limb.end.position.set(handX, elbowY - Math.cos(elbowAngle) * lowerLength, elbowZ - Math.sin(elbowAngle) * lowerLength);
           } else {
             const phase = stride * -limb.side;
             const thighAngle = phase * amplitude;
