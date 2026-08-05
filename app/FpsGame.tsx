@@ -144,16 +144,41 @@ export function FpsGame() {
       const dummy = new THREE.Group(); dummy.position.set(x, 0, z);
       dummy.userData.health = 150; dummy.userData.maxHealth = 150;
       const dummyMat = material(color, 0.55, 0.15);
-      const addLimb = (geometry: THREE.BufferGeometry, px: number, py: number, pz: number, multiplier = 1) => {
-        const mesh = new THREE.Mesh(geometry, dummyMat); mesh.position.set(px, py, pz); mesh.castShadow = true;
+      const armorMat = material(0x20292b, 0.7, 0.28);
+      const fabricMat = material(0x303a3b, 0.92, 0.02);
+      const visorMat = new THREE.MeshStandardMaterial({ color: 0x76b9c7, emissive: 0x173b43, emissiveIntensity: 0.8, metalness: 0.65, roughness: 0.18 });
+      const addLimb = (geometry: THREE.BufferGeometry, px: number, py: number, pz: number, multiplier = 1, partMaterial: THREE.Material = dummyMat) => {
+        const mesh = new THREE.Mesh(geometry, partMaterial); mesh.position.set(px, py, pz); mesh.castShadow = true;
         mesh.userData.dummy = dummy; mesh.userData.damageMultiplier = multiplier; dummy.add(mesh); return mesh;
       };
-      addLimb(new THREE.BoxGeometry(0.62, 0.82, 0.3), 0, 1.35, 0);
-      addLimb(new THREE.SphereGeometry(0.24, 12, 9), 0, 2.02, 0, 1.75);
-      addLimb(new THREE.BoxGeometry(0.18, 0.78, 0.2), -0.43, 1.38, 0);
-      addLimb(new THREE.BoxGeometry(0.18, 0.78, 0.2), 0.43, 1.38, 0);
-      addLimb(new THREE.BoxGeometry(0.22, 0.9, 0.24), -0.2, 0.48, 0);
-      addLimb(new THREE.BoxGeometry(0.22, 0.9, 0.24), 0.2, 0.48, 0);
+      // Torso, plate carrier, pouches, belt and backpack.
+      addLimb(new THREE.BoxGeometry(0.6, 0.78, 0.3), 0, 1.38, 0, 1, fabricMat);
+      addLimb(new THREE.BoxGeometry(0.66, 0.56, 0.16), 0, 1.48, -0.19, 1, armorMat);
+      addLimb(new THREE.BoxGeometry(0.17, 0.14, 0.12), -0.2, 1.18, -0.25, 1, armorMat);
+      addLimb(new THREE.BoxGeometry(0.17, 0.14, 0.12), 0, 1.18, -0.25, 1, armorMat);
+      addLimb(new THREE.BoxGeometry(0.17, 0.14, 0.12), 0.2, 1.18, -0.25, 1, armorMat);
+      addLimb(new THREE.BoxGeometry(0.56, 0.1, 0.34), 0, 0.98, 0, 1, armorMat);
+      addLimb(new THREE.BoxGeometry(0.5, 0.58, 0.2), 0, 1.48, 0.24, 1, armorMat);
+      // Helmet, face, visor, headset and neck.
+      addLimb(new THREE.CylinderGeometry(0.13, 0.15, 0.16, 10), 0, 1.77, 0, 1.5, fabricMat);
+      addLimb(new THREE.SphereGeometry(0.235, 16, 11), 0, 2.03, 0, 1.75, dummyMat);
+      addLimb(new THREE.SphereGeometry(0.265, 16, 8, 0, Math.PI * 2, 0, Math.PI * 0.54), 0, 2.12, 0.01, 1.75, armorMat);
+      addLimb(new THREE.BoxGeometry(0.34, 0.095, 0.04), 0, 2.04, -0.222, 1.75, visorMat);
+      addLimb(new THREE.BoxGeometry(0.055, 0.18, 0.08), -0.255, 2.04, 0, 1.75, armorMat);
+      // Segmented arms, shoulder armor and gloves.
+      [-1, 1].forEach((side) => {
+        addLimb(new THREE.SphereGeometry(0.17, 10, 8), side * 0.43, 1.65, 0, 1, armorMat);
+        const upper = addLimb(new THREE.CylinderGeometry(0.105, 0.095, 0.44, 9), side * 0.45, 1.42, 0, 1, fabricMat); upper.rotation.z = side * -0.08;
+        addLimb(new THREE.CylinderGeometry(0.09, 0.075, 0.38, 9), side * 0.47, 1.04, -0.02, 1, fabricMat);
+        addLimb(new THREE.BoxGeometry(0.17, 0.16, 0.18), side * 0.48, 0.8, -0.02, 1, armorMat);
+      });
+      // Thighs, knee pads, lower legs and boots.
+      [-1, 1].forEach((side) => {
+        addLimb(new THREE.CylinderGeometry(0.13, 0.115, 0.46, 9), side * 0.19, 0.74, 0, 1, fabricMat);
+        addLimb(new THREE.BoxGeometry(0.23, 0.18, 0.14), side * 0.19, 0.47, -0.1, 1, armorMat);
+        addLimb(new THREE.CylinderGeometry(0.11, 0.09, 0.4, 9), side * 0.19, 0.25, 0, 1, fabricMat);
+        addLimb(new THREE.BoxGeometry(0.24, 0.14, 0.38), side * 0.19, 0.08, -0.08, 1, armorMat);
+      });
       const barBack = new THREE.Mesh(new THREE.PlaneGeometry(1.05, 0.09), new THREE.MeshBasicMaterial({ color: 0x151a1b, side: THREE.DoubleSide }));
       barBack.position.set(0, 2.48, 0); barBack.raycast = () => {}; dummy.add(barBack);
       const bar = new THREE.Mesh(new THREE.PlaneGeometry(1, 0.055), new THREE.MeshBasicMaterial({ color: 0x63e690, side: THREE.DoubleSide }));
