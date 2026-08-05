@@ -7,6 +7,14 @@ type Box = { minX: number; maxX: number; minZ: number; maxZ: number; height: num
 type FireMode = "SEMI" | "BURST" | "AUTO";
 type MenuPage = "HOME" | "LOADOUT";
 
+const WEAPON_STATS: Record<string, { damage: number; fireRate: number; capacity: number; reload: number; range: number; mobility: number }> = {
+  "VXR-4 CARBINE": { damage: 32, fireRate: 72, capacity: 30, reload: 2.35, range: 74, mobility: 68 },
+  "M12 SMG": { damage: 24, fireRate: 91, capacity: 36, reload: 1.85, range: 48, mobility: 90 },
+  "BR-7 RIFLE": { damage: 58, fireRate: 43, capacity: 20, reload: 2.8, range: 94, mobility: 51 },
+  "P9 SIDEARM": { damage: 28, fireRate: 58, capacity: 15, reload: 1.45, range: 45, mobility: 94 },
+  "R45 REVOLVER": { damage: 72, fireRate: 29, capacity: 6, reload: 3.1, range: 61, mobility: 76 },
+};
+
 const PLAYER_HEIGHT = 1.7;
 const PLAYER_RADIUS = 0.38;
 
@@ -23,6 +31,8 @@ export function FpsGame() {
   const [medical, setMedical] = useState("FIELD MEDKIT");
   const [utility, setUtility] = useState("FRAG GRENADE");
   const [activeSlot, setActiveSlot] = useState(1);
+  const [reloading, setReloading] = useState(false);
+  const [reloadDuration, setReloadDuration] = useState(0);
 
   useEffect(() => {
     const mount = mountRef.current;
@@ -118,7 +128,11 @@ export function FpsGame() {
 
     const keys = new Set<string>();
     let yaw = 0, pitch = 0, verticalVelocity = 0, grounded = true;
-    let ammoCount = 30, recoil = 0, muzzleTimer = 0, aiming = false, sprinting = false;
+    const primaryStats = WEAPON_STATS[primary];
+    const secondaryStats = WEAPON_STATS[secondary] ?? { damage: 100, fireRate: 100, capacity: 1, reload: 0.6, range: 5, mobility: 100 };
+    const ammoCounts = [primaryStats.capacity, secondaryStats.capacity];
+    setAmmo(primaryStats.capacity);
+    let ammoCount = ammoCounts[0], recoil = 0, muzzleTimer = 0, aiming = false, sprinting = false, reloadEnd = 0;
     let currentFireMode: FireMode = "AUTO", triggerHeld = false, lastShot = 0, currentSlot = 1;
     let last = performance.now();
     const clock = new THREE.Clock();
@@ -131,7 +145,16 @@ export function FpsGame() {
     const onKeyDown = (e: KeyboardEvent) => {
       keys.add(e.code);
       if (e.code === "Space" && grounded) { verticalVelocity = 5.7; grounded = false; }
-      if (e.code === "KeyR") { ammoCount = 30; setAmmo(30); }
+      if (e.code === "KeyR" && currentSlot <= 2 && !reloadEnd) {
+        const stats = currentSlot === 1 ? primaryStats : secondaryStats;
+        if (ammoCounts[currentSlot - 1] < stats.capacity) {
+          reloadEnd = performance.now() + stats.reload * 1000;
+          triggerHeld = false;
+          aiming = false;
+          setReloadDuration(stats.reload);
+          setReloading(true);
+        }
+      }
       if (e.code === "KeyB" && !e.repeat) {
         const modes: FireMode[] = ["SEMI", "BURST", "AUTO"];
         currentFireMode = modes[(modes.indexOf(currentFireMode) + 1) % modes.length];
@@ -140,8 +163,11 @@ export function FpsGame() {
       if (["Digit1", "Digit2", "Digit3", "Digit4"].includes(e.code)) {
         currentSlot = Number(e.code.slice(-1));
         setActiveSlot(currentSlot);
+        if (currentSlot <= 2) { ammoCount = ammoCounts[currentSlot - 1]; setAmmo(ammoCount); }
         aiming = false;
         triggerHeld = false;
+        reloadEnd = 0;
+        setReloading(false);
       }
     };
     const onKeyUp = (e: KeyboardEvent) => keys.delete(e.code);
@@ -154,8 +180,9 @@ export function FpsGame() {
     const impactGeometry = new THREE.SphereGeometry(0.045, 6, 6);
     const impactMaterial = new THREE.MeshBasicMaterial({ color: 0xff9a55 });
     const fireRound = () => {
-      if (document.pointerLockElement !== renderer.domElement || ammoCount <= 0 || sprinting || currentSlot > 2) return;
+      if (document.pointerLockElement !== renderer.domElement || ammoCount <= 0 || sprinting || currentSlot > 2 || reloadEnd > 0) return;
       ammoCount -= 1;
+      ammoCounts[currentSlot - 1] = ammoCount;
       setAmmo(ammoCount);
       recoil = Math.min(recoil + 0.055, 0.11);
       muzzle.intensity = 35;
@@ -244,7 +271,17 @@ export function FpsGame() {
 
       const moving = input.lengthSq() > 0 && grounded;
       const t = clock.getElapsedTime();
-      if (triggerHeld && currentFireMode === "AUTO" && !sprinting && now - lastShot >= 95) {
+      if (reloadEnd && now >= reloadEnd) {
+        const stats = currentSlot === 1 ? primaryStats : secondaryStats;
+        ammoCount = stats.capacity;
+        ammoCounts[currentSlot - 1] = ammoCount;
+        reloadEnd = 0;
+        setAmmo(ammoCount);
+        setReloading(false);
+      }
+      const activeStats = currentSlot === 1 ? primaryStats : secondaryStats;
+      const shotInterval = 60000 / (activeStats.fireRate * 10);
+      if (triggerHeld && currentFireMode === "AUTO" && !sprinting && now - lastShot >= shotInterval) {
         fireRound();
         lastShot = now;
       }
@@ -252,14 +289,16 @@ export function FpsGame() {
       muzzleTimer -= dt;
       if (muzzleTimer <= 0) muzzle.intensity = 0;
       const bobY = moving ? Math.sin(t * (sprinting ? 13 : 9)) * 0.012 : Math.sin(t * 2) * 0.003;
-      const targetX = sprinting ? -0.13 : aiming ? -0.34 : (moving ? Math.cos(t * 6.5) * 0.008 : 0);
-      const targetY = sprinting ? -0.2 : aiming ? 0.15 : bobY - recoil * 0.3;
-      const targetZ = sprinting ? 0.16 : aiming ? 0.2 + recoil : recoil;
+      const reloadPhase = reloadEnd ? 1 - Math.max(0, reloadEnd - now) / ((currentSlot === 1 ? primaryStats.reload : secondaryStats.reload) * 1000) : 0;
+      const reloadDip = reloadEnd ? Math.sin(Math.min(1, reloadPhase) * Math.PI) : 0;
+      const targetX = reloadEnd ? 0.16 : sprinting ? -0.13 : aiming ? -0.34 : (moving ? Math.cos(t * 6.5) * 0.008 : 0);
+      const targetY = reloadEnd ? -0.52 * reloadDip : sprinting ? -0.2 : aiming ? 0.15 : bobY - recoil * 0.3;
+      const targetZ = reloadEnd ? 0.24 : sprinting ? 0.16 : aiming ? 0.2 + recoil : recoil;
       gun.position.x = THREE.MathUtils.lerp(gun.position.x, targetX, Math.min(1, dt * 12));
       gun.position.y = THREE.MathUtils.lerp(gun.position.y, targetY, Math.min(1, dt * 12));
       gun.position.z = THREE.MathUtils.lerp(gun.position.z, targetZ, Math.min(1, dt * 12));
-      gun.rotation.x = THREE.MathUtils.lerp(gun.rotation.x, sprinting ? -0.22 : recoil * 0.7, Math.min(1, dt * 12));
-      gun.rotation.z = THREE.MathUtils.lerp(gun.rotation.z, sprinting ? 0.72 : 0, Math.min(1, dt * 12));
+      gun.rotation.x = THREE.MathUtils.lerp(gun.rotation.x, reloadEnd ? -0.45 : sprinting ? -0.22 : recoil * 0.7, Math.min(1, dt * 12));
+      gun.rotation.z = THREE.MathUtils.lerp(gun.rotation.z, reloadEnd ? -0.35 : sprinting ? 0.72 : 0, Math.min(1, dt * 12));
       gun.visible = currentSlot <= 2;
       camera.fov = THREE.MathUtils.lerp(camera.fov, aiming ? 58 : sprinting ? 84 : 78, Math.min(1, dt * 10));
       camera.updateProjectionMatrix();
@@ -280,7 +319,7 @@ export function FpsGame() {
       renderer.dispose();
       mount.removeChild(renderer.domElement);
     };
-  }, [sessionId]);
+  }, [sessionId, primary, secondary]);
 
   const equippedItems = [primary, secondary, medical, utility];
 
@@ -296,6 +335,7 @@ export function FpsGame() {
       <div className="crosshair"><span /><span /></div>
       <div className="hud-left"><small>VITALS</small><strong>100</strong><div className="health"><i /></div></div>
       <div className="hud-right"><small>{equippedItems[activeSlot - 1]}{activeSlot <= 2 ? ` · ${fireMode}` : " · READY"}</small><strong>{activeSlot <= 2 ? ammo : "—"} <em>{activeSlot <= 2 ? "/ 120" : ""}</em></strong></div>
+      {reloading && <div className="reload-status"><span>RELOADING</span><i style={{ animationDuration: `${reloadDuration}s` }} /></div>}
       <div className="quick-slots">
         {([
           [1, primary, "PRIMARY"], [2, secondary, "SECONDARY"], [3, medical, "MEDICAL"], [4, utility, "UTILITY"]
@@ -354,6 +394,7 @@ export function FpsGame() {
               setAmmo(30);
               setFireMode("AUTO");
               setActiveSlot(1);
+              setReloading(false);
               setSessionId((current) => current + 1);
             }}>
               <span>LEAVE SERVER</span>
@@ -382,6 +423,7 @@ function LoadoutSlot({ label, selected, options, onSelect }: {
   options: [string, string][];
   onSelect: (value: string) => void;
 }) {
+  const stats = WEAPON_STATS[selected];
   return <section className="loadout-slot">
     <h2>{label}</h2>
     {options.map(([name, detail]) => <button key={name} className={selected === name ? "selected" : ""} onClick={() => onSelect(name)}>
@@ -389,5 +431,11 @@ function LoadoutSlot({ label, selected, options, onSelect }: {
       <span><b>{name}</b><small>{detail}</small></span>
       <em>{selected === name ? "EQUIPPED" : "SELECT"}</em>
     </button>)}
+    {stats && <div className="weapon-stats">
+      {[['DAMAGE', stats.damage], ['FIRE RATE', stats.fireRate], ['RANGE', stats.range], ['MOBILITY', stats.mobility]].map(([name, value]) => <div key={name}>
+        <span>{name}</span><i><b style={{ width: `${value}%` }} /></i><em>{value}</em>
+      </div>)}
+      <footer><span>MAGAZINE <b>{stats.capacity}</b></span><span>RELOAD <b>{stats.reload.toFixed(2)}s</b></span></footer>
+    </div>}
   </section>;
 }
