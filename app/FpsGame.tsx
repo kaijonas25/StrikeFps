@@ -723,6 +723,10 @@ export function FpsGame() {
             const holdingWeapon = isLocal && currentSlot <= 2;
             const holdingLongGun = holdingWeapon && (currentSlot === 1 || secondary === "DB-2 SAWED-OFF");
             const isRightArm = limb.side === 1;
+            const alignLimb = (mesh: THREE.Mesh, start: THREE.Vector3, end: THREE.Vector3) => {
+              mesh.position.copy(start).add(end).multiplyScalar(.5);
+              mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), end.clone().sub(start).normalize());
+            };
             if (holdingWeapon) {
               const shoulder = new THREE.Vector3(limb.side * .43, 1.65, 0);
               const elbow = isRightArm
@@ -731,32 +735,20 @@ export function FpsGame() {
               const hand = isRightArm
                 ? new THREE.Vector3(.19, 1.25, -.31)
                 : holdingLongGun ? new THREE.Vector3(.1, 1.38, -.55) : new THREE.Vector3(.1, 1.24, -.32);
-              const alignLimb = (mesh: THREE.Mesh, start: THREE.Vector3, end: THREE.Vector3) => {
-                mesh.position.copy(start).add(end).multiplyScalar(.5);
-                mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), end.clone().sub(start).normalize());
-              };
               alignLimb(limb.upper, shoulder, elbow);
               alignLimb(limb.lower, elbow, hand);
-              limb.end.position.copy(hand); limb.end.quaternion.identity();
+              limb.end.position.copy(hand); limb.end.quaternion.copy(limb.lower.quaternion);
               return;
             }
-            const angle = holdingWeapon
-              ? isRightArm ? 1.18 + stride * .035 : holdingLongGun ? 1.12 - stride * .03 : 1.08
-              : stride * amplitude * limb.side;
-            const elbowAngle = holdingWeapon
-              ? isRightArm ? 1.42 : holdingLongGun ? 1.48 : 1.38
-              : angle * .55 - (movement === "sprint" ? .3 : .12);
-            const shoulderY = 1.62, upperLength = .44, lowerLength = .38;
-            const upperX = holdingWeapon ? isRightArm ? .4 : -.36 : limb.side * .45;
-            const lowerX = holdingWeapon ? isRightArm ? .3 : holdingLongGun ? -.12 : -.25 : limb.side * .47;
-            const handX = holdingWeapon ? isRightArm ? .2 : holdingLongGun ? .08 : -.13 : limb.side * .48;
-            limb.upper.position.set(upperX, shoulderY - Math.cos(angle) * upperLength / 2, -Math.sin(angle) * upperLength / 2);
-            limb.upper.rotation.x = angle;
-            const elbowY = shoulderY - Math.cos(angle) * upperLength;
-            const elbowZ = -Math.sin(angle) * upperLength;
-            limb.lower.position.set(lowerX, elbowY - Math.cos(elbowAngle) * lowerLength / 2, elbowZ - Math.sin(elbowAngle) * lowerLength / 2);
-            limb.lower.rotation.x = elbowAngle;
-            limb.end.position.set(handX, elbowY - Math.cos(elbowAngle) * lowerLength, elbowZ - Math.sin(elbowAngle) * lowerLength);
+            const shoulder = new THREE.Vector3(limb.side * .43, 1.65, 0);
+            const swingAngle = stride * amplitude * limb.side;
+            const elbowFlex = movement === "sprint" ? .62 : movement === "walk" ? .38 : .18;
+            const elbow = shoulder.clone().add(new THREE.Vector3(0, -Math.cos(swingAngle) * .44, -Math.sin(swingAngle) * .44));
+            const forearmAngle = swingAngle + elbowFlex;
+            const hand = elbow.clone().add(new THREE.Vector3(0, -Math.cos(forearmAngle) * .38, -Math.sin(forearmAngle) * .38));
+            alignLimb(limb.upper, shoulder, elbow);
+            alignLimb(limb.lower, elbow, hand);
+            limb.end.position.copy(hand); limb.end.quaternion.copy(limb.lower.quaternion);
           } else {
             const phase = stride * -limb.side;
             const crouchAmount = isLocal ? THREE.MathUtils.clamp(-stanceOffset / .65, 0, 1) : 0;
