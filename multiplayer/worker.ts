@@ -12,12 +12,15 @@ type PlayerState = {
   slot: number;
   primary: string;
   secondary: string;
+  kills: number;
+  deaths: number;
 };
 
 type SocketAttachment = { id: string; state: PlayerState; votedMapPhase?: number; votedModePhase?: number; endGamePhase?: number };
-type MatchMeta = { day: string; phase: "voting" | "playing"; phaseEndsAt: number; votes: number; modeVotes: number; endVotes: number; map: "CITY BLOCK"; mode: "FFA" };
+type MatchMeta = { day: string; phase: "voting" | "playing" | "results"; phaseEndsAt: number; votes: number; modeVotes: number; endVotes: number; map: "CITY BLOCK"; mode: "FFA"; winnerId: string | null; winningKills: number };
 const VOTE_DURATION = 30_000;
 const MATCH_DURATION = 10 * 60_000;
+const RESULTS_DURATION = 5_000;
 
 const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), {
   status,
@@ -36,7 +39,7 @@ export class GameRoom extends DurableObject {
     const pair = new WebSocketPair();
     const client = pair[0], server = pair[1];
     const id = crypto.randomUUID();
-    const initial: PlayerState = { id, x: 0, y: 1.7, z: 38, yaw: 0, movement: "static", crouching: false, prone: false, slot: 1, primary: "VXR-4 CARBINE", secondary: "P9 SIDEARM" };
+    const initial: PlayerState = { id, x: 0, y: 1.7, z: 38, yaw: 0, movement: "static", crouching: false, prone: false, slot: 1, primary: "VXR-4 CARBINE", secondary: "P9 SIDEARM", kills: 0, deaths: 0 };
     this.ctx.acceptWebSocket(server);
     server.serializeAttachment({ id, state: initial } satisfies SocketAttachment);
 
@@ -130,11 +133,13 @@ export class GameRoom extends DurableObject {
     const day = new Date().toISOString().slice(0, 10);
     let meta = await this.ctx.storage.get<MatchMeta>("match");
     if (!meta || meta.day !== day) {
-      meta = { day, phase: "voting", phaseEndsAt: Date.now() + VOTE_DURATION, votes: 0, modeVotes: 0, endVotes: 0, map: "CITY BLOCK", mode: "FFA" };
+      meta = { day, phase: "voting", phaseEndsAt: Date.now() + VOTE_DURATION, votes: 0, modeVotes: 0, endVotes: 0, map: "CITY BLOCK", mode: "FFA", winnerId: null, winningKills: 0 };
       await this.ctx.storage.put("match", meta); await this.ctx.storage.setAlarm(meta.phaseEndsAt);
     } else {
       meta.modeVotes ??= 0;
       meta.endVotes ??= 0;
+      meta.winnerId ??= null;
+      meta.winningKills ??= 0;
       meta.mode ??= "FFA";
       if (meta.phaseEndsAt <= Date.now()) meta = await this.advanceMatch(meta);
     }
@@ -142,7 +147,22 @@ export class GameRoom extends DurableObject {
   }
 
   private async advanceMatch(meta: MatchMeta): Promise<MatchMeta> {
-    const next: MatchMeta = { ...meta, phase: meta.phase === "voting" ? "playing" : "voting", phaseEndsAt: Date.now() + (meta.phase === "voting" ? MATCH_DURATION : VOTE_DURATION), votes: 0, modeVotes: 0, endVotes: 0, map: "CITY BLOCK", mode: "FFA" };
+    let phase: MatchMeta["phase"], duration: number, winnerId: string | null = null, winningKills = 0;
+    if (meta.phase === "voting") {
+      phase = "playing"; duration = MATCH_DURATION;
+      this.ctx.getWebSockets().forEach((socket) => {
+        const attachment = socket.deserializeAttachment() as SocketAttachment;
+        attachment.state.kills = 0; attachment.state.deaths = 0; socket.serializeAttachment(attachment);
+      });
+    }
+    else if (meta.phase === "playing") {
+      phase = "results"; duration = RESULTS_DURATION;
+      const scores = this.ctx.getWebSockets().filter((socket) => socket.readyState === WebSocket.OPEN).map((socket) => (socket.deserializeAttachment() as SocketAttachment).state);
+      winningKills = scores.length ? Math.max(...scores.map((player) => player.kills)) : 0;
+      const leaders = scores.filter((player) => player.kills === winningKills);
+      winnerId = leaders.length === 1 ? leaders[0].id : null;
+    } else { phase = "voting"; duration = VOTE_DURATION; }
+    const next: MatchMeta = { ...meta, phase, phaseEndsAt: Date.now() + duration, votes: 0, modeVotes: 0, endVotes: 0, map: "CITY BLOCK", mode: "FFA", winnerId, winningKills };
     await this.ctx.storage.put("match", next); await this.ctx.storage.setAlarm(next.phaseEndsAt); this.broadcast({ type: "match", match: next }); return next;
   }
 }

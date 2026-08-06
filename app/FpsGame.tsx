@@ -78,7 +78,7 @@ export function FpsGame() {
   const [selectedSector, setSelectedSector] = useState<GameSector>("SECTOR 1");
   const [serverBrowserOpen, setServerBrowserOpen] = useState(false);
   const [sectorPlayerCounts, setSectorPlayerCounts] = useState<Record<MultiplayerSector, number | null>>({ "SECTOR 1": null, "SECTOR 2": null, "SECTOR 3": null, "SECTOR 4": null });
-  const [matchPhase, setMatchPhase] = useState<"connecting" | "voting" | "playing">("connecting");
+  const [matchPhase, setMatchPhase] = useState<"connecting" | "voting" | "playing" | "results">("connecting");
   const [mapVotes, setMapVotes] = useState(0);
   const [modeVotes, setModeVotes] = useState(0);
   const [endGameVotes, setEndGameVotes] = useState(0);
@@ -89,6 +89,8 @@ export function FpsGame() {
   const [matchTimeLeft, setMatchTimeLeft] = useState(0);
   const [localPlayerId, setLocalPlayerId] = useState("");
   const [connectedPlayerIds, setConnectedPlayerIds] = useState<string[]>([]);
+  const [matchWinnerId, setMatchWinnerId] = useState<string | null>(null);
+  const [winningKills, setWinningKills] = useState(0);
   const [multiplayerStatus, setMultiplayerStatus] = useState<"OFFLINE" | "CONNECTING" | "ONLINE">("OFFLINE");
   const [doorPrompt, setDoorPrompt] = useState(false);
   const [primary, setPrimary] = useState("VXR-4 CARBINE");
@@ -744,12 +746,13 @@ export function FpsGame() {
       multiplayerSocket.addEventListener("message", (event) => {
         if (typeof event.data !== "string") return;
         try {
-          const packet = JSON.parse(event.data) as { type: string; player?: RemoteState; players?: RemoteState[]; id?: string; match?: { phase: "voting" | "playing"; phaseEndsAt: number; votes: number; modeVotes: number; endVotes: number; mode: "FFA" } };
+          const packet = JSON.parse(event.data) as { type: string; player?: RemoteState; players?: RemoteState[]; id?: string; match?: { phase: "voting" | "playing" | "results"; phaseEndsAt: number; votes: number; modeVotes: number; endVotes: number; mode: "FFA"; winnerId: string | null; winningKills: number } };
           const applyMatch = (match: NonNullable<typeof packet.match>, resetVotes = false) => {
             setMatchPhase(match.phase); setMapVotes(match.votes); setModeVotes(match.modeVotes ?? 0); setEndGameVotes(match.endVotes ?? 0); setMatchEndsAt(match.phaseEndsAt);
+            setMatchWinnerId(match.winnerId ?? null); setWinningKills(match.winningKills ?? 0);
             if ((match.endVotes ?? 0) === 0) setEndGameRequested(false);
             if (resetVotes) { setHasVoted(false); setHasModeVoted(false); }
-            if (match.phase === "voting") document.exitPointerLock();
+            if (match.phase === "voting" || match.phase === "results") document.exitPointerLock();
           };
           if (packet.type === "welcome") {
             packet.players?.forEach(upsertRemotePlayer);
@@ -1613,6 +1616,15 @@ export function FpsGame() {
           <footer>MORE MAPS AND GAMEMODES WILL BE ADDED LATER</footer>
         </div>
       </div>}
+      {started && matchPhase === "results" && <div className="match-results-overlay">
+        <div className="match-results-panel">
+          <small>{selectedSector} · FREE FOR ALL COMPLETE</small>
+          <h2>{matchWinnerId ? "MATCH WINNER" : "MATCH DRAW"}</h2>
+          <strong>{matchWinnerId === localPlayerId ? "YOU" : matchWinnerId ? `OPERATOR ${matchWinnerId.slice(0, 4).toUpperCase()}` : "NO SOLE WINNER"}</strong>
+          <p>{winningKills} KILL{winningKills === 1 ? "" : "S"}</p>
+          <footer>VOTING OPENS IN <b>{formatMatchTime(matchTimeLeft)}</b></footer>
+        </div>
+      </div>}
       {dead && <div className="death-screen">
         <div className="death-code">KIA</div><h2>OPERATOR DOWN</h2><p>TEST CONDITION: FATAL DAMAGE</p>
         <button onClick={() => {
@@ -1620,7 +1632,7 @@ export function FpsGame() {
           mountRef.current?.querySelector("canvas")?.requestPointerLock();
         }}>RESPAWN AT TEST YARD</button>
       </div>}
-      {!locked && !dead && matchPhase !== "voting" && <div className={`menu-screen${!started ? " main-menu-screen" : " pause-screen"}`}>
+      {!locked && !dead && matchPhase !== "voting" && matchPhase !== "results" && <div className={`menu-screen${!started ? " main-menu-screen" : " pause-screen"}`}>
         <div className="menu-rule" />
         {!started && menuPage !== "LOADOUT" && <button className="character-preview" onClick={() => setMenuPage("CHARACTER")} aria-label="Customize character">
           <div className="preview-glow" />
