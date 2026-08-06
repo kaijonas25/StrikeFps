@@ -29,7 +29,7 @@ const WEAPON_STATS: Record<string, { damage: number; fireRate: number; capacity:
   "VXR-4 CARBINE": { damage: 16, fireRate: 72, capacity: 30, reload: 2.35, range: 74, mobility: 68, spread: 1.25 },
   "M12 SMG": { damage: 12, fireRate: 91, capacity: 36, reload: 1.85, range: 48, mobility: 90, spread: 2.1 },
   "BR-7 RIFLE": { damage: 29, fireRate: 43, capacity: 20, reload: 2.8, range: 94, mobility: 51, spread: 0.65 },
-  "SNR-90 SNIPER": { damage: 50, fireRate: 10, capacity: 5, reload: 3.4, range: 100, mobility: 34, spread: 0.12 },
+  "SNR-90 SNIPER": { damage: 50, fireRate: 10, capacity: 1, reload: 3.4, range: 100, mobility: 34, spread: 0.12 },
   "KSG-12 SHOTGUN": { damage: 9, fireRate: 22, capacity: 8, reload: 4.1, range: 30, mobility: 58, spread: 5.8, pellets: 8 },
   "HMG-6 LMG": { damage: 19, fireRate: 66, capacity: 60, reload: 5.2, range: 78, mobility: 27, spread: 1.75 },
   "AKR-47 ASSAULT": { damage: 22, fireRate: 61, capacity: 30, reload: 2.65, range: 76, mobility: 61, spread: 1.6 },
