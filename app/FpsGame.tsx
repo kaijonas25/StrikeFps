@@ -189,6 +189,7 @@ export function FpsGame() {
     scene.add(sun);
 
     const boxes: Box[] = [];
+    const placementSurfaces: THREE.Object3D[] = [];
     const material = (color: number, roughness = 0.82, metalness = 0.05) =>
       new THREE.MeshStandardMaterial({ color, roughness, metalness });
 
@@ -197,6 +198,7 @@ export function FpsGame() {
     floor.rotation.x = -Math.PI / 2;
     floor.receiveShadow = true;
     scene.add(floor);
+    placementSurfaces.push(floor);
 
     const grid = new THREE.GridHelper(mapSize, selectedMap === "CITY BLOCK" ? 48 : 32, 0x516166, 0x465358);
     grid.position.y = 0.008;
@@ -207,7 +209,7 @@ export function FpsGame() {
       mesh.position.set(x, y, z);
       mesh.castShadow = mesh.receiveShadow = true;
       scene.add(mesh);
-      if (collide) boxes.push({ minX: x - w / 2, maxX: x + w / 2, minZ: z - d / 2, maxZ: z + d / 2, height: y + h / 2 });
+      if (collide) { boxes.push({ minX: x - w / 2, maxX: x + w / 2, minZ: z - d / 2, maxZ: z + d / 2, height: y + h / 2 }); placementSurfaces.push(mesh); }
       return mesh;
     }
 
@@ -789,6 +791,12 @@ export function FpsGame() {
     type UtilityProjectile = { mesh: THREE.Object3D; velocity: THREE.Vector3; age: number; type: string };
     const projectiles: UtilityProjectile[] = [];
     const plantedC4: UtilityProjectile[] = [];
+    const plantedMines: UtilityProjectile[] = [];
+    const placementMaterial = new THREE.MeshBasicMaterial({ color: 0x74e6b1, transparent: true, opacity: .48, depthWrite: false });
+    const placementPreview = new THREE.Mesh(new THREE.BoxGeometry(.46, .12, .32), placementMaterial);
+    placementPreview.raycast = () => {}; placementPreview.visible = false; scene.add(placementPreview);
+    let placementAiming = false;
+    let placementPoint: { point: THREE.Vector3; normal: THREE.Vector3 } | null = null;
     let currentFireMode: FireMode = "AUTO", triggerHeld = false, lastShot = 0, currentSlot = 1, movementSpread = 1;
     let nearbyDoor: typeof doors[number] | undefined;
     const activeAttachments = (): WeaponAttachments => currentSlot > 2 || (currentSlot === 2 && secondaryIsMelee)
@@ -876,6 +884,7 @@ export function FpsGame() {
         triggerHeld = false;
         throwableAiming = false;
         trajectory.visible = false;
+        placementAiming = false; placementPreview.visible = false; placementPoint = null;
         reloadEnd = 0;
         setReloading(false);
         if (currentSlot !== 3 && healEnd) { healEnd = 0; setHealing(false); }
@@ -940,8 +949,6 @@ export function FpsGame() {
     const throwUtility = () => {
       if (grenadesLeft <= 0) return;
       const { start, velocity } = getThrow();
-      const placeable = utility === "C4 CHARGE" || utility === "LANDMINE";
-      if (placeable) velocity.multiplyScalar(.32);
       const flash = utility === "FLASHBANG", smoke = utility === "SMOKE GRENADE", gas = utility === "GAS BOMB";
       const grenade = new THREE.Group();
       if (utility === "C4 CHARGE") {
@@ -958,6 +965,18 @@ export function FpsGame() {
       const projectile = { mesh: grenade, velocity, age: 0, type: utility };
       projectiles.push(projectile);
       if (utility === "C4 CHARGE") plantedC4.push(projectile);
+      grenadesLeft -= 1; setUtilityCount(grenadesLeft);
+    };
+    const placeUtility = () => {
+      if (!placementPoint || grenadesLeft <= 0 || (utility !== "C4 CHARGE" && utility !== "LANDMINE")) return;
+      const mesh = utility === "C4 CHARGE"
+        ? new THREE.Mesh(new THREE.BoxGeometry(.42, .12, .3), weaponMaterial(0x5b6652, .2))
+        : new THREE.Mesh(new THREE.CylinderGeometry(.25, .28, .1, 16), weaponMaterial(0x48513d, .45));
+      mesh.position.copy(placementPoint.point).addScaledVector(placementPoint.normal, .065);
+      mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), placementPoint.normal);
+      mesh.castShadow = true; mesh.raycast = () => {}; scene.add(mesh);
+      const placed = { mesh, velocity: new THREE.Vector3(), age: 0, type: utility };
+      if (utility === "C4 CHARGE") plantedC4.push(placed); else plantedMines.push(placed);
       grenadesLeft -= 1; setUtilityCount(grenadesLeft);
     };
     const detonate = (projectile: { mesh: THREE.Object3D; type: string }) => {
@@ -1063,7 +1082,13 @@ export function FpsGame() {
     };
     const onMouseDown = (e: MouseEvent) => {
       if (document.pointerLockElement !== renderer.domElement) return;
-      if (e.button === 2) { if (isThirdPerson) orbiting = true; else { aiming = true; setAdsActive(true); } return; }
+      if (e.button === 2) {
+        if (currentSlot === 4 && utility === "C4 CHARGE") {
+          plantedC4.splice(0).forEach((charge) => detonate(charge));
+          return;
+        }
+        if (isThirdPerson) orbiting = true; else { aiming = true; setAdsActive(true); } return;
+      }
       if (e.button !== 0 || sprinting || sliding) return;
       if (currentSlot === 3) {
         if (medicalCharges > 0 && playerHealth < 100 && !healEnd) {
@@ -1074,10 +1099,7 @@ export function FpsGame() {
         return;
       }
       if (currentSlot === 4) {
-        if (utility === "C4 CHARGE" && plantedC4.length) {
-          plantedC4.splice(0).forEach((charge) => { const index = projectiles.indexOf(charge); if (index >= 0) projectiles.splice(index, 1); detonate(charge); });
-          return;
-        }
+        if (utility === "C4 CHARGE" || utility === "LANDMINE") { placementAiming = grenadesLeft > 0; placementPreview.visible = placementAiming; return; }
         throwableAiming = grenadesLeft > 0; trajectory.visible = throwableAiming; return;
       }
       triggerHeld = true;
@@ -1090,6 +1112,7 @@ export function FpsGame() {
     const onMouseUp = (e: MouseEvent) => {
       if (e.button === 0) {
         triggerHeld = false;
+        if (placementAiming) { placeUtility(); placementAiming = false; placementPreview.visible = false; placementPoint = null; }
         if (throwableAiming) { throwableAiming = false; trajectory.visible = false; throwUtility(); }
       }
       if (e.button === 2) { aiming = false; orbiting = false; setAdsActive(false); }
@@ -1098,7 +1121,7 @@ export function FpsGame() {
     const onLockChange = () => {
       const isLocked = document.pointerLockElement === renderer.domElement;
       setLocked(isLocked);
-      if (!isLocked) { aiming = false; setAdsActive(false); orbiting = false; triggerHeld = false; throwableAiming = false; trajectory.visible = false; keys.clear(); }
+      if (!isLocked) { aiming = false; setAdsActive(false); orbiting = false; triggerHeld = false; throwableAiming = false; trajectory.visible = false; placementAiming = false; placementPreview.visible = false; placementPoint = null; keys.clear(); }
     };
     const onResize = () => {
       camera.aspect = mount.clientWidth / mount.clientHeight;
@@ -1323,6 +1346,23 @@ export function FpsGame() {
           ? new THREE.TubeGeometry(new THREE.CatmullRomCurve3(points), Math.max(10, points.length * 3), .035, 7, false)
           : new THREE.BufferGeometry();
       }
+      if (placementAiming) {
+        raycaster.setFromCamera(getAimNdc(), camera);
+        const hit = raycaster.intersectObjects(placementSurfaces, true).find((result) => result.distance <= 4.5 && result.face);
+        if (hit?.face) {
+          const normal = hit.face.normal.clone().transformDirection(hit.object.matrixWorld).normalize();
+          const valid = utility === "C4 CHARGE" || normal.y > .72;
+          placementPoint = valid ? { point: hit.point.clone(), normal } : null;
+          placementPreview.visible = valid;
+          placementMaterial.color.set(valid ? 0x74e6b1 : 0xff5544);
+          if (valid) {
+            placementPreview.geometry.dispose();
+            placementPreview.geometry = utility === "C4 CHARGE" ? new THREE.BoxGeometry(.46, .12, .32) : new THREE.CylinderGeometry(.28, .3, .11, 16);
+            placementPreview.position.copy(hit.point).addScaledVector(normal, .068);
+            placementPreview.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), normal);
+          }
+        } else { placementPoint = null; placementPreview.visible = false; }
+      }
       for (let i = projectiles.length - 1; i >= 0; i--) {
         const projectile = projectiles[i]; projectile.age += dt;
         projectile.velocity.y -= 14.5 * dt;
@@ -1350,6 +1390,12 @@ export function FpsGame() {
         }
         const fuse = projectile.type === "FRAG GRENADE" ? 2.5 : projectile.type === "SMOKE GRENADE" || projectile.type === "GAS BOMB" ? 1.5 : projectile.type === "FLASHBANG" ? 1.8 : Infinity;
         if (projectile.age >= fuse) { detonate(projectile); projectiles.splice(i, 1); }
+      }
+      for (let i = plantedMines.length - 1; i >= 0; i--) {
+        const mine = plantedMines[i]; mine.age += dt;
+        if (mine.age > 1.2 && [...dummies, ...remotePlayers.values()].some((target) => target.visible && target.position.distanceTo(mine.mesh.position) < 2.1)) {
+          detonate(mine); plantedMines.splice(i, 1);
+        }
       }
       meleeSwing = Math.max(0, meleeSwing - dt * 4.6);
       if (reloadEnd && now >= reloadEnd) {
