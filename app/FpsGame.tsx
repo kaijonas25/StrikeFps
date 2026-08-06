@@ -71,6 +71,7 @@ export function FpsGame() {
   const [selectedMap, setSelectedMap] = useState<GameMap>("TEST YARD");
   const [selectedSector, setSelectedSector] = useState<GameSector>("SECTOR 1");
   const [serverBrowserOpen, setServerBrowserOpen] = useState(false);
+  const [sectorPlayerCounts, setSectorPlayerCounts] = useState<Record<GameSector, number | null>>({ "SECTOR 1": null, "SECTOR 2": null, "SECTOR 3": null, "SECTOR 4": null });
   const [matchPhase, setMatchPhase] = useState<"connecting" | "voting" | "playing">("connecting");
   const [mapVotes, setMapVotes] = useState(0);
   const [modeVotes, setModeVotes] = useState(0);
@@ -131,6 +132,27 @@ export function FpsGame() {
     const timer = window.setInterval(updateClock, 250);
     return () => window.clearInterval(timer);
   }, [matchEndsAt]);
+
+  useEffect(() => {
+    if (!serverBrowserOpen) return;
+    let active = true;
+    const refreshCounts = async () => {
+      try {
+        const response = await fetch(`${MULTIPLAYER_SERVER}/rooms`);
+        if (!response.ok) return;
+        const data = await response.json() as { sectors: Record<string, number> };
+        if (active) setSectorPlayerCounts({
+          "SECTOR 1": data.sectors["sector-1"] ?? 0,
+          "SECTOR 2": data.sectors["sector-2"] ?? 0,
+          "SECTOR 3": data.sectors["sector-3"] ?? 0,
+          "SECTOR 4": data.sectors["sector-4"] ?? 0,
+        });
+      } catch {}
+    };
+    void refreshCounts();
+    const timer = window.setInterval(refreshCounts, 10_000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [serverBrowserOpen]);
 
   useEffect(() => {
     const mount = mountRef.current;
@@ -1511,7 +1533,7 @@ export function FpsGame() {
                 setStarted(true);
                 setSessionId((id) => id + 1);
               }}>
-                <i>{String(index + 1).padStart(2, "0")}</i><span><b>{sector}</b><small>JOIN SERVER · MAP VOTE INSIDE</small></span><em>JOIN</em>
+                <i>{String(index + 1).padStart(2, "0")}</i><span><b>{sector}</b><small>{sectorPlayerCounts[sector] === null ? "CHECKING PLAYERS…" : `${sectorPlayerCounts[sector]} PLAYER${sectorPlayerCounts[sector] === 1 ? "" : "S"} ONLINE`} · MAP VOTE INSIDE</small></span><em>JOIN</em>
               </button>)}
             </div>
           </div>}

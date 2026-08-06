@@ -26,6 +26,11 @@ const json = (value: unknown, status = 200) => new Response(JSON.stringify(value
 
 export class GameRoom extends DurableObject {
   async fetch(request: Request): Promise<Response> {
+    const url = new URL(request.url);
+    if (url.pathname === "/status") {
+      const players = this.ctx.getWebSockets().filter((socket) => socket.readyState === WebSocket.OPEN).length;
+      return json({ players });
+    }
     if (request.headers.get("Upgrade") !== "websocket") return json({ error: "WebSocket upgrade required" }, 426);
     const meta = await this.currentMatch();
     const pair = new WebSocketPair();
@@ -130,6 +135,15 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname === "/health") return json({ online: true });
+    if (url.pathname === "/rooms") {
+      const sectors = await Promise.all([1, 2, 3, 4].map(async (number) => {
+        const sector = `sector-${number}`;
+        const response = await env.GAME_ROOMS.getByName(sector).fetch("https://room.internal/status");
+        const status = await response.json<{ players: number }>();
+        return [sector, status.players] as const;
+      }));
+      return json({ sectors: Object.fromEntries(sectors) });
+    }
     const match = url.pathname.match(/^\/room\/(sector-[1-4])$/);
     if (!match) return json({ error: "Unknown multiplayer room" }, 404);
     return env.GAME_ROOMS.getByName(match[1]).fetch(request);
