@@ -326,7 +326,8 @@ export function FpsGame() {
           const sideSegment = (w - doorWidth) / 2;
           addBox(cx - doorWidth / 2 - sideSegment / 2, h / 2, wallZ, sideSegment, h, wall, color);
           addBox(cx + doorWidth / 2 + sideSegment / 2, h / 2, wallZ, sideSegment, h, wall, color);
-          addBox(cx, doorHeight + (h - doorHeight) / 2, wallZ, doorWidth, h - doorHeight, wall, color);
+          // Overhead geometry must stay visual-only because Box collisions extend upward from ground level.
+          addBox(cx, doorHeight + (h - doorHeight) / 2, wallZ, doorWidth, h - doorHeight, wall, color, false);
         });
         // Roof collision is visual-only; the simplified ground-up AABB system would otherwise fill the entire interior.
         addBox(cx, h - .12, cz, w, .24, d, 0x242b2d, false);
