@@ -355,6 +355,34 @@ export function FpsGame() {
       addBuilding(-38, 29, 10, 22, 11.6, 0x50595b, -1);
       addBuilding(24, 29, 14, 22, 12.9, 0x4f5350, -1);
       addBuilding(38, 29, 10, 22, 16.8, 0x5d5048, -1);
+      // Bombed-out corner lots fill the setbacks without closing their flanking routes.
+      const addRuinedLot = (cx: number, cz: number, xSide: -1 | 1, zSide: -1 | 1, rubbleColor: number) => {
+        const w = 5.2, d = 13.2, wallColor = xSide === zSide ? 0x665f58 : 0x555d5e;
+        addBox(cx, .09, cz, w, .18, d, 0x3b3c39, false);
+        // Jagged wall remnants leave a street-side breach into the ruined footprint.
+        addBox(cx + xSide * (w / 2 - .18), 2.35, cz + zSide * 2.7, .36, 4.7, d * .55, wallColor);
+        addBox(cx - xSide * 1.55, 1.75, cz - zSide * (d / 2 - .18), 2.1, 3.5, .36, wallColor);
+        addBox(cx + xSide * .9, 1.1, cz - zSide * (d / 2 - .18), 1.15, 2.2, .36, wallColor);
+        addBox(cx - xSide * (w / 2 - .18), .85, cz - zSide * 2.2, .36, 1.7, d * .28, wallColor);
+        // A low collision core makes the large pile usable as cover; scattered chunks remain visual-only.
+        addBox(cx + xSide * .25, .48, cz + zSide * 1.45, 3.3, .96, 3.5, rubbleColor);
+        for (let piece = 0; piece < 13; piece++) {
+          const px = cx + ((piece * 1.37) % 4.3) - 2.15;
+          const pz = cz + zSide * 1.1 + ((piece * 1.91) % 5.3) - 2.65;
+          const chunk = addBox(px, .55 + (piece % 4) * .16, pz, .55 + (piece % 3) * .3, .34 + (piece % 4) * .18, .5 + ((piece + 1) % 3) * .28, piece % 3 ? rubbleColor : 0x79726a, false);
+          chunk.rotation.set((piece % 3 - 1) * .22, piece * .81, (piece % 2 ? 1 : -1) * .16);
+        }
+        // Exposed steel reinforces the silhouette of a partially collapsed structure.
+        for (let rod = 0; rod < 3; rod++) {
+          const rebar = new THREE.Mesh(new THREE.CylinderGeometry(.025, .025, 2.4 + rod * .35, 6), material(0x392f2b, .7, .65));
+          rebar.position.set(cx + xSide * (1.65 + rod * .18), 2.1 + rod * .18, cz - zSide * (3.8 + rod * .32));
+          rebar.rotation.z = xSide * (.08 + rod * .04); rebar.raycast = () => {}; scene.add(rebar);
+        }
+      };
+      addRuinedLot(-13.7, -29, -1, 1, 0x625a51);
+      addRuinedLot(13.7, -29, 1, 1, 0x595c58);
+      addRuinedLot(-13.7, 29, -1, -1, 0x6a5d4f);
+      addRuinedLot(13.7, 29, 1, -1, 0x575c5d);
       // Abandoned vehicles, barriers, rubble, and street furniture.
       [[-3, -22, 0x70483c], [3, 20, 0x3f5962], [-21, 2, 0x56594d], [22, -2, 0x624b3f]].forEach(([x, z, color]) => {
         addBox(x, .65, z, 2.1, 1.05, 4.2, color); addBox(x, 1.3, z + .15, 1.75, .62, 2.15, 0x263438);
