@@ -78,19 +78,30 @@ export class GameRoom extends DurableObject {
   }
 
   async alarm() {
+    if (this.ctx.getWebSockets().length === 0) {
+      await this.resetEmptyRoom();
+      return;
+    }
     const meta = await this.currentMatch();
     if (meta.phaseEndsAt > Date.now()) { await this.ctx.storage.setAlarm(meta.phaseEndsAt); return; }
     await this.advanceMatch(meta);
   }
 
-  webSocketClose(socket: WebSocket) {
+  async webSocketClose(socket: WebSocket) {
     const attachment = socket.deserializeAttachment() as SocketAttachment | null;
     if (attachment) this.broadcast({ type: "left", id: attachment.id }, socket);
+    const remainingPlayers = this.ctx.getWebSockets().filter((candidate) => candidate !== socket && candidate.readyState === WebSocket.OPEN);
+    if (remainingPlayers.length === 0) await this.resetEmptyRoom();
   }
 
   private broadcast(packet: unknown, except?: WebSocket) {
     const encoded = JSON.stringify(packet);
     this.ctx.getWebSockets().forEach((socket) => { if (socket !== except) try { socket.send(encoded); } catch {} });
+  }
+
+  private async resetEmptyRoom() {
+    await this.ctx.storage.delete("match");
+    await this.ctx.storage.deleteAlarm();
   }
 
   private async currentMatch(): Promise<MatchMeta> {
