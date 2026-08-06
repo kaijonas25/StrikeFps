@@ -43,6 +43,9 @@ const WEAPON_STATS: Record<string, { damage: number; fireRate: number; capacity:
   "R45 REVOLVER": { damage: 36, fireRate: 29, capacity: 6, reload: 3.1, range: 61, mobility: 76, spread: 0.9 },
   "G18 AUTO PISTOL": { damage: 9.5, fireRate: 95, capacity: 24, reload: 1.75, range: 35, mobility: 96, spread: 2.65 },
   "DB-2 SAWED-OFF": { damage: 11, fireRate: 18, capacity: 2, reload: 2.6, range: 20, mobility: 81, spread: 7.2, pellets: 6 },
+  "M1911 SIDEARM": { damage: 22, fireRate: 46, capacity: 8, reload: 1.65, range: 48, mobility: 92, spread: 1.2 },
+  "USP-45 TACTICAL": { damage: 19, fireRate: 52, capacity: 12, reload: 1.7, range: 52, mobility: 89, spread: 1.05 },
+  "MP5K COMPACT": { damage: 10.5, fireRate: 88, capacity: 20, reload: 2.05, range: 34, mobility: 84, spread: 2.25 },
 };
 const MEDICAL_STATS: Record<string, { healing: number; duration: number }> = {
   "FIELD MEDKIT": { healing: 60, duration: 2.5 },
@@ -535,27 +538,29 @@ export function FpsGame() {
       const x = 0.34;
       let muzzleZ = -1.22;
 
-      if (["P9 SIDEARM", "R45 REVOLVER", "G18 AUTO PISTOL", "DB-2 SAWED-OFF"].includes(name)) {
+      if (["P9 SIDEARM", "R45 REVOLVER", "G18 AUTO PISTOL", "DB-2 SAWED-OFF", "M1911 SIDEARM", "USP-45 TACTICAL", "MP5K COMPACT"].includes(name)) {
         const revolver = name === "R45 REVOLVER";
         const sawedOff = name === "DB-2 SAWED-OFF";
-        const autoPistol = name === "G18 AUTO PISTOL";
-        addPart(sawedOff ? 0.28 : revolver ? 0.22 : 0.18, sawedOff ? 0.2 : 0.14, sawedOff ? 0.78 : revolver ? 0.48 : 0.52, x, -0.25, sawedOff ? -0.75 : -0.62, revolver ? 0x343638 : sawedOff ? 0x4b382d : 0x1d2427);
+        const compact = name === "MP5K COMPACT";
+        const autoPistol = name === "G18 AUTO PISTOL" || compact;
+        const tactical45 = name === "USP-45 TACTICAL";
+        addPart(sawedOff ? 0.28 : compact ? .22 : revolver ? 0.22 : 0.18, sawedOff ? 0.2 : compact ? .19 : 0.14, sawedOff ? 0.78 : compact ? .72 : revolver ? 0.48 : tactical45 ? .58 : 0.52, x, -0.25, sawedOff ? -0.75 : compact ? -.72 : -0.62, revolver ? 0x343638 : sawedOff ? 0x4b382d : tactical45 ? 0x3c443d : 0x1d2427);
         const grip = addPart(sawedOff ? 0.19 : 0.15, sawedOff ? 0.3 : 0.38, 0.2, x, -0.48, sawedOff ? -0.48 : -0.48, revolver || sawedOff ? 0x5b3727 : 0x252d2f);
         grip.rotation.x = -0.25;
         if (revolver) {
           const cylinder = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.22, 10), weaponMaterial(0x4b5051));
           cylinder.rotation.z = Math.PI / 2; cylinder.position.set(x, -0.27, -0.64); model.add(cylinder);
         } else if (!sawedOff) {
-          const magazine = addPart(autoPistol ? 0.125 : 0.115, autoPistol ? 0.44 : 0.31, 0.14, x, autoPistol ? -0.59 : -0.53, -0.48, 0x111719);
+          const magazine = addPart(autoPistol ? 0.125 : 0.115, compact ? .5 : autoPistol ? 0.44 : 0.31, 0.14, x, compact ? -.63 : autoPistol ? -0.59 : -0.53, -0.48, 0x111719);
           magazine.rotation.x = -0.25;
           addPart(0.15, 0.025, 0.17, x, -0.7, -0.43, 0x343d3f);
         }
-        if (autoPistol) addPart(0.07, 0.08, 0.18, x, -0.17, -0.7, 0x263437);
+        if (autoPistol) addPart(compact ? .16 : 0.07, compact ? .14 : 0.08, compact ? .3 : 0.18, x, -0.17, compact ? -.78 : -0.7, 0x263437);
         if (sawedOff) {
           const secondBarrel = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.5, 10), weaponMaterial(0x171c1d));
           secondBarrel.rotation.x = Math.PI / 2; secondBarrel.position.set(x + 0.065, -0.24, -1.32); model.add(secondBarrel);
         }
-        muzzleZ = sawedOff ? -1.58 : revolver ? -0.91 : -0.93;
+        muzzleZ = sawedOff ? -1.58 : compact ? -1.12 : revolver ? -0.91 : tactical45 ? -1.01 : -0.93;
       } else if (name === "COMBAT KNIFE") {
         addPart(0.12, 0.12, 0.42, x, -0.32, -0.46, 0x272f30);
         const blade = addPart(0.045, 0.15, 0.7, x, -0.25, -0.98, 0x9ca6a4);
@@ -658,9 +663,17 @@ export function FpsGame() {
         const syringe = visualOnly(new THREE.Mesh(new THREE.CylinderGeometry(.055, .055, .48, 12), equipmentMat(0x9fe7dc, .3))); syringe.rotation.x = Math.PI / 2; syringe.position.set(x, y, z);
         const plunger = visualOnly(new THREE.Mesh(new THREE.CylinderGeometry(.085, .085, .04, 12), equipmentMat(0x252f31))); plunger.rotation.x = Math.PI / 2; plunger.position.set(x, y, z + .26);
         const needle = visualOnly(new THREE.Mesh(new THREE.CylinderGeometry(.008, .008, .2, 8), equipmentMat(0xc8d1d0, .8))); needle.rotation.x = Math.PI / 2; needle.position.set(x, y, z - .33);
+      } else if (name === "C4 CHARGE") {
+        visualOnly(new THREE.Mesh(new THREE.BoxGeometry(.42, .3, .12), equipmentMat(0x5b6652))).position.set(x, y, z);
+        visualOnly(new THREE.Mesh(new THREE.BoxGeometry(.2, .13, .03), equipmentMat(0x20282a, .4))).position.set(x, y, z - .075);
+        const wire = visualOnly(new THREE.Mesh(new THREE.TorusGeometry(.13, .012, 7, 18, Math.PI), equipmentMat(0xd45b3e, .2))); wire.position.set(x, y + .12, z - .08); wire.rotation.z = Math.PI;
+      } else if (name === "LANDMINE") {
+        const mine = visualOnly(new THREE.Mesh(new THREE.CylinderGeometry(.25, .28, .11, 16), equipmentMat(0x48513d, .45))); mine.position.set(x, y, z); mine.rotation.x = Math.PI / 2;
+        visualOnly(new THREE.Mesh(new THREE.CylinderGeometry(.055, .055, .08, 10), equipmentMat(0x242b27, .5))).position.set(x, y, z - .08);
       } else {
+        const gas = name === "GAS BOMB";
         const flash = name === "FLASHBANG", smoke = name === "SMOKE GRENADE";
-        const body = visualOnly(new THREE.Mesh(new THREE.CylinderGeometry(flash ? .085 : .11, flash ? .085 : .1, flash ? .38 : .31, 12), equipmentMat(flash ? 0xb8c1c0 : smoke ? 0x7d8787 : 0x495b43, .35)));
+        const body = visualOnly(new THREE.Mesh(new THREE.CylinderGeometry(flash ? .085 : .11, flash ? .085 : .1, flash ? .38 : .31, 12), equipmentMat(flash ? 0xb8c1c0 : gas ? 0x718b45 : smoke ? 0x7d8787 : 0x495b43, .35)));
         body.position.set(x, y, z); body.rotation.z = flash ? .08 : 0;
         visualOnly(new THREE.Mesh(new THREE.BoxGeometry(.16, .07, .11), equipmentMat(0x202729, .5))).position.set(x, y + .19, z);
         const pin = visualOnly(new THREE.Mesh(new THREE.TorusGeometry(.065, .012, 7, 14), equipmentMat(0x9da5a4, .75))); pin.position.set(x + .11, y + .2, z); pin.rotation.x = Math.PI / 2;
@@ -772,7 +785,9 @@ export function FpsGame() {
     setAmmo(primaryStats.capacity);
     let ammoCount = ammoCounts[0], recoil = 0, muzzleTimer = 0, aiming = false, sprinting = false, sliding = false, reloadEnd = 0, meleeSwing = 0, lastMelee = 0;
     let throwableAiming = false, grenadesLeft = 2, medicalCharges = 2;
-    const projectiles: { mesh: THREE.Object3D; velocity: THREE.Vector3; age: number; type: string }[] = [];
+    type UtilityProjectile = { mesh: THREE.Object3D; velocity: THREE.Vector3; age: number; type: string };
+    const projectiles: UtilityProjectile[] = [];
+    const plantedC4: UtilityProjectile[] = [];
     let currentFireMode: FireMode = "AUTO", triggerHeld = false, lastShot = 0, currentSlot = 1, movementSpread = 1;
     let nearbyDoor: typeof doors[number] | undefined;
     const activeAttachments = (): WeaponAttachments => currentSlot > 2 || (currentSlot === 2 && secondaryIsMelee)
@@ -924,24 +939,47 @@ export function FpsGame() {
     const throwUtility = () => {
       if (grenadesLeft <= 0) return;
       const { start, velocity } = getThrow();
-      const flash = utility === "FLASHBANG", smoke = utility === "SMOKE GRENADE";
+      const placeable = utility === "C4 CHARGE" || utility === "LANDMINE";
+      if (placeable) velocity.multiplyScalar(.32);
+      const flash = utility === "FLASHBANG", smoke = utility === "SMOKE GRENADE", gas = utility === "GAS BOMB";
       const grenade = new THREE.Group();
-      const body = new THREE.Mesh(new THREE.CylinderGeometry(flash ? .085 : .11, flash ? .085 : .1, flash ? .38 : .31, 12), weaponMaterial(flash ? 0xb8c1c0 : smoke ? 0x7d8787 : 0x495b43, .35));
-      body.castShadow = true; grenade.add(body);
-      const cap = new THREE.Mesh(new THREE.BoxGeometry(.16, .07, .11), weaponMaterial(0x202729, .5)); cap.position.y = .19; cap.castShadow = true; grenade.add(cap);
-      const pin = new THREE.Mesh(new THREE.TorusGeometry(.065, .012, 7, 14), weaponMaterial(0x9da5a4, .75)); pin.position.set(.11, .2, 0); pin.rotation.x = Math.PI / 2; pin.castShadow = true; grenade.add(pin);
+      if (utility === "C4 CHARGE") {
+        const charge = new THREE.Mesh(new THREE.BoxGeometry(.42, .3, .12), weaponMaterial(0x5b6652, .2)); charge.castShadow = true; grenade.add(charge);
+      } else if (utility === "LANDMINE") {
+        const mine = new THREE.Mesh(new THREE.CylinderGeometry(.25, .28, .11, 16), weaponMaterial(0x48513d, .45)); mine.castShadow = true; grenade.add(mine);
+      } else {
+        const body = new THREE.Mesh(new THREE.CylinderGeometry(flash ? .085 : .11, flash ? .085 : .1, flash ? .38 : .31, 12), weaponMaterial(flash ? 0xb8c1c0 : gas ? 0x718b45 : smoke ? 0x7d8787 : 0x495b43, .35));
+        body.castShadow = true; grenade.add(body);
+        const cap = new THREE.Mesh(new THREE.BoxGeometry(.16, .07, .11), weaponMaterial(0x202729, .5)); cap.position.y = .19; cap.castShadow = true; grenade.add(cap);
+        const pin = new THREE.Mesh(new THREE.TorusGeometry(.065, .012, 7, 14), weaponMaterial(0x9da5a4, .75)); pin.position.set(.11, .2, 0); pin.rotation.x = Math.PI / 2; pin.castShadow = true; grenade.add(pin);
+      }
       grenade.traverse((object) => { if (object instanceof THREE.Mesh) object.raycast = () => {}; }); grenade.position.copy(start); scene.add(grenade);
-      projectiles.push({ mesh: grenade, velocity, age: 0, type: utility });
+      const projectile = { mesh: grenade, velocity, age: 0, type: utility };
+      projectiles.push(projectile);
+      if (utility === "C4 CHARGE") plantedC4.push(projectile);
       grenadesLeft -= 1; setUtilityCount(grenadesLeft);
     };
     const detonate = (projectile: { mesh: THREE.Object3D; type: string }) => {
       const position = projectile.mesh.position.clone();
       scene.remove(projectile.mesh);
-      if (projectile.type === "SMOKE GRENADE") {
+      const applyExplosion = (radius: number, maxDamage: number, weapon: string) => {
+        dummies.forEach((dummy) => { const distance = dummy.position.distanceTo(position); if (distance < radius) damageDummyGroup(dummy, Math.round(maxDamage * (1 - distance / radius)), weapon); });
+        const distance = playerPosition.distanceTo(position);
+        if (distance < radius) { playerHealth = Math.max(0, playerHealth - Math.round(maxDamage * (1 - distance / radius))); setHealth(playerHealth); if (playerHealth <= 0) { setDead(true); document.exitPointerLock(); } }
+      };
+      if (projectile.type === "SMOKE GRENADE" || projectile.type === "GAS BOMB") {
+        const gas = projectile.type === "GAS BOMB";
         const cloud = new THREE.Group(); cloud.position.copy(position); scene.add(cloud);
         for (let i = 0; i < 36; i++) {
-          const puff = new THREE.Mesh(new THREE.SphereGeometry(0.9 + Math.random() * 0.7, 8, 6), new THREE.MeshBasicMaterial({ color: 0x7f898b, transparent: true, opacity: 0.38, depthWrite: false }));
+          const puff = new THREE.Mesh(new THREE.SphereGeometry(0.9 + Math.random() * 0.7, 8, 6), new THREE.MeshBasicMaterial({ color: gas ? 0x789447 : 0x7f898b, transparent: true, opacity: gas ? .3 : 0.38, depthWrite: false }));
           puff.raycast = () => {}; puff.position.set((Math.random() - .5) * 4.6, Math.random() * 2.8, (Math.random() - .5) * 4.6); cloud.add(puff);
+        }
+        if (gas) {
+          const gasTick = window.setInterval(() => {
+            dummies.forEach((dummy) => { if (dummy.position.distanceTo(position) < 5) damageDummyGroup(dummy, 5, "GAS BOMB"); });
+            if (playerPosition.distanceTo(position) < 5) { playerHealth = Math.max(0, playerHealth - 4); setHealth(playerHealth); if (playerHealth <= 0) { setDead(true); document.exitPointerLock(); } }
+          }, 500);
+          window.setTimeout(() => window.clearInterval(gasTick), 9000);
         }
         window.setTimeout(() => scene.remove(cloud), 9000);
       } else {
@@ -955,18 +993,10 @@ export function FpsGame() {
           setFlashed(true); window.setTimeout(() => setFlashed(false), 1700);
         }
         if (projectile.type === "FRAG GRENADE") {
-          const blastRadius = 7;
-          dummies.forEach((dummy) => {
-            const distance = dummy.position.distanceTo(position);
-            if (distance < blastRadius) damageDummyGroup(dummy, Math.round(110 * (1 - distance / blastRadius)), "FRAG GRENADE");
-          });
-          const playerDistance = playerPosition.distanceTo(position);
-          if (playerDistance < blastRadius) {
-            playerHealth = Math.max(0, playerHealth - Math.round(110 * (1 - playerDistance / blastRadius)));
-            setHealth(playerHealth);
-            if (playerHealth <= 0) { setDead(true); document.exitPointerLock(); }
-          }
+          applyExplosion(7, 110, "FRAG GRENADE");
         }
+        if (projectile.type === "C4 CHARGE") applyExplosion(8, 145, "C4 CHARGE");
+        if (projectile.type === "LANDMINE") applyExplosion(5.5, 125, "LANDMINE");
       }
     };
     const fireRound = () => {
@@ -1042,7 +1072,13 @@ export function FpsGame() {
         }
         return;
       }
-      if (currentSlot === 4) { throwableAiming = grenadesLeft > 0; trajectory.visible = throwableAiming; return; }
+      if (currentSlot === 4) {
+        if (utility === "C4 CHARGE" && plantedC4.length) {
+          plantedC4.splice(0).forEach((charge) => { const index = projectiles.indexOf(charge); if (index >= 0) projectiles.splice(index, 1); detonate(charge); });
+          return;
+        }
+        throwableAiming = grenadesLeft > 0; trajectory.visible = throwableAiming; return;
+      }
       triggerHeld = true;
       if (currentFireMode === "SEMI") fireRound();
       if (currentFireMode === "BURST") [0, 85, 170].forEach((delay) => window.setTimeout(() => {
@@ -1189,7 +1225,7 @@ export function FpsGame() {
         if (!isLocal) dummy.position.y = Math.abs(Math.sin(t * (movement === "sprint" ? 12 : 6.5))) * (movement === "sprint" ? .075 : .035);
         const headRig = dummy.userData.headRig as THREE.Group;
         const holdingWeaponPose = isLocal && currentSlot <= 2 && aiming;
-        const holdingLongWeaponPose = holdingWeaponPose && (currentSlot === 1 || secondary === "DB-2 SAWED-OFF");
+        const holdingLongWeaponPose = holdingWeaponPose && (currentSlot === 1 || secondary === "DB-2 SAWED-OFF" || secondary === "MP5K COMPACT");
         const aimingHeadPitch = holdingWeaponPose ? holdingLongWeaponPose ? -.13 : -.07 : 0;
         const proneHeadPitch = isLocal ? proneAmount * 1.2 : 0;
         headRig.rotation.x = THREE.MathUtils.lerp(headRig.rotation.x, proneHeadPitch + aimingHeadPitch, Math.min(1, dt * 10));
@@ -1202,7 +1238,7 @@ export function FpsGame() {
             const holdingMedical = isLocal && currentSlot === 3 && medicalCharges > 0;
             const holdingUtility = isLocal && currentSlot === 4 && grenadesLeft > 0 && limb.side === 1;
             const holdingItem = holdingWeapon || holdingMedical || holdingUtility;
-            const holdingLongGun = holdingWeapon && (currentSlot === 1 || secondary === "DB-2 SAWED-OFF");
+            const holdingLongGun = holdingWeapon && (currentSlot === 1 || secondary === "DB-2 SAWED-OFF" || secondary === "MP5K COMPACT");
             const isRightArm = limb.side === 1;
             const alignLimb = (mesh: THREE.Mesh, start: THREE.Vector3, end: THREE.Vector3) => {
               mesh.position.copy(start).add(end).multiplyScalar(.5);
@@ -1305,7 +1341,13 @@ export function FpsGame() {
           projectile.velocity.y = Math.abs(projectile.velocity.y) * 0.42;
           projectile.velocity.x *= 0.82; projectile.velocity.z *= 0.82;
         }
-        const fuse = projectile.type === "FRAG GRENADE" ? 2.5 : projectile.type === "SMOKE GRENADE" ? 1.5 : 1.8;
+        if ((projectile.type === "C4 CHARGE" || projectile.type === "LANDMINE") && projectile.age > .75) {
+          projectile.velocity.set(0, 0, 0); projectile.mesh.position.y = .12;
+        }
+        if (projectile.type === "LANDMINE" && projectile.age > 1.2 && [...dummies, ...remotePlayers.values()].some((target) => target.visible && target.position.distanceTo(projectile.mesh.position) < 2.1)) {
+          detonate(projectile); projectiles.splice(i, 1); continue;
+        }
+        const fuse = projectile.type === "FRAG GRENADE" ? 2.5 : projectile.type === "SMOKE GRENADE" || projectile.type === "GAS BOMB" ? 1.5 : projectile.type === "FLASHBANG" ? 1.8 : Infinity;
         if (projectile.age >= fuse) { detonate(projectile); projectiles.splice(i, 1); }
       }
       meleeSwing = Math.max(0, meleeSwing - dt * 4.6);
@@ -1556,13 +1598,13 @@ export function FpsGame() {
                 ["AKR-47 ASSAULT", "HEAVY DAMAGE · HARD RECOIL"], ["M8 TACTICAL RIFLE", "CONTROLLED · 27 ROUNDS"], ["DMR-11 MARKSMAN", "SEMI AUTO · LONG RANGE"], ["VX-9 PDW", "EXTREME RATE · MOBILE"]
               ]} onSelect={setPrimary} />
               <LoadoutSlot label="SECONDARY" selected={secondary} options={[
-                ["P9 SIDEARM", "RELIABLE · 15 ROUNDS"], ["R45 REVOLVER", "HEAVY · 6 ROUNDS"], ["G18 AUTO PISTOL", "24 ROUNDS · FULL AUTO"], ["DB-2 SAWED-OFF", "TWO SHELLS · 6 PELLETS"], ["COMBAT KNIFE", "FAST · SILENT"]
+                ["P9 SIDEARM", "RELIABLE · 15 ROUNDS"], ["R45 REVOLVER", "HEAVY · 6 ROUNDS"], ["G18 AUTO PISTOL", "24 ROUNDS · FULL AUTO"], ["DB-2 SAWED-OFF", "TWO SHELLS · 6 PELLETS"], ["M1911 SIDEARM", ".45 ACP · 8 ROUNDS"], ["USP-45 TACTICAL", "ACCURATE · 12 ROUNDS"], ["MP5K COMPACT", "FULL AUTO · 20 ROUNDS"], ["COMBAT KNIFE", "FAST · SILENT"]
               ]} onSelect={setSecondary} />
               <LoadoutSlot label="MEDICAL" selected={medical} options={[
                 ["FIELD MEDKIT", "RESTORE 60 HEALTH"], ["STIM INJECTOR", "FAST HEAL + SPEED"], ["TRAUMA KIT", "FULL HEAL · SLOW"]
               ]} onSelect={setMedical} />
               <LoadoutSlot label="UTILITY" selected={utility} options={[
-                ["FRAG GRENADE", "LETHAL EXPLOSIVE"], ["SMOKE GRENADE", "VISION COVER"], ["FLASHBANG", "DISORIENT TARGETS"]
+                ["FRAG GRENADE", "LETHAL EXPLOSIVE"], ["SMOKE GRENADE", "VISION COVER"], ["FLASHBANG", "DISORIENT TARGETS"], ["C4 CHARGE", "PLACE · FIRE AGAIN TO DETONATE"], ["LANDMINE", "PROXIMITY EXPLOSIVE"], ["GAS BOMB", "AREA DENIAL · DAMAGE OVER TIME"]
               ]} onSelect={setUtility} />
             </div>
             <div className="attachments-panel">
