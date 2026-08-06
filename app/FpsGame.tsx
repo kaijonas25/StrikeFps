@@ -7,7 +7,8 @@ type Box = { minX: number; maxX: number; minZ: number; maxZ: number; height: num
 type FireMode = "SEMI" | "BURST" | "AUTO";
 type MenuPage = "HOME" | "LOADOUT" | "CHARACTER";
 type GameMap = "TEST YARD" | "CITY BLOCK";
-type GameSector = "SECTOR 1" | "SECTOR 2" | "SECTOR 3" | "SECTOR 4";
+type GameSector = "TRAINING SECTOR" | "SECTOR 1" | "SECTOR 2" | "SECTOR 3" | "SECTOR 4";
+type MultiplayerSector = Exclude<GameSector, "TRAINING SECTOR">;
 type KillFeedEntry = { id: number; victim: string; weapon: string; headshot: boolean };
 type SightAttachment = "IRON SIGHTS" | "RED DOT" | "HOLOGRAPHIC" | "4X SCOPE";
 type MuzzleAttachment = "STANDARD BARREL" | "SUPPRESSOR";
@@ -76,7 +77,7 @@ export function FpsGame() {
   const [selectedMap, setSelectedMap] = useState<GameMap>("TEST YARD");
   const [selectedSector, setSelectedSector] = useState<GameSector>("SECTOR 1");
   const [serverBrowserOpen, setServerBrowserOpen] = useState(false);
-  const [sectorPlayerCounts, setSectorPlayerCounts] = useState<Record<GameSector, number | null>>({ "SECTOR 1": null, "SECTOR 2": null, "SECTOR 3": null, "SECTOR 4": null });
+  const [sectorPlayerCounts, setSectorPlayerCounts] = useState<Record<MultiplayerSector, number | null>>({ "SECTOR 1": null, "SECTOR 2": null, "SECTOR 3": null, "SECTOR 4": null });
   const [matchPhase, setMatchPhase] = useState<"connecting" | "voting" | "playing">("connecting");
   const [mapVotes, setMapVotes] = useState(0);
   const [modeVotes, setModeVotes] = useState(0);
@@ -714,7 +715,7 @@ export function FpsGame() {
     };
     let multiplayerSocket: WebSocket | undefined;
     let lastMultiplayerSend = 0;
-    if (started && MULTIPLAYER_SERVER) {
+    if (started && selectedSector !== "TRAINING SECTOR" && MULTIPLAYER_SERVER) {
       setMultiplayerStatus("CONNECTING");
       const serverUrl = MULTIPLAYER_SERVER.replace(/^http/, "ws").replace(/\/$/, "");
       multiplayerSocket = new WebSocket(`${serverUrl}/room/${selectedSector.toLowerCase().replace(" ", "-")}`);
@@ -1495,12 +1496,12 @@ export function FpsGame() {
       <header className="topbar">
         <div className="brand"><span>STRIKE</span><b>YARD</b></div>
         <div className="mission"><small>{selectedMap}</small><strong>{selectedSector}</strong></div>
-        <div className="status"><i /> {started ? `${selectedSector} · ${multiplayerStatus}` : "SYSTEMS ONLINE"}</div>
+        <div className="status"><i /> {started ? selectedSector === "TRAINING SECTOR" ? "TRAINING SECTOR · SINGLE PLAYER" : `${selectedSector} · ${multiplayerStatus}` : "SYSTEMS ONLINE"}</div>
       </header>
       <div className="kill-feed" aria-live="polite">
         {killFeed.map((entry) => <div key={entry.id}><b>YOU</b><span>{entry.weapon}</span>{entry.headshot && <i>HEADSHOT</i>}<strong>{entry.victim}</strong></div>)}
       </div>
-      {started && matchPhase === "playing" && <aside className="leaderboard">
+      {started && selectedSector !== "TRAINING SECTOR" && matchPhase === "playing" && <aside className="leaderboard">
         <header><span>FREE FOR ALL</span><strong>{formatMatchTime(matchTimeLeft)}</strong></header>
         <div className="leaderboard-columns"><span>OPERATOR</span><i>K</i><i>D</i></div>
         {connectedPlayerIds.map((id, index) => <div className={id === localPlayerId ? "local" : ""} key={id}>
@@ -1573,9 +1574,20 @@ export function FpsGame() {
           </nav></>}
           {(!started && menuPage === "HOME" && serverBrowserOpen) && <div className="server-browser">
             <button className="back-button" onClick={() => setServerBrowserOpen(false)}>← MAIN MENU</button>
-            <div className="server-heading"><div><span>LIVE</span> SERVERS</div><small>SELECT A SECTOR</small></div>
+            <div className="server-heading"><div><span>PLAY</span> SECTORS</div><small>SELECT A DESTINATION</small></div>
             <div className="server-list">
-              {(["SECTOR 1", "SECTOR 2", "SECTOR 3", "SECTOR 4"] as GameSector[]).map((sector, index) => <button key={sector} onClick={() => {
+              <button onClick={() => {
+                setSelectedSector("TRAINING SECTOR");
+                setServerBrowserOpen(false);
+                setSelectedMap("TEST YARD");
+                setMatchPhase("playing");
+                setMapVotes(0); setModeVotes(0); setHasVoted(false); setHasModeVoted(false); setMatchEndsAt(0);
+                setStarted(true);
+                setSessionId((id) => id + 1);
+              }}>
+                <i>TR</i><span><b>TRAINING SECTOR</b><small>SINGLE PLAYER · TEST YARD · NO MAP VOTING</small></span><em>TRAIN</em>
+              </button>
+              {(["SECTOR 1", "SECTOR 2", "SECTOR 3", "SECTOR 4"] as MultiplayerSector[]).map((sector, index) => <button key={sector} onClick={() => {
                 setSelectedSector(sector);
                 setServerBrowserOpen(false);
                 setSelectedMap("CITY BLOCK");
