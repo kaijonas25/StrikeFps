@@ -325,7 +325,8 @@ export function FpsGame() {
         const frontSegment = (w - doorWidth) / 2;
         addBox(cx - doorWidth / 2 - frontSegment / 2, h / 2, frontZ, frontSegment, h, wall, color);
         addBox(cx + doorWidth / 2 + frontSegment / 2, h / 2, frontZ, frontSegment, h, wall, color);
-        addBox(cx, h - .12, cz, w, .24, d, 0x242b2d);
+        // Roof collision is visual-only; the simplified ground-up AABB system would otherwise fill the entire interior.
+        addBox(cx, h - .12, cz, w, .24, d, 0x242b2d, false);
         addBox(cx, .08, cz, w - .5, .16, d - .5, 0x3b3d3b, false);
         addDoor(cx, frontZ + .04, doorWidth, 0x49382e);
         const windowMat = new THREE.MeshStandardMaterial({ color: 0x79a6b2, emissive: 0x142d35, emissiveIntensity: 1.1, metalness: .55, roughness: .18 });
@@ -344,6 +345,24 @@ export function FpsGame() {
       [[-3, -22, 0x70483c], [3, 20, 0x3f5962], [-21, 2, 0x56594d], [22, -2, 0x624b3f]].forEach(([x, z, color]) => {
         addBox(x, .65, z, 2.1, 1.05, 4.2, color); addBox(x, 1.3, z + .15, 1.75, .62, 2.15, 0x263438);
       });
+      // Street fighting cover: barriers, sandbags, dumpsters, and offset roadblocks.
+      const addRoadBarrier = (x: number, z: number, rotation = 0) => {
+        const barrier = addBox(x, .48, z, 3.2, .82, .62, 0x777a76); barrier.rotation.y = rotation;
+        const stripe = addBox(x, .62, z - .33, 2.35, .13, .035, 0xe78a35, false); stripe.rotation.y = rotation;
+      };
+      addRoadBarrier(-3.8, -10, .08); addRoadBarrier(4.1, 9, -.1); addRoadBarrier(-3.2, 31, .12); addRoadBarrier(3.5, -33, -.08);
+      [[-12, -6], [13, 6], [-13, 18], [12, -19]].forEach(([x, z], groupIndex) => {
+        for (let bag = 0; bag < 4; bag++) addBox(x + (bag - 1.5) * .65, .28, z, .72, .42, .48, groupIndex % 2 ? 0x716249 : 0x625946);
+      });
+      [[-8, -28], [8, 27], [-18, -9], [19, 10]].forEach(([x, z], index) => {
+        addBox(x, .65, z, 1.7, 1.3, 1.05, index % 2 ? 0x315d60 : 0x3e5152);
+        addBox(x, 1.34, z, 1.78, .12, 1.1, 0x1c2426, false);
+      });
+      // Offset concrete blocks break long sightlines without sealing the streets.
+      addBox(-1.8, .85, -2, 1.15, 1.7, 1.15, 0x5c6262);
+      addBox(2.1, .85, 2.5, 1.15, 1.7, 1.15, 0x5c6262);
+      addBox(-5.7, .48, 15, 2.4, .96, .7, 0x686c69);
+      addBox(5.8, .48, -15, 2.4, .96, .7, 0x686c69);
       for (let i = 0; i < 24; i++) {
         const side = i % 2 ? -1 : 1, x = side * (12 + (i % 5) * 2.2), z = -38 + ((i * 7) % 76);
         const rubble = addBox(x, .12 + (i % 3) * .06, z, .35 + (i % 4) * .2, .24, .28 + (i % 3) * .18, i % 2 ? 0x5c5650 : 0x77716a, false); rubble.rotation.y = i * .73; rubble.rotation.z = (i % 3 - 1) * .18;
