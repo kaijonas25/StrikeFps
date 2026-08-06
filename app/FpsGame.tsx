@@ -383,6 +383,35 @@ export function FpsGame() {
       addRuinedLot(13.7, -29, 1, 1, 0x595c58);
       addRuinedLot(-13.7, 29, -1, -1, 0x6a5d4f);
       addRuinedLot(13.7, 29, 1, -1, 0x575c5d);
+      // Major collapse zones occupy the four empty corners between the crossing streets.
+      const addMajorCollapse = (cx: number, cz: number, xSide: -1 | 1, zSide: -1 | 1) => {
+        const concrete = xSide === zSide ? 0x716a62 : 0x626868;
+        // A broken multi-storey frame establishes that a full building once stood here.
+        addBox(cx + xSide * 2.25, 3.6, cz + zSide * 1.5, .48, 7.2, 5.6, 0x55595a);
+        addBox(cx - xSide * .8, 2.15, cz + zSide * 4.05, 5.6, 4.3, .45, 0x635d57);
+        addBox(cx + xSide * .6, 5.25, cz + zSide * 2.35, 3.6, .34, 3.8, 0x505354, false).rotation.z = xSide * .13;
+        addBox(cx - xSide * 1.45, 3.55, cz + zSide * 3.85, .42, 3.1, .5, 0x4d5152);
+        // Dense central mound provides substantial cover, with slabs spilling toward the road.
+        addBox(cx, .72, cz, 5.4, 1.44, 5.2, concrete);
+        addBox(cx - xSide * 1.1, 1.35, cz + zSide * .8, 3.2, 1.15, 2.7, 0x5a5d5b, false).rotation.y = .31 * xSide;
+        addBox(cx + xSide * .5, 1.7, cz - zSide * .6, 3.8, .42, 2.4, 0x79736b, false).rotation.set(.16 * zSide, -.24 * xSide, .11);
+        for (let piece = 0; piece < 18; piece++) {
+          const angle = piece * 2.17;
+          const distance = 1.7 + (piece % 5) * .68;
+          const chunk = addBox(cx + Math.cos(angle) * distance, .3 + (piece % 5) * .19, cz + Math.sin(angle) * distance,
+            .65 + (piece % 4) * .34, .38 + (piece % 3) * .26, .55 + ((piece + 2) % 4) * .3, piece % 4 ? concrete : 0x464b4c, false);
+          chunk.rotation.set((piece % 3 - 1) * .28, angle, (piece % 2 ? 1 : -1) * .22);
+        }
+        // Fallen structural beams point into the collapse and add readable silhouettes.
+        for (let beam = 0; beam < 3; beam++) {
+          const girder = addBox(cx - xSide * (2.6 - beam * .65), 1.2 + beam * .5, cz - zSide * (1.9 + beam * .55), .22, .22, 5.2, 0x493b35, false);
+          girder.rotation.set(zSide * (.18 + beam * .06), xSide * (.32 + beam * .22), xSide * .08);
+        }
+      };
+      addMajorCollapse(-14.2, -14.2, -1, -1);
+      addMajorCollapse(14.2, -14.2, 1, -1);
+      addMajorCollapse(-14.2, 14.2, -1, 1);
+      addMajorCollapse(14.2, 14.2, 1, 1);
       // Abandoned vehicles, barriers, rubble, and street furniture.
       [[-3, -22, 0x70483c], [3, 20, 0x3f5962], [-21, 2, 0x56594d], [22, -2, 0x624b3f]].forEach(([x, z, color]) => {
         addBox(x, .65, z, 2.1, 1.05, 4.2, color); addBox(x, 1.3, z + .15, 1.75, .62, 2.15, 0x263438);
