@@ -1019,8 +1019,8 @@ export function FpsGame() {
       const targetX = (reloadEnd ? 0.16 : fastMovement ? -0.13 : aiming ? -0.34 : (moving ? Math.cos(t * 6.5) * 0.008 : 0)) + leanAmount * .13;
       const activeSight = activeAttachments().sight;
       const opticAimY = activeSight === "IRON SIGHTS" ? 0.145 : activeSight === "RED DOT" ? 0.07 : activeSight === "HOLOGRAPHIC" ? 0.04 : 0.08;
-      const targetY = reloadEnd ? -0.52 * reloadDip : fastMovement ? -0.2 : aiming ? opticAimY : bobY - recoil * 0.3;
-      const targetZ = weaponNearWall ? .42 : reloadEnd ? 0.24 : fastMovement ? 0.16 : aiming ? 0.2 + recoil : recoil;
+      const targetY = reloadEnd ? -0.52 * reloadDip : fastMovement ? -0.2 : aiming ? opticAimY : isProne ? .12 + bobY : bobY - recoil * 0.3;
+      const targetZ = weaponNearWall ? .42 : reloadEnd ? 0.24 : fastMovement ? 0.16 : aiming ? 0.2 + recoil : isProne ? .1 : recoil;
       gun.position.x = THREE.MathUtils.lerp(gun.position.x, targetX, Math.min(1, dt * 12));
       gun.position.y = THREE.MathUtils.lerp(gun.position.y, targetY, Math.min(1, dt * 12));
       gun.position.z = THREE.MathUtils.lerp(gun.position.z, targetZ, Math.min(1, dt * 12));
@@ -1042,8 +1042,8 @@ export function FpsGame() {
         const carryLow = sprinting || sliding;
         const shoulderSwapX = leanAmount < 0 ? leanAmount * .4 : 0;
         worldWeapon.position.x = THREE.MathUtils.lerp(worldWeapon.position.x, (carryLow ? -.07 : -.055) + shoulderSwapX, Math.min(1, dt * 12));
-        worldWeapon.position.y = THREE.MathUtils.lerp(worldWeapon.position.y, carryLow ? 1.25 : 1.58, Math.min(1, dt * 12));
-        worldWeapon.position.z = THREE.MathUtils.lerp(worldWeapon.position.z, weaponNearWall ? .38 : carryLow ? .02 : .03, Math.min(1, dt * 12));
+        worldWeapon.position.y = THREE.MathUtils.lerp(worldWeapon.position.y, isProne ? 1.42 : carryLow ? 1.25 : 1.58, Math.min(1, dt * 12));
+        worldWeapon.position.z = THREE.MathUtils.lerp(worldWeapon.position.z, isProne ? .38 : weaponNearWall ? .38 : carryLow ? .02 : .03, Math.min(1, dt * 12));
         worldWeapon.rotation.x = THREE.MathUtils.lerp(worldWeapon.rotation.x, carryLow ? -.4 : -.04, Math.min(1, dt * 12));
         worldWeapon.rotation.z = THREE.MathUtils.lerp(worldWeapon.rotation.z, carryLow ? .1 : 0, Math.min(1, dt * 12));
       });
