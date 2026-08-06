@@ -7,6 +7,11 @@ type Box = { minX: number; maxX: number; minZ: number; maxZ: number; height: num
 type FireMode = "SEMI" | "BURST" | "AUTO";
 type MenuPage = "HOME" | "LOADOUT" | "CHARACTER";
 type KillFeedEntry = { id: number; victim: string; weapon: string; headshot: boolean };
+type SightAttachment = "IRON SIGHTS" | "RED DOT" | "HOLOGRAPHIC" | "4X SCOPE";
+type MuzzleAttachment = "STANDARD BARREL" | "SUPPRESSOR";
+type TacticalAttachment = "NONE" | "RED LASER" | "WHITE LIGHT";
+type MagazineAttachment = "STANDARD MAG" | "EXTENDED MAG" | "DRUM MAG";
+type WeaponAttachments = { sight: SightAttachment; muzzle: MuzzleAttachment; tactical: TacticalAttachment; magazine: MagazineAttachment };
 
 const WEAPON_STATS: Record<string, { damage: number; fireRate: number; capacity: number; reload: number; range: number; mobility: number; spread: number; pellets?: number }> = {
   "VXR-4 CARBINE": { damage: 16, fireRate: 72, capacity: 30, reload: 2.35, range: 74, mobility: 68, spread: 1.25 },
@@ -72,9 +77,14 @@ export function FpsGame() {
   const [pantsColor, setPantsColor] = useState("#303a3b");
   const [gloveColor, setGloveColor] = useState("#20292b");
   const [bootColor, setBootColor] = useState("#151b1d");
-  const [weaponSight, setWeaponSight] = useState<"IRON SIGHTS" | "RED DOT" | "HOLOGRAPHIC" | "4X SCOPE">("IRON SIGHTS");
-  const [muzzleAttachment, setMuzzleAttachment] = useState<"STANDARD BARREL" | "SUPPRESSOR">("STANDARD BARREL");
-  const [tacticalAttachment, setTacticalAttachment] = useState<"NONE" | "RED LASER">("NONE");
+  const [weaponSight, setWeaponSight] = useState<SightAttachment>("IRON SIGHTS");
+  const [muzzleAttachment, setMuzzleAttachment] = useState<MuzzleAttachment>("STANDARD BARREL");
+  const [tacticalAttachment, setTacticalAttachment] = useState<TacticalAttachment>("NONE");
+  const [magazineAttachment, setMagazineAttachment] = useState<MagazineAttachment>("STANDARD MAG");
+  const [secondarySight, setSecondarySight] = useState<SightAttachment>("IRON SIGHTS");
+  const [secondaryMuzzle, setSecondaryMuzzle] = useState<MuzzleAttachment>("STANDARD BARREL");
+  const [secondaryTactical, setSecondaryTactical] = useState<TacticalAttachment>("NONE");
+  const [secondaryMagazine, setSecondaryMagazine] = useState<MagazineAttachment>("STANDARD MAG");
 
   useEffect(() => {
     const mount = mountRef.current;
@@ -260,7 +270,9 @@ export function FpsGame() {
     // Detailed procedural weapon view models. All sights share the same centerline for ADS.
     const gun = new THREE.Group();
     const weaponMaterial = (color: number, metalness = 0.72) => material(color, 0.34, metalness);
-    const buildWeapon = (name: string) => {
+    const primaryAttachments: WeaponAttachments = { sight: weaponSight, muzzle: muzzleAttachment, tactical: tacticalAttachment, magazine: magazineAttachment };
+    const secondaryAttachments: WeaponAttachments = { sight: secondarySight, muzzle: secondaryMuzzle, tactical: secondaryTactical, magazine: secondaryMagazine };
+    const buildWeapon = (name: string, attachments: WeaponAttachments) => {
       const model = new THREE.Group();
       const addPart = (w: number, h: number, d: number, x: number, y: number, z: number, color = 0x20282b) => {
         const part = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), weaponMaterial(color));
@@ -322,18 +334,18 @@ export function FpsGame() {
 
       // Selected optic, muzzle, and tactical attachments are shared by equipped firearms.
       if (name !== "COMBAT KNIFE") {
-        if (weaponSight === "IRON SIGHTS") {
+        if (attachments.sight === "IRON SIGHTS") {
           const rearSight = new THREE.Mesh(new THREE.TorusGeometry(0.045, 0.009, 8, 18), weaponMaterial(0x101719));
           rearSight.position.set(x, -0.145, -0.46); model.add(rearSight);
           const frontLeft = addPart(0.012, 0.085, 0.025, x - 0.052, -0.18, muzzleZ + 0.16, 0x12191b);
           const frontRight = frontLeft.clone(); frontRight.position.x = x + 0.052; model.add(frontRight);
           addPart(0.012, 0.065, 0.02, x, -0.175, muzzleZ + 0.15, 0xff6b3c);
-        } else if (weaponSight === "RED DOT") {
+        } else if (attachments.sight === "RED DOT") {
           addPart(.18, .055, .24, x, -.135, -.65, 0x171e20);
           const lens = new THREE.Mesh(new THREE.CylinderGeometry(.075, .075, .035, 16), new THREE.MeshStandardMaterial({ color: 0x7fb5b8, transparent: true, opacity: .38, metalness: .25, roughness: .12 }));
           lens.rotation.x = Math.PI / 2; lens.position.set(x, -.07, -.67); model.add(lens);
           const dot = new THREE.Mesh(new THREE.SphereGeometry(.009, 8, 6), new THREE.MeshBasicMaterial({ color: 0xff2018, depthTest: false })); dot.position.set(x, -.07, -.647); model.add(dot);
-        } else if (weaponSight === "HOLOGRAPHIC") {
+        } else if (attachments.sight === "HOLOGRAPHIC") {
           addPart(.24, .055, .27, x, -.135, -.68, 0x182124);
           addPart(.025, .22, .04, x - .11, -.04, -.68, 0x202a2d); addPart(.025, .22, .04, x + .11, -.04, -.68, 0x202a2d);
           const glass = addPart(.18, .15, .018, x, -.04, -.69, 0x618b91); (glass.material as THREE.MeshStandardMaterial).transparent = true; (glass.material as THREE.MeshStandardMaterial).opacity = .42;
@@ -348,14 +360,24 @@ export function FpsGame() {
           const crossMaterial = new THREE.MeshBasicMaterial({ color: 0xff7048, depthTest: false });
           const vertical = new THREE.Mesh(new THREE.BoxGeometry(.004, .12, .002), crossMaterial); const horizontal = new THREE.Mesh(new THREE.BoxGeometry(.12, .004, .002), crossMaterial); scopeCross.add(vertical, horizontal); model.add(scopeCross);
         }
-        if (muzzleAttachment === "SUPPRESSOR") {
+        if (attachments.muzzle === "SUPPRESSOR") {
           const suppressor = new THREE.Mesh(new THREE.CylinderGeometry(.055, .065, .48, 14), weaponMaterial(0x151b1d));
           suppressor.rotation.x = Math.PI / 2; suppressor.position.set(x, -.25, muzzleZ - .2); model.add(suppressor); muzzleZ -= .42;
         }
-        if (tacticalAttachment === "RED LASER") {
+        if (attachments.tactical === "RED LASER") {
           addPart(.09, .09, .27, x + .13, -.34, -.9, 0x171d1f);
           const laserAnchor = new THREE.Object3D(); laserAnchor.name = "laserAnchor"; laserAnchor.position.set(x + .13, -.34, -1.05); model.add(laserAnchor);
           const lens = new THREE.Mesh(new THREE.SphereGeometry(.025, 8, 6), new THREE.MeshBasicMaterial({ color: 0xff2424 })); lens.position.copy(laserAnchor.position); model.add(lens);
+        }
+        if (attachments.tactical === "WHITE LIGHT") {
+          addPart(.11, .11, .3, x + .14, -.34, -.9, 0x20282a);
+          const flashlightAnchor = new THREE.Object3D(); flashlightAnchor.name = "flashlightAnchor"; flashlightAnchor.position.set(x + .14, -.34, -1.07); model.add(flashlightAnchor);
+          const lens = new THREE.Mesh(new THREE.CircleGeometry(.04, 12), new THREE.MeshBasicMaterial({ color: 0xe8fbff })); lens.position.copy(flashlightAnchor.position); model.add(lens);
+        }
+        if (attachments.magazine === "EXTENDED MAG") addPart(.16, .54, .2, x, -.61, -.57, 0x111719);
+        if (attachments.magazine === "DRUM MAG") {
+          const drum = new THREE.Mesh(new THREE.CylinderGeometry(.24, .24, .2, 16), weaponMaterial(0x111719));
+          drum.rotation.z = Math.PI / 2; drum.position.set(x, -.55, -.59); model.add(drum);
         }
       }
       const muzzleAnchor = new THREE.Object3D(); muzzleAnchor.name = "muzzleAnchor"; muzzleAnchor.position.set(x, -0.25, muzzleZ); model.add(muzzleAnchor);
@@ -365,8 +387,8 @@ export function FpsGame() {
       });
       return { model, muzzleAnchor };
     };
-    const primaryWeapon = buildWeapon(primary);
-    const secondaryWeapon = buildWeapon(secondary);
+    const primaryWeapon = buildWeapon(primary, primaryAttachments);
+    const secondaryWeapon = buildWeapon(secondary, secondaryAttachments);
     gun.add(primaryWeapon.model, secondaryWeapon.model);
     const worldPrimary = primaryWeapon.model.clone(true);
     const worldSecondary = secondaryWeapon.model.clone(true);
@@ -390,15 +412,20 @@ export function FpsGame() {
 
     const keys = new Set<string>();
     let yaw = 0, pitch = 0, cameraYaw = 0, cameraPitch = 0.2, verticalVelocity = 0, grounded = true;
-    const primaryStats = WEAPON_STATS[primary];
+    const magazineCapacity = (capacity: number, magazine: MagazineAttachment) => magazine === "DRUM MAG" ? capacity * 2 : magazine === "EXTENDED MAG" ? Math.ceil(capacity * 1.35) : capacity;
+    const primaryStats = { ...WEAPON_STATS[primary], capacity: magazineCapacity(WEAPON_STATS[primary].capacity, magazineAttachment) };
     const secondaryIsMelee = secondary === "COMBAT KNIFE";
-    const secondaryStats = WEAPON_STATS[secondary] ?? { damage: 50, fireRate: 100, capacity: 1, reload: 0.6, range: 5, mobility: 100, spread: 0 };
+    const baseSecondaryStats = WEAPON_STATS[secondary] ?? { damage: 50, fireRate: 100, capacity: 1, reload: 0.6, range: 5, mobility: 100, spread: 0 };
+    const secondaryStats = { ...baseSecondaryStats, capacity: magazineCapacity(baseSecondaryStats.capacity, secondaryMagazine) };
     const ammoCounts = [primaryStats.capacity, secondaryStats.capacity];
     setAmmo(primaryStats.capacity);
     let ammoCount = ammoCounts[0], recoil = 0, muzzleTimer = 0, aiming = false, sprinting = false, sliding = false, reloadEnd = 0, meleeSwing = 0, lastMelee = 0;
     let throwableAiming = false, grenadesLeft = 2, medicalCharges = 2;
     const projectiles: { mesh: THREE.Mesh; velocity: THREE.Vector3; age: number; type: string }[] = [];
     let currentFireMode: FireMode = "AUTO", triggerHeld = false, lastShot = 0, currentSlot = 1, movementSpread = 1;
+    const activeAttachments = (): WeaponAttachments => currentSlot === 2 && secondaryIsMelee
+      ? { sight: "IRON SIGHTS", muzzle: "STANDARD BARREL", tactical: "NONE", magazine: "STANDARD MAG" }
+      : currentSlot === 1 ? primaryAttachments : secondaryAttachments;
     let playerHealth = 100, nextPadTick = 0, healEnd = 0;
     const playerPosition = new THREE.Vector3(0, PLAYER_HEIGHT, 15);
     let isThirdPerson = false, orbiting = false, isCrouching = false, slideEnd = 0, stanceOffset = 0;
@@ -483,6 +510,8 @@ export function FpsGame() {
     const laserLine = new THREE.Line(laserGeometry, new THREE.LineBasicMaterial({ color: 0xff2020, transparent: true, opacity: .72, depthWrite: false }));
     const laserDot = new THREE.Mesh(new THREE.SphereGeometry(.035, 8, 6), new THREE.MeshBasicMaterial({ color: 0xff3030, depthTest: false }));
     laserLine.raycast = () => {}; laserDot.raycast = () => {}; laserLine.visible = laserDot.visible = false; scene.add(laserLine, laserDot);
+    const flashlight = new THREE.SpotLight(0xe5f7ff, 0, 28, Math.PI / 7, .45, 1.35);
+    flashlight.castShadow = true; flashlight.shadow.mapSize.set(512, 512); flashlight.target.raycast = () => {}; scene.add(flashlight, flashlight.target);
     const impactGeometry = new THREE.SphereGeometry(0.045, 6, 6);
     const impactMaterial = new THREE.MeshBasicMaterial({ color: 0xff9a55 });
     const addKill = (dummy: THREE.Group, weapon: string, headshot: boolean) => {
@@ -586,7 +615,7 @@ export function FpsGame() {
       ammoCounts[currentSlot - 1] = ammoCount;
       setAmmo(ammoCount);
       recoil = Math.min(recoil + 0.055, 0.11);
-      muzzle.intensity = muzzleAttachment === "SUPPRESSOR" ? 5 : 35;
+      muzzle.intensity = activeAttachments().muzzle === "SUPPRESSOR" ? 5 : 35;
       muzzleTimer = 0.045;
       const shotStats = currentSlot === 1 ? primaryStats : secondaryStats;
       const tracerStart = new THREE.Vector3();
@@ -852,7 +881,8 @@ export function FpsGame() {
       const reloadDip = reloadEnd ? Math.sin(Math.min(1, reloadPhase) * Math.PI) : 0;
       const fastMovement = sprinting || sliding;
       const targetX = reloadEnd ? 0.16 : fastMovement ? -0.13 : aiming ? -0.34 : (moving ? Math.cos(t * 6.5) * 0.008 : 0);
-      const opticAimY = weaponSight === "IRON SIGHTS" ? 0.145 : weaponSight === "RED DOT" ? 0.07 : weaponSight === "HOLOGRAPHIC" ? 0.04 : 0.08;
+      const activeSight = activeAttachments().sight;
+      const opticAimY = activeSight === "IRON SIGHTS" ? 0.145 : activeSight === "RED DOT" ? 0.07 : activeSight === "HOLOGRAPHIC" ? 0.04 : 0.08;
       const targetY = reloadEnd ? -0.52 * reloadDip : fastMovement ? -0.2 : aiming ? opticAimY : bobY - recoil * 0.3;
       const targetZ = reloadEnd ? 0.24 : fastMovement ? 0.16 : aiming ? 0.2 + recoil : recoil;
       gun.position.x = THREE.MathUtils.lerp(gun.position.x, targetX, Math.min(1, dt * 12));
@@ -876,7 +906,7 @@ export function FpsGame() {
         worldWeapon.rotation.x = THREE.MathUtils.lerp(worldWeapon.rotation.x, carryLow ? -.4 : -.04, Math.min(1, dt * 12));
         worldWeapon.rotation.z = THREE.MathUtils.lerp(worldWeapon.rotation.z, carryLow ? .1 : 0, Math.min(1, dt * 12));
       });
-      camera.fov = THREE.MathUtils.lerp(camera.fov, aiming ? weaponSight === "4X SCOPE" ? 20 : 58 : fastMovement ? 84 : 78, Math.min(1, dt * 10));
+      camera.fov = THREE.MathUtils.lerp(camera.fov, aiming ? activeSight === "4X SCOPE" ? 20 : 58 : fastMovement ? 84 : 78, Math.min(1, dt * 10));
       camera.updateProjectionMatrix();
       stanceOffset = THREE.MathUtils.lerp(stanceOffset, isCrouching ? -.65 : 0, Math.min(1, dt * 12));
       localPlayer.scale.set(1, 1, 1);
@@ -890,7 +920,7 @@ export function FpsGame() {
         );
         camera.lookAt(playerPosition.x, playerPosition.y + 0.35 + stanceOffset, playerPosition.z);
       } else { camera.position.copy(playerPosition); camera.position.y += stanceOffset; }
-      const laserEnabled = tacticalAttachment === "RED LASER" && currentSlot <= 2;
+      const laserEnabled = activeAttachments().tactical === "RED LASER" && currentSlot <= 2 && !(currentSlot === 2 && secondaryIsMelee);
       laserLine.visible = laserDot.visible = laserEnabled;
       if (laserEnabled) {
         const activeModel = isThirdPerson ? currentSlot === 1 ? worldPrimary : worldSecondary : currentSlot === 1 ? primaryWeapon.model : secondaryWeapon.model;
@@ -901,6 +931,17 @@ export function FpsGame() {
           const laserHit = raycaster.intersectObjects(scene.children, true).find((result) => result.distance > .5 && result.object !== camera);
           const laserEnd = laserHit?.point.clone() ?? raycaster.ray.at(60, new THREE.Vector3());
           laserGeometry.setFromPoints([laserStart, laserEnd]); laserDot.position.copy(laserEnd);
+        }
+      }
+      const flashlightEnabled = activeAttachments().tactical === "WHITE LIGHT" && currentSlot <= 2 && !(currentSlot === 2 && secondaryIsMelee);
+      flashlight.intensity = flashlightEnabled ? 65 : 0;
+      if (flashlightEnabled) {
+        const activeModel = isThirdPerson ? currentSlot === 1 ? worldPrimary : worldSecondary : currentSlot === 1 ? primaryWeapon.model : secondaryWeapon.model;
+        const flashlightAnchor = activeModel.getObjectByName("flashlightAnchor");
+        if (flashlightAnchor) {
+          flashlightAnchor.getWorldPosition(flashlight.position);
+          raycaster.setFromCamera(getAimNdc(), camera);
+          flashlight.target.position.copy(raycaster.ray.at(22, new THREE.Vector3()));
         }
       }
       renderer.render(scene, camera);
@@ -920,16 +961,17 @@ export function FpsGame() {
       renderer.dispose();
       mount.removeChild(renderer.domElement);
     };
-  }, [sessionId, primary, secondary, medical, utility, characterSkin, characterUniform, characterArmor, characterHelmet, faceGear, headAccessory, chestRig, backpack, pantsColor, gloveColor, bootColor, weaponSight, muzzleAttachment, tacticalAttachment]);
+  }, [sessionId, primary, secondary, medical, utility, characterSkin, characterUniform, characterArmor, characterHelmet, faceGear, headAccessory, chestRig, backpack, pantsColor, gloveColor, bootColor, weaponSight, muzzleAttachment, tacticalAttachment, magazineAttachment, secondarySight, secondaryMuzzle, secondaryTactical, secondaryMagazine]);
 
   const equippedItems = [primary, secondary, medical, utility];
   const activeIsMelee = activeSlot === 2 && secondary === "COMBAT KNIFE";
+  const activeSightAttachment = activeSlot === 1 ? weaponSight : secondarySight;
 
   return (
     <main className={`game-shell${!started ? " game-menu" : ""}`}>
       <div ref={mountRef} className="viewport" aria-label="3D first-person training arena" />
       <div className="vignette" />
-      {adsActive && weaponSight === "4X SCOPE" && !thirdPerson && <div className="scope-overlay"><div className="scope-view"><i className="scope-line horizontal" /><i className="scope-line vertical" /><b /><span>4×</span></div></div>}
+      {adsActive && activeSightAttachment === "4X SCOPE" && !activeIsMelee && !thirdPerson && <div className="scope-overlay"><div className="scope-view"><i className="scope-line horizontal" /><i className="scope-line vertical" /><b /><span>4×</span></div></div>}
       <header className="topbar">
         <div className="brand"><span>STRIKE</span><b>YARD</b></div>
         <div className="mission"><small>TRAINING SECTOR 01</small><strong>FREE ROAM</strong></div>
@@ -1003,11 +1045,19 @@ export function FpsGame() {
               ]} onSelect={setUtility} />
             </div>
             <div className="attachments-panel">
-              <div className="attachments-heading"><span>WEAPON</span> ATTACHMENTS <small>APPLIES TO EQUIPPED FIREARMS</small></div>
+              <div className="attachments-heading"><span>PRIMARY</span> ATTACHMENTS <small>{primary}</small></div>
               <div className="attachments-grid">
                 <AttachmentOption label="OPTIC" value={weaponSight} options={["IRON SIGHTS", "RED DOT", "HOLOGRAPHIC", "4X SCOPE"]} onSelect={(value) => setWeaponSight(value as typeof weaponSight)} />
                 <AttachmentOption label="MUZZLE" value={muzzleAttachment} options={["STANDARD BARREL", "SUPPRESSOR"]} onSelect={(value) => setMuzzleAttachment(value as typeof muzzleAttachment)} />
-                <AttachmentOption label="TACTICAL" value={tacticalAttachment} options={["NONE", "RED LASER"]} onSelect={(value) => setTacticalAttachment(value as typeof tacticalAttachment)} />
+                <AttachmentOption label="MAGAZINE" value={magazineAttachment} options={["STANDARD MAG", "EXTENDED MAG", "DRUM MAG"]} onSelect={(value) => setMagazineAttachment(value as typeof magazineAttachment)} />
+                <AttachmentOption label="TACTICAL" value={tacticalAttachment} options={["NONE", "RED LASER", "WHITE LIGHT"]} onSelect={(value) => setTacticalAttachment(value as typeof tacticalAttachment)} />
+              </div>
+              <div className="attachments-heading secondary"><span>SECONDARY</span> ATTACHMENTS <small>{secondary}</small></div>
+              <div className="attachments-grid">
+                <AttachmentOption label="OPTIC" value={secondarySight} options={["IRON SIGHTS", "RED DOT", "HOLOGRAPHIC", "4X SCOPE"]} onSelect={(value) => setSecondarySight(value as typeof secondarySight)} />
+                <AttachmentOption label="MUZZLE" value={secondaryMuzzle} options={["STANDARD BARREL", "SUPPRESSOR"]} onSelect={(value) => setSecondaryMuzzle(value as typeof secondaryMuzzle)} />
+                <AttachmentOption label="MAGAZINE" value={secondaryMagazine} options={["STANDARD MAG", "EXTENDED MAG", "DRUM MAG"]} onSelect={(value) => setSecondaryMagazine(value as typeof secondaryMagazine)} />
+                <AttachmentOption label="TACTICAL" value={secondaryTactical} options={["NONE", "RED LASER", "WHITE LIGHT"]} onSelect={(value) => setSecondaryTactical(value as typeof secondaryTactical)} />
               </div>
             </div>
             <button className="confirm-loadout" onClick={() => setMenuPage("HOME")}>CONFIRM LOADOUT</button>
