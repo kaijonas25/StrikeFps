@@ -55,6 +55,7 @@ const MULTIPLAYER_SERVER = "https://strikeyard-multiplayer.kaigarcia2510.workers
 export function FpsGame() {
   const mountRef = useRef<HTMLDivElement>(null);
   const respawnRef = useRef<() => void>(() => {});
+  const multiplayerSendRef = useRef<(packet: unknown) => void>(() => {});
   const [locked, setLocked] = useState(false);
   const [started, setStarted] = useState(false);
   const [ammo, setAmmo] = useState(30);
@@ -64,7 +65,9 @@ export function FpsGame() {
   const [selectedMap, setSelectedMap] = useState<GameMap>("TEST YARD");
   const [selectedSector, setSelectedSector] = useState<GameSector>("SECTOR 1");
   const [serverBrowserOpen, setServerBrowserOpen] = useState(false);
-  const [mapVoteOpen, setMapVoteOpen] = useState(false);
+  const [matchPhase, setMatchPhase] = useState<"connecting" | "voting" | "playing">("connecting");
+  const [mapVotes, setMapVotes] = useState(0);
+  const [hasVoted, setHasVoted] = useState(false);
   const [multiplayerStatus, setMultiplayerStatus] = useState<"OFFLINE" | "CONNECTING" | "ONLINE">("OFFLINE");
   const [doorPrompt, setDoorPrompt] = useState(false);
   const [primary, setPrimary] = useState("VXR-4 CARBINE");
@@ -657,16 +660,18 @@ export function FpsGame() {
       setMultiplayerStatus("CONNECTING");
       const serverUrl = MULTIPLAYER_SERVER.replace(/^http/, "ws").replace(/\/$/, "");
       multiplayerSocket = new WebSocket(`${serverUrl}/room/${selectedSector.toLowerCase().replace(" ", "-")}`);
+      multiplayerSendRef.current = (packet) => { if (multiplayerSocket?.readyState === WebSocket.OPEN) multiplayerSocket.send(JSON.stringify(packet)); };
       multiplayerSocket.addEventListener("open", () => setMultiplayerStatus("ONLINE"));
       multiplayerSocket.addEventListener("close", () => setMultiplayerStatus("OFFLINE"));
       multiplayerSocket.addEventListener("error", () => setMultiplayerStatus("OFFLINE"));
       multiplayerSocket.addEventListener("message", (event) => {
         if (typeof event.data !== "string") return;
         try {
-          const packet = JSON.parse(event.data) as { type: string; player?: RemoteState; players?: RemoteState[]; id?: string };
-          if (packet.type === "welcome") packet.players?.forEach(upsertRemotePlayer);
+          const packet = JSON.parse(event.data) as { type: string; player?: RemoteState; players?: RemoteState[]; id?: string; match?: { phase: "voting" | "playing"; votes: number } };
+          if (packet.type === "welcome") { packet.players?.forEach(upsertRemotePlayer); if (packet.match) { setMatchPhase(packet.match.phase); setMapVotes(packet.match.votes); if (packet.match.phase === "voting") document.exitPointerLock(); } }
           else if ((packet.type === "joined" || packet.type === "state") && packet.player) upsertRemotePlayer(packet.player);
           else if (packet.type === "left" && packet.id) { const avatar = remotePlayers.get(packet.id); if (avatar) scene.remove(avatar); remotePlayers.delete(packet.id); }
+          else if (packet.type === "match" && packet.match) { setMatchPhase(packet.match.phase); setMapVotes(packet.match.votes); setHasVoted(false); if (packet.match.phase === "voting") document.exitPointerLock(); }
         } catch {}
       });
     } else setMultiplayerStatus("OFFLINE");
@@ -1353,6 +1358,7 @@ export function FpsGame() {
       renderer.domElement.removeEventListener("contextmenu", onContextMenu);
       [...suppressedShotPool, ...unsuppressedShotPool].forEach((audio) => { audio.pause(); audio.src = ""; });
       multiplayerSocket?.close(1000, "leaving sector");
+      multiplayerSendRef.current = () => {};
       setMultiplayerStatus("OFFLINE");
       renderer.dispose();
       mount.removeChild(renderer.domElement);
@@ -1397,6 +1403,18 @@ export function FpsGame() {
       <div className={`heal-effect${healingEffect ? " active" : ""}`} />
       {selectedMap === "TEST YARD" && <div className="test-legend"><span className="damage-dot" /> DAMAGE PAD <span className="kill-dot" /> KILL PAD <span className="heal-dot" /> HEAL PAD <span className="medical-dot" /> MEDICAL DROP <span className="utility-dot" /> UTILITY DROP</div>}
       <div className="controls"><kbd>WASD</kbd> MOVE <kbd>SHIFT</kbd> SPRINT <kbd>C</kbd> CROUCH / SLIDE <kbd>X</kbd> PRONE <kbd>Q/E</kbd> LEAN <kbd>RMB</kbd> {thirdPerson ? "ORBIT CAMERA" : "AIM"} <kbd>LMB</kbd> FIRE <kbd>TAB</kbd> {thirdPerson ? "1ST PERSON" : "3RD PERSON"}</div>
+      {started && matchPhase === "voting" && <div className="match-vote-overlay">
+        <div className="match-vote-panel">
+          <small>{selectedSector} · MATCH COMPLETE</small>
+          <h2><span>MAP</span> VOTING</h2>
+          <p>CHOOSE THE NEXT BATTLEFIELD</p>
+          <button className={hasVoted ? "voted" : ""} disabled={hasVoted} onClick={() => { multiplayerSendRef.current({ type: "vote", map: "CITY BLOCK" }); setHasVoted(true); }}>
+            <i>01</i><span><b>CITY BLOCK</b><small>URBAN WARFARE · ENTERABLE BUILDINGS · DEBRIS</small></span><em>{hasVoted ? "VOTE LOCKED" : "VOTE"}</em>
+          </button>
+          <div className="vote-total"><i style={{ width: mapVotes ? "100%" : "0%" }} /><span>{mapVotes} VOTE{mapVotes === 1 ? "" : "S"}</span></div>
+          <footer>CITY BLOCK IS THE ONLY MAP IN THE CURRENT ROTATION</footer>
+        </div>
+      </div>}
       {dead && <div className="death-screen">
         <div className="death-code">KIA</div><h2>OPERATOR DOWN</h2><p>TEST CONDITION: FATAL DAMAGE</p>
         <button onClick={() => {
@@ -1404,7 +1422,7 @@ export function FpsGame() {
           mountRef.current?.querySelector("canvas")?.requestPointerLock();
         }}>RESPAWN AT TEST YARD</button>
       </div>}
-      {!locked && !dead && <div className={`menu-screen${!started ? " main-menu-screen" : " pause-screen"}`}>
+      {!locked && !dead && matchPhase !== "voting" && <div className={`menu-screen${!started ? " main-menu-screen" : " pause-screen"}`}>
         <div className="menu-rule" />
         {!started && menuPage !== "LOADOUT" && <button className="character-preview" onClick={() => setMenuPage("CHARACTER")} aria-label="Customize character">
           <div className="preview-glow" />
@@ -1413,7 +1431,7 @@ export function FpsGame() {
         </button>}
         <section className="menu-card">
           <div className="menu-kicker">TACTICAL TRAINING SIMULATION</div>
-          {(!started && menuPage === "HOME" && !serverBrowserOpen && !mapVoteOpen) && <>
+          {(!started && menuPage === "HOME" && !serverBrowserOpen) && <>
           <h1><span>STRIKE</span>YARD</h1>
           <p>SECTOR 01 · COMBAT READINESS COURSE</p>
           <nav className="main-nav" aria-label="Main menu">
@@ -1431,25 +1449,15 @@ export function FpsGame() {
               {(["SECTOR 1", "SECTOR 2", "SECTOR 3", "SECTOR 4"] as GameSector[]).map((sector, index) => <button key={sector} onClick={() => {
                 setSelectedSector(sector);
                 setServerBrowserOpen(false);
-                setMapVoteOpen(true);
+                setSelectedMap("CITY BLOCK");
+                setMatchPhase("connecting");
+                setMapVotes(0); setHasVoted(false);
+                setStarted(true);
+                setSessionId((id) => id + 1);
               }}>
-                <i>{String(index + 1).padStart(2, "0")}</i><span><b>{sector}</b><small>OPEN MAP VOTING LOBBY</small></span><em>SELECT</em>
+                <i>{String(index + 1).padStart(2, "0")}</i><span><b>{sector}</b><small>JOIN SERVER · MAP VOTE INSIDE</small></span><em>JOIN</em>
               </button>)}
             </div>
-          </div>}
-          {(!started && menuPage === "HOME" && mapVoteOpen) && <div className="map-vote-browser">
-            <button className="back-button" onClick={() => { setMapVoteOpen(false); setServerBrowserOpen(true); }}>← SERVER SELECT</button>
-            <div className="map-vote-heading"><div><span>MAP</span> VOTING</div><small>{selectedSector} · ONE MAP AVAILABLE</small></div>
-            <button className="map-vote-card" onClick={() => {
-              setSelectedMap("CITY BLOCK");
-              setMapVoteOpen(false);
-              setStarted(true);
-              setSessionId((id) => id + 1);
-              window.setTimeout(() => mountRef.current?.querySelector("canvas")?.requestPointerLock(), 50);
-            }}>
-              <i>01</i><span><b>CITY BLOCK</b><small>URBAN WARFARE · ENTERABLE BUILDINGS · DEBRIS</small></span><em>VOTE &amp; DEPLOY</em>
-            </button>
-            <p className="vote-note"><i /> CITY BLOCK IS CURRENTLY THE ONLY ELIGIBLE MAP. MORE MAPS WILL ENTER THE ROTATION LATER.</p>
           </div>}
           {(!started && menuPage === "LOADOUT") && <div className="loadout-panel">
             <button className="back-button" onClick={() => setMenuPage("HOME")}>← MAIN MENU</button>
@@ -1527,7 +1535,7 @@ export function FpsGame() {
             <button className="leave" onClick={() => {
               setStarted(false);
               setServerBrowserOpen(false);
-              setMapVoteOpen(false);
+              setMatchPhase("connecting");
               setAmmo(30);
               setFireMode("AUTO");
               setActiveSlot(1);
