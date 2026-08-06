@@ -62,8 +62,8 @@ export function FpsGame() {
   const [sessionId, setSessionId] = useState(0);
   const [menuPage, setMenuPage] = useState<MenuPage>("HOME");
   const [selectedMap, setSelectedMap] = useState<GameMap>("TEST YARD");
-  const [selectedSector, setSelectedSector] = useState<GameSector>("SECTOR 1");
-  const [serverBrowserOpen, setServerBrowserOpen] = useState(false);
+  const selectedSector: GameSector = "SECTOR 1";
+  const [mapVoteOpen, setMapVoteOpen] = useState(false);
   const [multiplayerStatus, setMultiplayerStatus] = useState<"OFFLINE" | "CONNECTING" | "ONLINE">("OFFLINE");
   const [doorPrompt, setDoorPrompt] = useState(false);
   const [primary, setPrimary] = useState("VXR-4 CARBINE");
@@ -1405,9 +1405,6 @@ export function FpsGame() {
       </div>}
       {!locked && !dead && <div className={`menu-screen${!started ? " main-menu-screen" : " pause-screen"}`}>
         <div className="menu-rule" />
-        {!started && menuPage === "HOME" && <aside className="map-select"><small>TEMPORARY MAP SELECT</small><h2>DEPLOYMENT</h2>
-          {(["TEST YARD", "CITY BLOCK"] as GameMap[]).map((map) => <button key={map} className={selectedMap === map ? "selected" : ""} onClick={() => setSelectedMap(map)}><i /> <span>{map}</span><b>{map === "CITY BLOCK" ? "URBAN · ENTERABLE BUILDINGS" : "SYSTEMS TESTING"}</b></button>)}
-        </aside>}
         {!started && menuPage !== "LOADOUT" && <button className="character-preview" onClick={() => setMenuPage("CHARACTER")} aria-label="Customize character">
           <div className="preview-glow" />
           <OperatorPreview3D skin={characterSkin} uniform={characterUniform} armor={characterArmor} helmet={characterHelmet} faceGear={faceGear} headAccessory={headAccessory} chestRig={chestRig} backpack={backpack} pants={pantsColor} gloves={gloveColor} boots={bootColor} />
@@ -1415,31 +1412,30 @@ export function FpsGame() {
         </button>}
         <section className="menu-card">
           <div className="menu-kicker">TACTICAL TRAINING SIMULATION</div>
-          {(!started && menuPage === "HOME" && !serverBrowserOpen) && <>
+          {(!started && menuPage === "HOME" && !mapVoteOpen) && <>
           <h1><span>STRIKE</span>YARD</h1>
           <p>SECTOR 01 · COMBAT READINESS COURSE</p>
           <nav className="main-nav" aria-label="Main menu">
             <button className="nav-active" onClick={() => {
-              setServerBrowserOpen(true);
-            }}><b>01</b><span>PLAY</span><small>SELECT MULTIPLAYER SERVER</small></button>
+              setMapVoteOpen(true);
+            }}><b>01</b><span>PLAY</span><small>JOIN MULTIPLAYER MATCH</small></button>
             <button onClick={() => setMenuPage("LOADOUT")}><b>02</b><span>LOADOUT</span><small>EDIT EQUIPMENT</small></button>
             <button onClick={() => setMenuPage("CHARACTER")}><b>03</b><span>OPERATOR</span><small>CUSTOMIZE CHARACTER</small></button>
             <button disabled><b>04</b><span>SETTINGS</span><small>COMING SOON</small></button>
           </nav></>}
-          {(!started && menuPage === "HOME" && serverBrowserOpen) && <div className="server-browser">
-            <button className="back-button" onClick={() => setServerBrowserOpen(false)}>← MAIN MENU</button>
-            <div className="server-heading"><div><span>LIVE</span> SERVERS</div><small>SELECT A SECTOR TO DEPLOY</small></div>
-            <div className="server-list">
-              {(["SECTOR 1", "SECTOR 2", "SECTOR 3", "SECTOR 4"] as GameSector[]).map((sector, index) => <button key={sector} onClick={() => {
-                setSelectedSector(sector);
-                setServerBrowserOpen(false);
-                setStarted(true);
-                setSessionId((id) => id + 1);
-                window.setTimeout(() => mountRef.current?.querySelector("canvas")?.requestPointerLock(), 50);
-              }}>
-                <i>{String(index + 1).padStart(2, "0")}</i><span><b>{sector}</b><small>{selectedMap} · MULTIPLAYER</small></span><em>JOIN</em>
-              </button>)}
-            </div>
+          {(!started && menuPage === "HOME" && mapVoteOpen) && <div className="map-vote-browser">
+            <button className="back-button" onClick={() => setMapVoteOpen(false)}>← MAIN MENU</button>
+            <div className="map-vote-heading"><div><span>MAP</span> VOTING</div><small>MATCHMAKING · ONE MAP AVAILABLE</small></div>
+            <button className="map-vote-card" onClick={() => {
+              setSelectedMap("CITY BLOCK");
+              setMapVoteOpen(false);
+              setStarted(true);
+              setSessionId((id) => id + 1);
+              window.setTimeout(() => mountRef.current?.querySelector("canvas")?.requestPointerLock(), 50);
+            }}>
+              <i>01</i><span><b>CITY BLOCK</b><small>URBAN WARFARE · ENTERABLE BUILDINGS · DEBRIS</small></span><em>VOTE &amp; DEPLOY</em>
+            </button>
+            <p className="vote-note"><i /> CITY BLOCK IS CURRENTLY THE ONLY ELIGIBLE MAP. MORE MAPS WILL ENTER THE ROTATION LATER.</p>
           </div>}
           {(!started && menuPage === "LOADOUT") && <div className="loadout-panel">
             <button className="back-button" onClick={() => setMenuPage("HOME")}>← MAIN MENU</button>
@@ -1516,7 +1512,7 @@ export function FpsGame() {
             </button>
             <button className="leave" onClick={() => {
               setStarted(false);
-              setServerBrowserOpen(false);
+              setMapVoteOpen(false);
               setAmmo(30);
               setFireMode("AUTO");
               setActiveSlot(1);
