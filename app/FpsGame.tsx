@@ -77,6 +77,7 @@ export function FpsGame() {
   const [adsActive, setAdsActive] = useState(false);
   const [crouching, setCrouching] = useState(false);
   const [killFeed, setKillFeed] = useState<KillFeedEntry[]>([]);
+  const [leanSide, setLeanSide] = useState<-1 | 0 | 1>(0);
   const [characterSkin, setCharacterSkin] = useState("#a9795e");
   const [characterUniform, setCharacterUniform] = useState("#303a3b");
   const [characterArmor, setCharacterArmor] = useState("#20292b");
@@ -492,12 +493,12 @@ export function FpsGame() {
       : currentSlot === 1 ? primaryAttachments : secondaryAttachments;
     let playerHealth = 100, nextPadTick = 0, healEnd = 0;
     const playerPosition = new THREE.Vector3(0, PLAYER_HEIGHT, 15);
-    let isThirdPerson = false, orbiting = false, isCrouching = false, slideEnd = 0, stanceOffset = 0;
+    let isThirdPerson = false, orbiting = false, isCrouching = false, slideEnd = 0, stanceOffset = 0, leanDirection: -1 | 0 | 1 = 0, leanAmount = 0;
     const slideVelocity = new THREE.Vector2();
     respawnRef.current = () => {
       playerPosition.set(0, PLAYER_HEIGHT, 15); camera.position.copy(playerPosition);
       yaw = 0; pitch = 0; verticalVelocity = 0; playerHealth = 100;
-      isCrouching = false; sliding = false; slideEnd = 0; stanceOffset = 0; setCrouching(false);
+      isCrouching = false; sliding = false; slideEnd = 0; stanceOffset = 0; leanDirection = 0; leanAmount = 0; setCrouching(false); setLeanSide(0);
       keys.clear();
     };
     let last = performance.now();
@@ -528,6 +529,11 @@ export function FpsGame() {
           sliding = false; slideEnd = 0; isCrouching = !isCrouching;
         }
         aiming = false; setAdsActive(false); setCrouching(isCrouching);
+      }
+      if ((e.code === "KeyQ" || e.code === "KeyE") && !e.repeat) {
+        const requested = e.code === "KeyQ" ? -1 : 1;
+        leanDirection = leanDirection === requested ? 0 : requested;
+        setLeanSide(leanDirection);
       }
       if (e.code === "KeyR" && currentSlot <= 2 && !reloadEnd) {
         const stats = currentSlot === 1 ? primaryStats : secondaryStats;
@@ -783,6 +789,10 @@ export function FpsGame() {
       const speed = baseSpeed * (1 - attachmentMobilityPenalty(activeAttachments()) / 100);
       const movementYaw = isThirdPerson ? cameraYaw : yaw;
       const sin = Math.sin(movementYaw), cos = Math.cos(movementYaw);
+      const leanRightX = Math.cos(yaw), leanRightZ = -Math.sin(yaw);
+      const leanClear = leanDirection === 0 || !collides(playerPosition.x + leanRightX * leanDirection * .48, playerPosition.z + leanRightZ * leanDirection * .48);
+      const targetLean = leanClear && !sprinting && !sliding ? leanDirection : 0;
+      leanAmount = THREE.MathUtils.lerp(leanAmount, targetLean, Math.min(1, dt * 9));
       let dx = (input.x * cos - input.y * sin) * speed * dt;
       let dz = (-input.x * sin - input.y * cos) * speed * dt;
       if (sliding) {
@@ -835,6 +845,7 @@ export function FpsGame() {
           const crouchDrop = Math.max(0, -stanceOffset * .58);
           dummy.position.set(playerPosition.x, playerPosition.y - PLAYER_HEIGHT - crouchDrop, playerPosition.z);
           dummy.rotation.y = yaw;
+          dummy.rotation.z = THREE.MathUtils.lerp(dummy.rotation.z, -leanAmount * .14, Math.min(1, dt * 10));
         } else {
           dummy.position.z = dummy.userData.laneOrigin + (travel <= 12 ? -6 + travel : 18 - travel);
           dummy.rotation.y = travel <= 12 ? Math.PI : 0;
@@ -878,6 +889,7 @@ export function FpsGame() {
                 ? isRightArm ? new THREE.Vector3(.17, 1.05, -.2) : new THREE.Vector3(.1, 1.13, -.48)
                 : isRightArm ? new THREE.Vector3(.19, 1.25, -.31)
                 : holdingLongGun ? new THREE.Vector3(.1, 1.38, -.55) : new THREE.Vector3(.1, 1.24, -.32);
+              if (holdingWeapon && leanAmount < 0) { elbow.x += leanAmount * .22; hand.x += leanAmount * .4; }
               alignLimb(limb.upper, shoulder, elbow);
               alignLimb(limb.lower, elbow, hand);
               limb.end.position.copy(hand); limb.end.quaternion.copy(limb.lower.quaternion);
@@ -982,16 +994,19 @@ export function FpsGame() {
       const reloadPhase = reloadEnd ? 1 - Math.max(0, reloadEnd - now) / ((currentSlot === 1 ? primaryStats.reload : secondaryStats.reload) * 1000) : 0;
       const reloadDip = reloadEnd ? Math.sin(Math.min(1, reloadPhase) * Math.PI) : 0;
       const fastMovement = sprinting || sliding;
-      const targetX = reloadEnd ? 0.16 : fastMovement ? -0.13 : aiming ? -0.34 : (moving ? Math.cos(t * 6.5) * 0.008 : 0);
+      const weaponProbeX = playerPosition.x - Math.sin(yaw) * .85 + leanRightX * leanAmount * .32;
+      const weaponProbeZ = playerPosition.z - Math.cos(yaw) * .85 + leanRightZ * leanAmount * .32;
+      const weaponNearWall = boxes.some((box) => weaponProbeX > box.minX && weaponProbeX < box.maxX && weaponProbeZ > box.minZ && weaponProbeZ < box.maxZ && box.height > .8);
+      const targetX = (reloadEnd ? 0.16 : fastMovement ? -0.13 : aiming ? -0.34 : (moving ? Math.cos(t * 6.5) * 0.008 : 0)) + leanAmount * .13;
       const activeSight = activeAttachments().sight;
       const opticAimY = activeSight === "IRON SIGHTS" ? 0.145 : activeSight === "RED DOT" ? 0.07 : activeSight === "HOLOGRAPHIC" ? 0.04 : 0.08;
       const targetY = reloadEnd ? -0.52 * reloadDip : fastMovement ? -0.2 : aiming ? opticAimY : bobY - recoil * 0.3;
-      const targetZ = reloadEnd ? 0.24 : fastMovement ? 0.16 : aiming ? 0.2 + recoil : recoil;
+      const targetZ = weaponNearWall ? .42 : reloadEnd ? 0.24 : fastMovement ? 0.16 : aiming ? 0.2 + recoil : recoil;
       gun.position.x = THREE.MathUtils.lerp(gun.position.x, targetX, Math.min(1, dt * 12));
       gun.position.y = THREE.MathUtils.lerp(gun.position.y, targetY, Math.min(1, dt * 12));
       gun.position.z = THREE.MathUtils.lerp(gun.position.z, targetZ, Math.min(1, dt * 12));
       gun.rotation.x = THREE.MathUtils.lerp(gun.rotation.x, reloadEnd ? -0.45 : fastMovement ? -0.22 : recoil * 0.7, Math.min(1, dt * 12));
-      gun.rotation.z = THREE.MathUtils.lerp(gun.rotation.z, reloadEnd ? -0.35 : fastMovement ? 0.72 : 0, Math.min(1, dt * 12));
+      gun.rotation.z = THREE.MathUtils.lerp(gun.rotation.z, (reloadEnd ? -0.35 : fastMovement ? 0.72 : 0) - leanAmount * .12, Math.min(1, dt * 12));
       const slashArc = secondaryIsMelee && currentSlot === 2 ? Math.sin(meleeSwing * Math.PI) : 0;
       gun.rotation.y = THREE.MathUtils.lerp(gun.rotation.y, -slashArc * 0.85, Math.min(1, dt * 22));
       if (secondaryIsMelee && currentSlot === 2) gun.position.x += slashArc * 0.18;
@@ -1006,9 +1021,10 @@ export function FpsGame() {
       worldUtility.visible = isThirdPerson && currentSlot === 4 && grenadesLeft > 0;
       [worldPrimary, worldSecondary].forEach((worldWeapon) => {
         const carryLow = sprinting || sliding;
-        worldWeapon.position.x = THREE.MathUtils.lerp(worldWeapon.position.x, carryLow ? -.07 : -.055, Math.min(1, dt * 12));
+        const shoulderSwapX = leanAmount < 0 ? leanAmount * .4 : 0;
+        worldWeapon.position.x = THREE.MathUtils.lerp(worldWeapon.position.x, (carryLow ? -.07 : -.055) + shoulderSwapX, Math.min(1, dt * 12));
         worldWeapon.position.y = THREE.MathUtils.lerp(worldWeapon.position.y, carryLow ? 1.25 : 1.58, Math.min(1, dt * 12));
-        worldWeapon.position.z = THREE.MathUtils.lerp(worldWeapon.position.z, carryLow ? .02 : .03, Math.min(1, dt * 12));
+        worldWeapon.position.z = THREE.MathUtils.lerp(worldWeapon.position.z, weaponNearWall ? .38 : carryLow ? .02 : .03, Math.min(1, dt * 12));
         worldWeapon.rotation.x = THREE.MathUtils.lerp(worldWeapon.rotation.x, carryLow ? -.4 : -.04, Math.min(1, dt * 12));
         worldWeapon.rotation.z = THREE.MathUtils.lerp(worldWeapon.rotation.z, carryLow ? .1 : 0, Math.min(1, dt * 12));
       });
@@ -1019,13 +1035,18 @@ export function FpsGame() {
       if (isThirdPerson) {
         const orbitDistance = 4.2;
         const horizontalDistance = Math.cos(cameraPitch) * orbitDistance;
+        const orbitRightX = Math.cos(cameraYaw), orbitRightZ = -Math.sin(cameraYaw);
         camera.position.set(
-          playerPosition.x + Math.sin(cameraYaw) * horizontalDistance,
+          playerPosition.x + Math.sin(cameraYaw) * horizontalDistance + orbitRightX * leanAmount * .55,
           playerPosition.y + 0.7 + stanceOffset + Math.sin(cameraPitch) * orbitDistance,
-          playerPosition.z + Math.cos(cameraYaw) * horizontalDistance
+          playerPosition.z + Math.cos(cameraYaw) * horizontalDistance + orbitRightZ * leanAmount * .55
         );
-        camera.lookAt(playerPosition.x, playerPosition.y + 0.35 + stanceOffset, playerPosition.z);
-      } else { camera.position.copy(playerPosition); camera.position.y += stanceOffset; }
+        camera.lookAt(playerPosition.x + orbitRightX * leanAmount * .2, playerPosition.y + 0.35 + stanceOffset, playerPosition.z + orbitRightZ * leanAmount * .2);
+        camera.rotateZ(-leanAmount * .045);
+      } else {
+        camera.position.copy(playerPosition); camera.position.x += leanRightX * leanAmount * .42; camera.position.z += leanRightZ * leanAmount * .42; camera.position.y += stanceOffset;
+        camera.rotation.z = -leanAmount * .13;
+      }
       const laserEnabled = activeAttachments().tactical === "RED LASER" && currentSlot <= 2 && !(currentSlot === 2 && secondaryIsMelee);
       laserLine.visible = laserDot.visible = laserEnabled;
       if (laserEnabled) {
@@ -1089,7 +1110,7 @@ export function FpsGame() {
       <div className="kill-feed" aria-live="polite">
         {killFeed.map((entry) => <div key={entry.id}><b>YOU</b><span>{entry.weapon}</span>{entry.headshot && <i>HEADSHOT</i>}<strong>{entry.victim}</strong></div>)}
       </div>
-      <div className="crosshair" style={{ left: thirdPerson ? "54%" : "50%" }}><span /><span /></div>
+      <div className="crosshair" style={{ left: thirdPerson ? leanSide < 0 ? "46%" : "54%" : "50%" }}><span /><span /></div>
       <div className="hud-left"><small>VITALS</small><strong>{health}</strong><div className="health"><i style={{ width: `${health}%` }} /></div></div>
       {crouching && <div className="stance-status">CROUCHED · <kbd>C</kbd> STAND</div>}
       <div className="hud-right"><small>{equippedItems[activeSlot - 1]}{activeIsMelee ? " · MELEE" : activeSlot <= 2 ? ` · ${fireMode}` : " · READY"}</small><strong>{activeSlot === 4 ? utilityCount : activeSlot === 3 ? medicalCount : activeIsMelee ? "—" : ammo} <em>{activeSlot === 4 ? "THROWABLES" : activeSlot === 3 ? "MEDICAL" : activeIsMelee ? "" : `/ ${activeMaxMagazine}`}</em></strong></div>
@@ -1105,7 +1126,7 @@ export function FpsGame() {
       <div className={`flash-effect${flashed ? " active" : ""}`} />
       <div className={`heal-effect${healingEffect ? " active" : ""}`} />
       <div className="test-legend"><span className="damage-dot" /> DAMAGE PAD <span className="kill-dot" /> KILL PAD <span className="heal-dot" /> HEAL PAD <span className="medical-dot" /> MEDICAL DROP <span className="utility-dot" /> UTILITY DROP</div>
-      <div className="controls"><kbd>WASD</kbd> MOVE <kbd>SHIFT</kbd> SPRINT <kbd>C</kbd> CROUCH / SLIDE <kbd>RMB</kbd> {thirdPerson ? "ORBIT CAMERA" : "AIM"} <kbd>LMB</kbd> FIRE <kbd>TAB</kbd> {thirdPerson ? "1ST PERSON" : "3RD PERSON"}</div>
+      <div className="controls"><kbd>WASD</kbd> MOVE <kbd>SHIFT</kbd> SPRINT <kbd>C</kbd> CROUCH / SLIDE <kbd>Q/E</kbd> LEAN <kbd>RMB</kbd> {thirdPerson ? "ORBIT CAMERA" : "AIM"} <kbd>LMB</kbd> FIRE <kbd>TAB</kbd> {thirdPerson ? "1ST PERSON" : "3RD PERSON"}</div>
       {dead && <div className="death-screen">
         <div className="death-code">KIA</div><h2>OPERATOR DOWN</h2><p>TEST CONDITION: FATAL DAMAGE</p>
         <button onClick={() => {
@@ -1224,6 +1245,7 @@ export function FpsGame() {
               setAdsActive(false);
               setCrouching(false);
               setKillFeed([]);
+              setLeanSide(0);
               setSessionId((current) => current + 1);
             }}>
               <span>LEAVE SERVER</span>
