@@ -153,9 +153,28 @@ export function FpsGame() {
       return mesh;
     }
 
-    let medicalSupplyDrop = new THREE.Group(); medicalSupplyDrop.visible = false;
-    let utilitySupplyDrop = new THREE.Group(); utilitySupplyDrop.visible = false;
+    const supplyDrops: { drop: THREE.Group; medical: boolean }[] = [];
     const doors: { pivot: THREE.Group; box: Box; target: number; open: boolean; swing: -1 | 1 }[] = [];
+
+    // Shared floating resupply model used by both the training yard and live maps.
+    const addSupplyDrop = (x: number, z: number, color: number, medicalDrop: boolean) => {
+      const drop = new THREE.Group(); drop.position.set(x, .68, z); drop.scale.setScalar(.48); drop.userData.floatPhase = supplyDrops.length * 1.37; scene.add(drop);
+      const addDropPart = (geometry: THREE.BufferGeometry, partMaterial: THREE.Material, px: number, py: number, pz: number) => {
+        const mesh = new THREE.Mesh(geometry, partMaterial); mesh.position.set(px, py, pz); mesh.castShadow = mesh.receiveShadow = true; mesh.raycast = () => {}; drop.add(mesh); return mesh;
+      };
+      addDropPart(new THREE.BoxGeometry(2.2, 1.1, 2.2), material(color), 0, .55, 0);
+      addDropPart(new THREE.BoxGeometry(2.32, .16, 2.32), material(0x20292b), 0, 1.16, 0);
+      const glow = new THREE.PointLight(color, 9, 6, 2); glow.position.set(0, 1.8, 0); drop.add(glow);
+      if (medicalDrop) {
+        addDropPart(new THREE.BoxGeometry(.72, .16, .035), material(0xe9f2ed), 0, .58, -1.12);
+        addDropPart(new THREE.BoxGeometry(.16, .72, .035), material(0xe9f2ed), 0, .58, -1.14);
+      } else {
+        const utilityMark = new THREE.Mesh(new THREE.TorusGeometry(.34, .07, 8, 18), new THREE.MeshBasicMaterial({ color: 0xe9f2ed }));
+        utilityMark.position.set(0, .58, -1.14); utilityMark.raycast = () => {}; drop.add(utilityMark);
+      }
+      supplyDrops.push({ drop, medical: medicalDrop });
+      return drop;
+    };
 
     if (selectedMap === "TEST YARD") {
     // Perimeter and cover
@@ -190,25 +209,8 @@ export function FpsGame() {
     addPad(8, 23, 0x37dc80);
 
     // Medical and utility resupply drops.
-    const addSupplyDrop = (x: number, color: number, medicalDrop: boolean) => {
-      const drop = new THREE.Group(); drop.position.set(x, .68, 23); drop.scale.setScalar(.48); drop.userData.floatPhase = medicalDrop ? 0 : Math.PI; scene.add(drop);
-      const addDropPart = (geometry: THREE.BufferGeometry, partMaterial: THREE.Material, px: number, py: number, pz: number) => {
-        const mesh = new THREE.Mesh(geometry, partMaterial); mesh.position.set(px, py, pz); mesh.castShadow = mesh.receiveShadow = true; mesh.raycast = () => {}; drop.add(mesh); return mesh;
-      };
-      addDropPart(new THREE.BoxGeometry(2.2, 1.1, 2.2), material(color), 0, .55, 0);
-      addDropPart(new THREE.BoxGeometry(2.32, .16, 2.32), material(0x20292b), 0, 1.16, 0);
-      const glow = new THREE.PointLight(color, 9, 6, 2); glow.position.set(0, 1.8, 0); drop.add(glow);
-      if (medicalDrop) {
-        addDropPart(new THREE.BoxGeometry(.72, .16, .035), material(0xe9f2ed), 0, .58, -1.12);
-        addDropPart(new THREE.BoxGeometry(.16, .72, .035), material(0xe9f2ed), 0, .58, -1.14);
-      } else {
-        const utilityMark = new THREE.Mesh(new THREE.TorusGeometry(.34, .07, 8, 18), new THREE.MeshBasicMaterial({ color: 0xe9f2ed }));
-        utilityMark.position.set(0, .58, -1.14); utilityMark.raycast = () => {}; drop.add(utilityMark);
-      }
-      return drop;
-    };
-    medicalSupplyDrop = addSupplyDrop(-25, 0x2c9b67, true);
-    utilitySupplyDrop = addSupplyDrop(25, 0x397f9e, false);
+    addSupplyDrop(-25, 23, 0x2c9b67, true);
+    addSupplyDrop(25, 23, 0x397f9e, false);
     }
 
     // Human-shaped test dummies with separate head and body hit zones.
@@ -443,6 +445,11 @@ export function FpsGame() {
         addBox(x, 2.4, z, .14, 4.8, .14, 0x252b2c, false);
         const lamp = new THREE.PointLight(0xffd49a, 10, 10, 2); lamp.position.set(x, 4.55, z); scene.add(lamp);
       }));
+      const citySupplyLocations = [[-5, -14], [5, 14], [-5, 35], [5, -35], [-23, -14], [23, -14], [-23, 14], [23, 14], [-7, -40], [7, 40], [-40, -7], [40, 7]];
+      citySupplyLocations.sort(() => Math.random() - .5).slice(0, 6).forEach(([x, z], index) => {
+        const medicalDrop = index % 2 === 0;
+        addSupplyDrop(x, z, medicalDrop ? 0x2c9b67 : 0x397f9e, medicalDrop);
+      });
     }
 
     if (selectedMap === "TEST YARD") {
@@ -996,15 +1003,20 @@ export function FpsGame() {
       if (!collides(playerPosition.x, playerPosition.z + dz)) playerPosition.z += dz;
       if (isThirdPerson && input.lengthSq() > 0) yaw = Math.atan2(-dx, -dz);
 
-      if (selectedMap === "TEST YARD" && now >= nextPadTick) {
+      if (now >= nextPadTick) {
         nextPadTick = now + 250;
-        const onPad = (x: number) => Math.abs(playerPosition.x - x) < 2 && Math.abs(playerPosition.z - 23) < 2;
-        if (onPad(-8)) playerHealth = Math.max(0, playerHealth - 8);
-        if (onPad(0)) playerHealth = 0;
-        if (onPad(8)) playerHealth = Math.min(100, playerHealth + 12);
-        const touchingSupply = (x: number) => Math.abs(playerPosition.x - x) < 1.65 && Math.abs(playerPosition.z - 23) < 1.65;
-        if (medicalSupplyDrop.visible && touchingSupply(-25)) { medicalCharges += 2; setMedicalCount(medicalCharges); medicalSupplyDrop.visible = false; }
-        if (utilitySupplyDrop.visible && touchingSupply(25)) { grenadesLeft += 2; setUtilityCount(grenadesLeft); utilitySupplyDrop.visible = false; }
+        if (selectedMap === "TEST YARD") {
+          const onPad = (x: number) => Math.abs(playerPosition.x - x) < 2 && Math.abs(playerPosition.z - 23) < 2;
+          if (onPad(-8)) playerHealth = Math.max(0, playerHealth - 8);
+          if (onPad(0)) playerHealth = 0;
+          if (onPad(8)) playerHealth = Math.min(100, playerHealth + 12);
+        }
+        supplyDrops.forEach(({ drop, medical: medicalDrop }) => {
+          if (!drop.visible || Math.abs(playerPosition.x - drop.position.x) >= 1.65 || Math.abs(playerPosition.z - drop.position.z) >= 1.65) return;
+          if (medicalDrop) { medicalCharges += 2; setMedicalCount(medicalCharges); }
+          else { grenadesLeft += 2; setUtilityCount(grenadesLeft); }
+          drop.visible = false;
+        });
         setHealth(playerHealth);
         if (playerHealth <= 0) {
           setDead(true); triggerHeld = false; healEnd = 0; setHealing(false); keys.clear();
@@ -1019,7 +1031,7 @@ export function FpsGame() {
       const moving = input.lengthSq() > 0 && grounded;
       movementSpread = input.lengthSq() > 0 ? 1.55 : 1;
       const t = clock.getElapsedTime();
-      [medicalSupplyDrop, utilitySupplyDrop].forEach((drop) => {
+      supplyDrops.forEach(({ drop }) => {
         if (!drop.visible) return;
         drop.position.y = .68 + Math.sin(t * 2.2 + drop.userData.floatPhase) * .16;
         drop.rotation.y += dt * 1.55;
