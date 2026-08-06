@@ -62,7 +62,8 @@ export function FpsGame() {
   const [sessionId, setSessionId] = useState(0);
   const [menuPage, setMenuPage] = useState<MenuPage>("HOME");
   const [selectedMap, setSelectedMap] = useState<GameMap>("TEST YARD");
-  const selectedSector: GameSector = "SECTOR 1";
+  const [selectedSector, setSelectedSector] = useState<GameSector>("SECTOR 1");
+  const [serverBrowserOpen, setServerBrowserOpen] = useState(false);
   const [mapVoteOpen, setMapVoteOpen] = useState(false);
   const [multiplayerStatus, setMultiplayerStatus] = useState<"OFFLINE" | "CONNECTING" | "ONLINE">("OFFLINE");
   const [doorPrompt, setDoorPrompt] = useState(false);
@@ -1412,20 +1413,33 @@ export function FpsGame() {
         </button>}
         <section className="menu-card">
           <div className="menu-kicker">TACTICAL TRAINING SIMULATION</div>
-          {(!started && menuPage === "HOME" && !mapVoteOpen) && <>
+          {(!started && menuPage === "HOME" && !serverBrowserOpen && !mapVoteOpen) && <>
           <h1><span>STRIKE</span>YARD</h1>
           <p>SECTOR 01 · COMBAT READINESS COURSE</p>
           <nav className="main-nav" aria-label="Main menu">
             <button className="nav-active" onClick={() => {
-              setMapVoteOpen(true);
-            }}><b>01</b><span>PLAY</span><small>JOIN MULTIPLAYER MATCH</small></button>
+              setServerBrowserOpen(true);
+            }}><b>01</b><span>PLAY</span><small>SELECT MULTIPLAYER SERVER</small></button>
             <button onClick={() => setMenuPage("LOADOUT")}><b>02</b><span>LOADOUT</span><small>EDIT EQUIPMENT</small></button>
             <button onClick={() => setMenuPage("CHARACTER")}><b>03</b><span>OPERATOR</span><small>CUSTOMIZE CHARACTER</small></button>
             <button disabled><b>04</b><span>SETTINGS</span><small>COMING SOON</small></button>
           </nav></>}
+          {(!started && menuPage === "HOME" && serverBrowserOpen) && <div className="server-browser">
+            <button className="back-button" onClick={() => setServerBrowserOpen(false)}>← MAIN MENU</button>
+            <div className="server-heading"><div><span>LIVE</span> SERVERS</div><small>SELECT A SECTOR</small></div>
+            <div className="server-list">
+              {(["SECTOR 1", "SECTOR 2", "SECTOR 3", "SECTOR 4"] as GameSector[]).map((sector, index) => <button key={sector} onClick={() => {
+                setSelectedSector(sector);
+                setServerBrowserOpen(false);
+                setMapVoteOpen(true);
+              }}>
+                <i>{String(index + 1).padStart(2, "0")}</i><span><b>{sector}</b><small>OPEN MAP VOTING LOBBY</small></span><em>SELECT</em>
+              </button>)}
+            </div>
+          </div>}
           {(!started && menuPage === "HOME" && mapVoteOpen) && <div className="map-vote-browser">
-            <button className="back-button" onClick={() => setMapVoteOpen(false)}>← MAIN MENU</button>
-            <div className="map-vote-heading"><div><span>MAP</span> VOTING</div><small>MATCHMAKING · ONE MAP AVAILABLE</small></div>
+            <button className="back-button" onClick={() => { setMapVoteOpen(false); setServerBrowserOpen(true); }}>← SERVER SELECT</button>
+            <div className="map-vote-heading"><div><span>MAP</span> VOTING</div><small>{selectedSector} · ONE MAP AVAILABLE</small></div>
             <button className="map-vote-card" onClick={() => {
               setSelectedMap("CITY BLOCK");
               setMapVoteOpen(false);
@@ -1512,6 +1526,7 @@ export function FpsGame() {
             </button>
             <button className="leave" onClick={() => {
               setStarted(false);
+              setServerBrowserOpen(false);
               setMapVoteOpen(false);
               setAmmo(30);
               setFireMode("AUTO");

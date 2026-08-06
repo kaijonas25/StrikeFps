@@ -85,6 +85,14 @@ kbd:first-child { margin-left: 0; }
 .main-nav button.nav-active { color:#edf5f2; border-left:2px solid #ff6336; background:linear-gradient(90deg,rgba(255,99,54,.17),transparent); }
 .main-nav button.nav-active b { color:#ff754c; }.main-nav button.nav-active:hover { padding-left:21px; background:linear-gradient(90deg,rgba(255,99,54,.32),transparent); }
 .main-nav button:disabled { cursor:default; opacity:.48; }
+.server-browser { position:relative; z-index:3; width:470px; }
+.server-heading { display:flex; align-items:end; justify-content:space-between; margin:26px 0 14px; padding-bottom:13px; border-bottom:1px solid rgba(174,204,204,.16); }
+.server-heading div { color:#e5eeeb; font-family:var(--font-geist-sans),sans-serif; font-size:22px; font-weight:800; letter-spacing:.08em; }.server-heading div span { color:#ff6336; }
+.server-heading small { color:#66777a; font-size:7px; letter-spacing:.16em; }
+.server-list { display:grid; gap:7px; }
+.server-list > button { display:grid; grid-template-columns:48px 1fr 64px; align-items:center; min-height:67px; padding:0 16px; border:1px solid rgba(157,187,188,.13); color:#819195; background:rgba(9,18,21,.76); text-align:left; cursor:pointer; transition:.18s ease; }
+.server-list > button > i { color:#4d5c60; font-size:9px; font-style:normal; }.server-list > button > span { display:flex; flex-direction:column; gap:6px; }.server-list > button b { color:#dce7e4; font-size:12px; letter-spacing:.14em; }.server-list > button small { color:#5f7074; font-size:6px; letter-spacing:.13em; }.server-list > button em { color:#ff754c; font-size:7px; font-style:normal; font-weight:800; letter-spacing:.12em; text-align:right; }
+.server-list > button:hover { padding-left:22px; border-color:rgba(255,99,54,.55); background:linear-gradient(90deg,rgba(255,99,54,.18),rgba(9,18,21,.82)); transform:translateX(4px); }.server-list > button:hover > i { color:#ff754c; }
 .map-vote-browser { position:relative; z-index:3; width:520px; }
 .map-vote-heading { display:flex; align-items:end; justify-content:space-between; margin:26px 0 14px; padding-bottom:13px; border-bottom:1px solid rgba(174,204,204,.16); }
 .map-vote-heading div { color:#e5eeeb; font-family:var(--font-geist-sans),sans-serif; font-size:22px; font-weight:800; letter-spacing:.08em; }.map-vote-heading div span { color:#ff6336; }
