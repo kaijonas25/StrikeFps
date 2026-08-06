@@ -712,11 +712,11 @@ export function FpsGame() {
         const aimNdc = getAimNdc();
         const offset = new THREE.Vector2(aimNdc.x + (Math.random() - 0.5) * spreadNdc * 2, (Math.random() - 0.5) * spreadNdc * 2);
         raycaster.setFromCamera(offset, camera);
-        const cameraToMuzzle = isThirdPerson ? camera.position.distanceTo(new THREE.Vector3(playerPosition.x, playerPosition.y + stanceOffset, playerPosition.z)) - .35 : .1;
+        const cameraToMuzzle = isThirdPerson ? camera.position.distanceTo(new THREE.Vector3(playerPosition.x, playerPosition.y + .35 + stanceOffset, playerPosition.z)) - .35 : .1;
         const cameraHit = raycaster.intersectObjects(scene.children, true).find((result) => result.object !== camera && result.distance > cameraToMuzzle);
         const aimPoint = cameraHit?.point.clone() ?? raycaster.ray.at(shotStats.range, new THREE.Vector3());
         const ballisticOrigin = isThirdPerson
-          ? new THREE.Vector3(playerPosition.x, playerPosition.y + stanceOffset, playerPosition.z).addScaledVector(raycaster.ray.direction, .45)
+          ? new THREE.Vector3(playerPosition.x, playerPosition.y + .35 + stanceOffset, playerPosition.z).addScaledVector(raycaster.ray.direction, .45)
           : camera.position.clone();
         const muzzleDirection = aimPoint.sub(ballisticOrigin).normalize();
         raycaster.set(ballisticOrigin, muzzleDirection);
