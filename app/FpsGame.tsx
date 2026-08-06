@@ -13,6 +13,14 @@ type TacticalAttachment = "NONE" | "RED LASER" | "WHITE LIGHT";
 type MagazineAttachment = "STANDARD MAG" | "EXTENDED MAG" | "DRUM MAG";
 type WeaponAttachments = { sight: SightAttachment; muzzle: MuzzleAttachment; tactical: TacticalAttachment; magazine: MagazineAttachment };
 
+const attachmentMobilityPenalty = (attachments: WeaponAttachments) =>
+  (attachments.muzzle === "SUPPRESSOR" ? 4 : 0) +
+  (attachments.magazine === "EXTENDED MAG" ? 5 : attachments.magazine === "DRUM MAG" ? 14 : 0) +
+  (attachments.tactical === "WHITE LIGHT" ? 3 : 0);
+
+const attachmentItemPenalty = (attachment: string) =>
+  attachment === "SUPPRESSOR" ? 4 : attachment === "EXTENDED MAG" ? 5 : attachment === "DRUM MAG" ? 14 : attachment === "WHITE LIGHT" ? 3 : 0;
+
 const WEAPON_STATS: Record<string, { damage: number; fireRate: number; capacity: number; reload: number; range: number; mobility: number; spread: number; pellets?: number }> = {
   "VXR-4 CARBINE": { damage: 16, fireRate: 72, capacity: 30, reload: 2.35, range: 74, mobility: 68, spread: 1.25 },
   "M12 SMG": { damage: 12, fireRate: 91, capacity: 36, reload: 1.85, range: 48, mobility: 90, spread: 2.1 },
@@ -423,7 +431,7 @@ export function FpsGame() {
     let throwableAiming = false, grenadesLeft = 2, medicalCharges = 2;
     const projectiles: { mesh: THREE.Mesh; velocity: THREE.Vector3; age: number; type: string }[] = [];
     let currentFireMode: FireMode = "AUTO", triggerHeld = false, lastShot = 0, currentSlot = 1, movementSpread = 1;
-    const activeAttachments = (): WeaponAttachments => currentSlot === 2 && secondaryIsMelee
+    const activeAttachments = (): WeaponAttachments => currentSlot > 2 || (currentSlot === 2 && secondaryIsMelee)
       ? { sight: "IRON SIGHTS", muzzle: "STANDARD BARREL", tactical: "NONE", magazine: "STANDARD MAG" }
       : currentSlot === 1 ? primaryAttachments : secondaryAttachments;
     let playerHealth = 100, nextPadTick = 0, healEnd = 0;
@@ -458,7 +466,8 @@ export function FpsGame() {
         if (sprinting) {
           isCrouching = true; sliding = true; slideEnd = performance.now() + 850;
           const movementYaw = isThirdPerson ? cameraYaw : yaw;
-          slideVelocity.set(-Math.sin(movementYaw) * 10.5, -Math.cos(movementYaw) * 10.5);
+          const slideSpeed = 10.5 * (1 - attachmentMobilityPenalty(activeAttachments()) / 100);
+          slideVelocity.set(-Math.sin(movementYaw) * slideSpeed, -Math.cos(movementYaw) * slideSpeed);
         } else {
           sliding = false; slideEnd = 0; isCrouching = !isCrouching;
         }
@@ -710,7 +719,8 @@ export function FpsGame() {
       if (sliding && now >= slideEnd) { sliding = false; slideEnd = 0; }
       sprinting = !isCrouching && !sliding && (keys.has("ShiftLeft") || keys.has("ShiftRight")) && input.y > 0 && input.lengthSq() > 0;
       if (sprinting || sliding) { aiming = false; setAdsActive(false); }
-      const speed = isCrouching ? 2.8 : sprinting ? 8.2 : aiming ? 3.8 : 5.2;
+      const baseSpeed = isCrouching ? 2.8 : sprinting ? 8.2 : aiming ? 3.8 : 5.2;
+      const speed = baseSpeed * (1 - attachmentMobilityPenalty(activeAttachments()) / 100);
       const movementYaw = isThirdPerson ? cameraYaw : yaw;
       const sin = Math.sin(movementYaw), cos = Math.cos(movementYaw);
       let dx = (input.x * cos - input.y * sin) * speed * dt;
@@ -1212,9 +1222,9 @@ function GearOption({ label, value, options, onSelect }: { label: string; value:
 
 function AttachmentOption({ label, value, options, onSelect }: { label: string; value: string; options: string[]; onSelect: (value: string) => void }) {
   return <section className="attachment-option"><h2>{label}</h2><div>
-    {options.map((option) => <button key={option} className={value === option ? "selected" : ""} onClick={() => onSelect(option)}>
-      <i /> <span>{option}</span><small>{value === option ? "EQUIPPED" : "SELECT"}</small>
-    </button>)}
+    {options.map((option) => { const penalty = attachmentItemPenalty(option); return <button key={option} className={value === option ? "selected" : ""} onClick={() => onSelect(option)}>
+      <i /> <span>{option}</span><small>{value === option ? "EQUIPPED" : "SELECT"}{penalty > 0 && ` · −${penalty} MOBILITY`}</small>
+    </button>; })}
   </div></section>;
 }
 
