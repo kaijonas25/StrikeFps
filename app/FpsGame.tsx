@@ -397,15 +397,47 @@ export function FpsGame() {
     };
     const primaryWeapon = buildWeapon(primary, primaryAttachments);
     const secondaryWeapon = buildWeapon(secondary, secondaryAttachments);
-    gun.add(primaryWeapon.model, secondaryWeapon.model);
+    const buildEquipment = (name: string) => {
+      const model = new THREE.Group();
+      const visualOnly = (mesh: THREE.Mesh) => { mesh.castShadow = true; mesh.raycast = () => {}; model.add(mesh); return mesh; };
+      const equipmentMat = (color: number, metalness = .12) => material(color, .66, metalness);
+      const x = .3, y = -.35, z = -.58;
+      if (name === "FIELD MEDKIT" || name === "TRAUMA KIT") {
+        const trauma = name === "TRAUMA KIT";
+        visualOnly(new THREE.Mesh(new THREE.BoxGeometry(trauma ? .52 : .4, trauma ? .42 : .32, .24), equipmentMat(trauma ? 0x5a4435 : 0x334c3e))).position.set(x, y, z);
+        visualOnly(new THREE.Mesh(new THREE.BoxGeometry(.16, .055, .252), equipmentMat(0xe5e8df))).position.set(x, y, z - .126);
+        visualOnly(new THREE.Mesh(new THREE.BoxGeometry(.055, .16, .252), equipmentMat(0xe5e8df))).position.set(x, y, z - .127);
+        const handle = visualOnly(new THREE.Mesh(new THREE.TorusGeometry(.12, .025, 8, 16, Math.PI), equipmentMat(0x171d1e))); handle.position.set(x, y + (trauma ? .27 : .22), z); handle.rotation.z = Math.PI;
+      } else if (name === "STIM INJECTOR") {
+        const syringe = visualOnly(new THREE.Mesh(new THREE.CylinderGeometry(.055, .055, .48, 12), equipmentMat(0x9fe7dc, .3))); syringe.rotation.x = Math.PI / 2; syringe.position.set(x, y, z);
+        const plunger = visualOnly(new THREE.Mesh(new THREE.CylinderGeometry(.085, .085, .04, 12), equipmentMat(0x252f31))); plunger.rotation.x = Math.PI / 2; plunger.position.set(x, y, z + .26);
+        const needle = visualOnly(new THREE.Mesh(new THREE.CylinderGeometry(.008, .008, .2, 8), equipmentMat(0xc8d1d0, .8))); needle.rotation.x = Math.PI / 2; needle.position.set(x, y, z - .33);
+      } else {
+        const flash = name === "FLASHBANG", smoke = name === "SMOKE GRENADE";
+        const body = visualOnly(new THREE.Mesh(new THREE.CylinderGeometry(flash ? .085 : .11, flash ? .085 : .1, flash ? .38 : .31, 12), equipmentMat(flash ? 0xb8c1c0 : smoke ? 0x7d8787 : 0x495b43, .35)));
+        body.position.set(x, y, z); body.rotation.z = flash ? .08 : 0;
+        visualOnly(new THREE.Mesh(new THREE.BoxGeometry(.16, .07, .11), equipmentMat(0x202729, .5))).position.set(x, y + .19, z);
+        const pin = visualOnly(new THREE.Mesh(new THREE.TorusGeometry(.065, .012, 7, 14), equipmentMat(0x9da5a4, .75))); pin.position.set(x + .11, y + .2, z); pin.rotation.x = Math.PI / 2;
+      }
+      return model;
+    };
+    const medicalModel = buildEquipment(medical);
+    const utilityModel = buildEquipment(utility);
+    gun.add(primaryWeapon.model, secondaryWeapon.model, medicalModel, utilityModel);
     const worldPrimary = primaryWeapon.model.clone(true);
     const worldSecondary = secondaryWeapon.model.clone(true);
+    const worldMedical = medicalModel.clone(true);
+    const worldUtility = utilityModel.clone(true);
     [worldPrimary, worldSecondary].forEach((weapon) => {
       weapon.scale.setScalar(0.72);
       weapon.position.set(-0.055, 1.58, 0.03);
       weapon.rotation.x = -0.04;
       weapon.traverse((object) => { if (object instanceof THREE.Mesh) object.raycast = () => {}; });
       localPlayer.add(weapon);
+    });
+    [worldMedical, worldUtility].forEach((item) => {
+      item.scale.setScalar(.78); item.position.set(-.045, 1.56, .03);
+      item.traverse((object) => { if (object instanceof THREE.Mesh) object.raycast = () => {}; }); localPlayer.add(item);
     });
     const muzzle = new THREE.PointLight(0xff7b35, 0, 2.5, 2);
     muzzle.position.set(0.34, -0.2, -1.1);
@@ -783,20 +815,29 @@ export function FpsGame() {
         rig.forEach((limb) => {
           if (limb.kind === "arm") {
             const holdingWeapon = isLocal && currentSlot <= 2;
+            const holdingMedical = isLocal && currentSlot === 3;
+            const holdingUtility = isLocal && currentSlot === 4 && limb.side === 1;
+            const holdingItem = holdingWeapon || holdingMedical || holdingUtility;
             const holdingLongGun = holdingWeapon && (currentSlot === 1 || secondary === "DB-2 SAWED-OFF");
             const isRightArm = limb.side === 1;
             const alignLimb = (mesh: THREE.Mesh, start: THREE.Vector3, end: THREE.Vector3) => {
               mesh.position.copy(start).add(end).multiplyScalar(.5);
               mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), end.clone().sub(start).normalize());
             };
-            if (holdingWeapon) {
+            if (holdingItem) {
               const shoulder = new THREE.Vector3(limb.side * .43, 1.65, 0);
               const sprintCarry = sprinting || sliding;
-              const elbow = sprintCarry
+              const elbow = holdingMedical
+                ? isRightArm ? new THREE.Vector3(.4, 1.38, -.16) : new THREE.Vector3(-.38, 1.38, -.16)
+                : holdingUtility ? new THREE.Vector3(.46, 1.4, -.12)
+                : sprintCarry
                 ? isRightArm ? new THREE.Vector3(.46, 1.27, -.12) : new THREE.Vector3(-.2, 1.3, -.2)
                 : isRightArm ? new THREE.Vector3(.48, 1.38, -.32)
                 : holdingLongGun ? new THREE.Vector3(-.2, 1.35, -.33) : new THREE.Vector3(-.18, 1.37, -.2);
-              const hand = sprintCarry
+              const hand = holdingMedical
+                ? new THREE.Vector3(isRightArm ? .25 : .02, 1.29, -.42)
+                : holdingUtility ? new THREE.Vector3(.19, 1.29, -.42)
+                : sprintCarry
                 ? isRightArm ? new THREE.Vector3(.17, 1.05, -.2) : new THREE.Vector3(.1, 1.13, -.48)
                 : isRightArm ? new THREE.Vector3(.19, 1.25, -.31)
                 : holdingLongGun ? new THREE.Vector3(.1, 1.38, -.55) : new THREE.Vector3(.1, 1.24, -.32);
@@ -903,11 +944,15 @@ export function FpsGame() {
       const slashArc = secondaryIsMelee && currentSlot === 2 ? Math.sin(meleeSwing * Math.PI) : 0;
       gun.rotation.y = THREE.MathUtils.lerp(gun.rotation.y, -slashArc * 0.85, Math.min(1, dt * 22));
       if (secondaryIsMelee && currentSlot === 2) gun.position.x += slashArc * 0.18;
-      gun.visible = currentSlot <= 2 && !isThirdPerson;
+      gun.visible = !isThirdPerson;
       primaryWeapon.model.visible = currentSlot === 1;
       secondaryWeapon.model.visible = currentSlot === 2;
+      medicalModel.visible = currentSlot === 3;
+      utilityModel.visible = currentSlot === 4;
       worldPrimary.visible = isThirdPerson && currentSlot === 1;
       worldSecondary.visible = isThirdPerson && currentSlot === 2;
+      worldMedical.visible = isThirdPerson && currentSlot === 3;
+      worldUtility.visible = isThirdPerson && currentSlot === 4;
       [worldPrimary, worldSecondary].forEach((worldWeapon) => {
         const carryLow = sprinting || sliding;
         worldWeapon.position.x = THREE.MathUtils.lerp(worldWeapon.position.x, carryLow ? -.07 : -.055, Math.min(1, dt * 12));
