@@ -516,7 +516,7 @@ export function FpsGame() {
       if (e.code === "Tab" && !e.repeat) {
         e.preventDefault(); isThirdPerson = !isThirdPerson; setThirdPerson(isThirdPerson);
         aiming = false; setAdsActive(false);
-        if (isThirdPerson) { cameraYaw = yaw; cameraPitch = 0.2; }
+        if (isThirdPerson) { cameraYaw = yaw; cameraPitch = isProne ? 0 : 0.2; }
         else { yaw = cameraYaw; pitch = 0; }
         localPlayer.visible = isThirdPerson;
       }
@@ -536,6 +536,7 @@ export function FpsGame() {
       }
       if (e.code === "KeyX" && !e.repeat && grounded) {
         isProne = !isProne; isCrouching = false; sliding = false; slideEnd = 0;
+        if (isProne && isThirdPerson) cameraPitch = 0;
         aiming = false; setAdsActive(false); setProne(isProne); setCrouching(false);
       }
       if ((e.code === "KeyQ" || e.code === "KeyE") && !e.repeat) {
@@ -722,7 +723,8 @@ export function FpsGame() {
         const hit = raycaster.intersectObjects(scene.children, true).find((result) => result.object !== camera && result.distance > .1 && result.distance <= shotStats.range);
         const tracerEnd = hit?.point.clone() ?? raycaster.ray.at(shotStats.range, new THREE.Vector3());
         const tracerMaterial = new THREE.LineBasicMaterial({ color: pelletCount > 1 ? 0xffd09a : 0xffb06b, transparent: true, opacity: 0.82 });
-        const tracer = new THREE.Line(new THREE.BufferGeometry().setFromPoints([tracerStart, tracerEnd]), tracerMaterial);
+        const visualTracerStart = isThirdPerson && isProne ? ballisticOrigin : tracerStart;
+        const tracer = new THREE.Line(new THREE.BufferGeometry().setFromPoints([visualTracerStart, tracerEnd]), tracerMaterial);
         tracer.raycast = () => {};
         scene.add(tracer);
         window.setTimeout(() => {
@@ -1057,9 +1059,10 @@ export function FpsGame() {
         const orbitDistance = 4.2;
         const horizontalDistance = Math.cos(cameraPitch) * orbitDistance;
         const orbitRightX = Math.cos(cameraYaw), orbitRightZ = -Math.sin(cameraYaw);
+        const orbitBaseLift = isProne ? .35 : .7;
         camera.position.set(
           playerPosition.x + Math.sin(cameraYaw) * horizontalDistance + orbitRightX * leanAmount * .55,
-          playerPosition.y + 0.7 + stanceOffset + Math.sin(cameraPitch) * orbitDistance,
+          playerPosition.y + orbitBaseLift + stanceOffset + Math.sin(cameraPitch) * orbitDistance,
           playerPosition.z + Math.cos(cameraYaw) * horizontalDistance + orbitRightZ * leanAmount * .55
         );
         camera.lookAt(playerPosition.x + orbitRightX * leanAmount * .2, playerPosition.y + 0.35 + stanceOffset, playerPosition.z + orbitRightZ * leanAmount * .2);
