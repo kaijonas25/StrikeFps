@@ -78,6 +78,7 @@ export function FpsGame() {
   const [crouching, setCrouching] = useState(false);
   const [killFeed, setKillFeed] = useState<KillFeedEntry[]>([]);
   const [leanSide, setLeanSide] = useState<-1 | 0 | 1>(0);
+  const [prone, setProne] = useState(false);
   const [characterSkin, setCharacterSkin] = useState("#a9795e");
   const [characterUniform, setCharacterUniform] = useState("#303a3b");
   const [characterArmor, setCharacterArmor] = useState("#20292b");
@@ -285,6 +286,7 @@ export function FpsGame() {
     namedDummy(addDummy(-7, -14, 0x4d7182), "TARGET ALPHA"); namedDummy(addDummy(0, -14, 0x706347), "TARGET BRAVO"); namedDummy(addDummy(7, -14, 0x754b4b), "TARGET CHARLIE");
     namedDummy(addDummy(15, -15, 0x38785d, "walk"), "WALKER ONE"); namedDummy(addDummy(26, -15, 0x804f32, "sprint"), "RUNNER ONE");
     const localPlayer = addDummy(0, 15, 0x435e70, "static", false);
+    localPlayer.rotation.order = "YXZ";
     localPlayer.visible = false;
 
     // Landmark tower and emissive arena lights
@@ -493,12 +495,12 @@ export function FpsGame() {
       : currentSlot === 1 ? primaryAttachments : secondaryAttachments;
     let playerHealth = 100, nextPadTick = 0, healEnd = 0;
     const playerPosition = new THREE.Vector3(0, PLAYER_HEIGHT, 15);
-    let isThirdPerson = false, orbiting = false, isCrouching = false, slideEnd = 0, stanceOffset = 0, leanDirection: -1 | 0 | 1 = 0, leanAmount = 0;
+    let isThirdPerson = false, orbiting = false, isCrouching = false, isProne = false, slideEnd = 0, stanceOffset = 0, crouchPoseAmount = 0, proneAmount = 0, leanDirection: -1 | 0 | 1 = 0, leanAmount = 0;
     const slideVelocity = new THREE.Vector2();
     respawnRef.current = () => {
       playerPosition.set(0, PLAYER_HEIGHT, 15); camera.position.copy(playerPosition);
       yaw = 0; pitch = 0; verticalVelocity = 0; playerHealth = 100;
-      isCrouching = false; sliding = false; slideEnd = 0; stanceOffset = 0; leanDirection = 0; leanAmount = 0; setCrouching(false); setLeanSide(0);
+      isCrouching = false; isProne = false; sliding = false; slideEnd = 0; stanceOffset = 0; crouchPoseAmount = 0; proneAmount = 0; leanDirection = 0; leanAmount = 0; setCrouching(false); setProne(false); setLeanSide(0);
       keys.clear();
     };
     let last = performance.now();
@@ -518,9 +520,11 @@ export function FpsGame() {
         else { yaw = cameraYaw; pitch = 0; }
         localPlayer.visible = isThirdPerson;
       }
-      if (e.code === "Space" && grounded) { verticalVelocity = 5.7; grounded = false; }
+      if (e.code === "Space" && grounded) { isProne = false; isCrouching = false; setProne(false); setCrouching(false); verticalVelocity = 5.7; grounded = false; }
       if (e.code === "KeyC" && !e.repeat && grounded) {
-        if (sprinting) {
+        if (isProne) {
+          isProne = false; isCrouching = true; setProne(false);
+        } else if (sprinting) {
           isCrouching = true; sliding = true; slideEnd = performance.now() + 850;
           const movementYaw = isThirdPerson ? cameraYaw : yaw;
           const slideSpeed = 10.5 * (1 - attachmentMobilityPenalty(activeAttachments()) / 100);
@@ -529,6 +533,10 @@ export function FpsGame() {
           sliding = false; slideEnd = 0; isCrouching = !isCrouching;
         }
         aiming = false; setAdsActive(false); setCrouching(isCrouching);
+      }
+      if (e.code === "KeyX" && !e.repeat && grounded) {
+        isProne = !isProne; isCrouching = false; sliding = false; slideEnd = 0;
+        aiming = false; setAdsActive(false); setProne(isProne); setCrouching(false);
       }
       if ((e.code === "KeyQ" || e.code === "KeyE") && !e.repeat) {
         const requested = e.code === "KeyQ" ? -1 : 1;
@@ -783,9 +791,9 @@ export function FpsGame() {
       );
       if (input.lengthSq() > 0) input.normalize();
       if (sliding && now >= slideEnd) { sliding = false; slideEnd = 0; }
-      sprinting = !isCrouching && !sliding && (keys.has("ShiftLeft") || keys.has("ShiftRight")) && input.y > 0 && input.lengthSq() > 0;
+      sprinting = !isCrouching && !isProne && !sliding && (keys.has("ShiftLeft") || keys.has("ShiftRight")) && input.y > 0 && input.lengthSq() > 0;
       if (sprinting || sliding) { aiming = false; setAdsActive(false); }
-      const baseSpeed = isCrouching ? 2.8 : sprinting ? 8.2 : aiming ? 3.8 : 5.2;
+      const baseSpeed = isProne ? 1.55 : isCrouching ? 2.8 : sprinting ? 8.2 : aiming ? 3.8 : 5.2;
       const speed = baseSpeed * (1 - attachmentMobilityPenalty(activeAttachments()) / 100);
       const movementYaw = isThirdPerson ? cameraYaw : yaw;
       const sin = Math.sin(movementYaw), cos = Math.cos(movementYaw);
@@ -832,7 +840,7 @@ export function FpsGame() {
         drop.rotation.y += dt * 1.55;
         drop.rotation.z = Math.sin(t * 1.1 + drop.userData.floatPhase) * .045;
       });
-      localPlayer.userData.movement = sprinting || sliding ? "sprint" : moving ? "walk" : "static";
+      localPlayer.userData.movement = isProne ? "static" : sprinting || sliding ? "sprint" : moving ? "walk" : "static";
       [...dummies, localPlayer].forEach((dummy) => {
         const movement = dummy.userData.movement as "static" | "walk" | "sprint";
         const isLocal = dummy === localPlayer;
@@ -842,9 +850,10 @@ export function FpsGame() {
         const speed = movement === "sprint" ? 4.2 : 1.75;
         const travel = (t * speed) % 24;
         if (isLocal) {
-          const crouchDrop = Math.max(0, -stanceOffset * .58);
-          dummy.position.set(playerPosition.x, playerPosition.y - PLAYER_HEIGHT - crouchDrop, playerPosition.z);
+          const crouchDrop = crouchPoseAmount * .38;
+          dummy.position.set(playerPosition.x, playerPosition.y - PLAYER_HEIGHT - crouchDrop + proneAmount * .16, playerPosition.z);
           dummy.rotation.y = yaw;
+          dummy.rotation.x = THREE.MathUtils.lerp(dummy.rotation.x, -proneAmount * 1.48, Math.min(1, dt * 10));
           dummy.rotation.z = THREE.MathUtils.lerp(dummy.rotation.z, -leanAmount * .14, Math.min(1, dt * 10));
         } else {
           dummy.position.z = dummy.userData.laneOrigin + (travel <= 12 ? -6 + travel : 18 - travel);
@@ -906,7 +915,7 @@ export function FpsGame() {
             limb.end.position.copy(hand); limb.end.quaternion.copy(limb.lower.quaternion);
           } else {
             const phase = stride * -limb.side;
-            const crouchAmount = isLocal ? THREE.MathUtils.clamp(-stanceOffset / .65, 0, 1) : 0;
+            const crouchAmount = isLocal ? crouchPoseAmount : 0;
             const walkThighAngle = phase * amplitude;
             const walkKneeBend = Math.max(0, phase) * (movement === "sprint" ? .95 : .55);
             const thighAngle = THREE.MathUtils.lerp(walkThighAngle, .75 + phase * .08, crouchAmount);
@@ -990,7 +999,7 @@ export function FpsGame() {
       recoil = THREE.MathUtils.lerp(recoil, 0, Math.min(1, dt * 14));
       muzzleTimer -= dt;
       if (muzzleTimer <= 0) muzzle.intensity = 0;
-      const bobY = moving ? Math.sin(t * (sprinting ? 13 : isCrouching ? 6 : 9)) * (isCrouching ? .006 : .012) : Math.sin(t * 2) * 0.003;
+      const bobY = moving ? Math.sin(t * (sprinting ? 13 : isProne ? 4 : isCrouching ? 6 : 9)) * (isProne ? .003 : isCrouching ? .006 : .012) : Math.sin(t * 2) * 0.003;
       const reloadPhase = reloadEnd ? 1 - Math.max(0, reloadEnd - now) / ((currentSlot === 1 ? primaryStats.reload : secondaryStats.reload) * 1000) : 0;
       const reloadDip = reloadEnd ? Math.sin(Math.min(1, reloadPhase) * Math.PI) : 0;
       const fastMovement = sprinting || sliding;
@@ -1030,7 +1039,9 @@ export function FpsGame() {
       });
       camera.fov = THREE.MathUtils.lerp(camera.fov, aiming ? activeSight === "4X SCOPE" ? 20 : 58 : fastMovement ? 84 : 78, Math.min(1, dt * 10));
       camera.updateProjectionMatrix();
-      stanceOffset = THREE.MathUtils.lerp(stanceOffset, isCrouching ? -.65 : 0, Math.min(1, dt * 12));
+      stanceOffset = THREE.MathUtils.lerp(stanceOffset, isProne ? -1.18 : isCrouching ? -.65 : 0, Math.min(1, dt * 12));
+      crouchPoseAmount = THREE.MathUtils.lerp(crouchPoseAmount, isCrouching ? 1 : 0, Math.min(1, dt * 10));
+      proneAmount = THREE.MathUtils.lerp(proneAmount, isProne ? 1 : 0, Math.min(1, dt * 8));
       localPlayer.scale.set(1, 1, 1);
       if (isThirdPerson) {
         const orbitDistance = 4.2;
@@ -1112,7 +1123,7 @@ export function FpsGame() {
       </div>
       <div className="crosshair" style={{ left: thirdPerson ? leanSide < 0 ? "46%" : "54%" : "50%" }}><span /><span /></div>
       <div className="hud-left"><small>VITALS</small><strong>{health}</strong><div className="health"><i style={{ width: `${health}%` }} /></div></div>
-      {crouching && <div className="stance-status">CROUCHED · <kbd>C</kbd> STAND</div>}
+      {(crouching || prone) && <div className="stance-status">{prone ? "PRONE" : "CROUCHED"} · <kbd>{prone ? "X" : "C"}</kbd> STAND</div>}
       <div className="hud-right"><small>{equippedItems[activeSlot - 1]}{activeIsMelee ? " · MELEE" : activeSlot <= 2 ? ` · ${fireMode}` : " · READY"}</small><strong>{activeSlot === 4 ? utilityCount : activeSlot === 3 ? medicalCount : activeIsMelee ? "—" : ammo} <em>{activeSlot === 4 ? "THROWABLES" : activeSlot === 3 ? "MEDICAL" : activeIsMelee ? "" : `/ ${activeMaxMagazine}`}</em></strong></div>
       {reloading && <div className="reload-status"><span>RELOADING</span><i style={{ animationDuration: `${reloadDuration}s` }} /></div>}
       {healing && <div className="heal-status"><span>USING {medical}</span><small>SWITCH EQUIPMENT TO CANCEL</small><i style={{ animationDuration: `${healDuration}s` }} /></div>}
@@ -1126,7 +1137,7 @@ export function FpsGame() {
       <div className={`flash-effect${flashed ? " active" : ""}`} />
       <div className={`heal-effect${healingEffect ? " active" : ""}`} />
       <div className="test-legend"><span className="damage-dot" /> DAMAGE PAD <span className="kill-dot" /> KILL PAD <span className="heal-dot" /> HEAL PAD <span className="medical-dot" /> MEDICAL DROP <span className="utility-dot" /> UTILITY DROP</div>
-      <div className="controls"><kbd>WASD</kbd> MOVE <kbd>SHIFT</kbd> SPRINT <kbd>C</kbd> CROUCH / SLIDE <kbd>Q/E</kbd> LEAN <kbd>RMB</kbd> {thirdPerson ? "ORBIT CAMERA" : "AIM"} <kbd>LMB</kbd> FIRE <kbd>TAB</kbd> {thirdPerson ? "1ST PERSON" : "3RD PERSON"}</div>
+      <div className="controls"><kbd>WASD</kbd> MOVE <kbd>SHIFT</kbd> SPRINT <kbd>C</kbd> CROUCH / SLIDE <kbd>X</kbd> PRONE <kbd>Q/E</kbd> LEAN <kbd>RMB</kbd> {thirdPerson ? "ORBIT CAMERA" : "AIM"} <kbd>LMB</kbd> FIRE <kbd>TAB</kbd> {thirdPerson ? "1ST PERSON" : "3RD PERSON"}</div>
       {dead && <div className="death-screen">
         <div className="death-code">KIA</div><h2>OPERATOR DOWN</h2><p>TEST CONDITION: FATAL DAMAGE</p>
         <button onClick={() => {
@@ -1246,6 +1257,7 @@ export function FpsGame() {
               setCrouching(false);
               setKillFeed([]);
               setLeanSide(0);
+              setProne(false);
               setSessionId((current) => current + 1);
             }}>
               <span>LEAVE SERVER</span>
