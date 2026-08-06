@@ -14,8 +14,8 @@ type PlayerState = {
   secondary: string;
 };
 
-type SocketAttachment = { id: string; state: PlayerState; votedMapPhase?: number; votedModePhase?: number };
-type MatchMeta = { day: string; phase: "voting" | "playing"; phaseEndsAt: number; votes: number; modeVotes: number; map: "CITY BLOCK"; mode: "FFA" };
+type SocketAttachment = { id: string; state: PlayerState; votedMapPhase?: number; votedModePhase?: number; endGamePhase?: number };
+type MatchMeta = { day: string; phase: "voting" | "playing"; phaseEndsAt: number; votes: number; modeVotes: number; endVotes: number; map: "CITY BLOCK"; mode: "FFA" };
 const VOTE_DURATION = 30_000;
 const MATCH_DURATION = 10 * 60_000;
 
@@ -51,6 +51,16 @@ export class GameRoom extends DurableObject {
     let packet: Partial<PlayerState> & { type?: string; category?: "map" | "mode" };
     try { packet = JSON.parse(message); } catch { return; }
     const attachment = socket.deserializeAttachment() as SocketAttachment;
+    if (packet.type === "end_game") {
+      const meta = await this.currentMatch();
+      if (meta.phase !== "playing" || attachment.endGamePhase === meta.phaseEndsAt) return;
+      attachment.endGamePhase = meta.phaseEndsAt; socket.serializeAttachment(attachment);
+      meta.endVotes += 1; await this.ctx.storage.put("match", meta);
+      const players = this.ctx.getWebSockets().filter((candidate) => candidate.readyState === WebSocket.OPEN);
+      const unanimous = players.length > 0 && players.every((candidate) => (candidate.deserializeAttachment() as SocketAttachment).endGamePhase === meta.phaseEndsAt);
+      if (unanimous) await this.advanceMatch(meta); else this.broadcast({ type: "match", match: meta });
+      return;
+    }
     if (packet.type === "vote") {
       const meta = await this.currentMatch();
       if (meta.phase !== "voting") return;
@@ -120,10 +130,11 @@ export class GameRoom extends DurableObject {
     const day = new Date().toISOString().slice(0, 10);
     let meta = await this.ctx.storage.get<MatchMeta>("match");
     if (!meta || meta.day !== day) {
-      meta = { day, phase: "voting", phaseEndsAt: Date.now() + VOTE_DURATION, votes: 0, modeVotes: 0, map: "CITY BLOCK", mode: "FFA" };
+      meta = { day, phase: "voting", phaseEndsAt: Date.now() + VOTE_DURATION, votes: 0, modeVotes: 0, endVotes: 0, map: "CITY BLOCK", mode: "FFA" };
       await this.ctx.storage.put("match", meta); await this.ctx.storage.setAlarm(meta.phaseEndsAt);
     } else {
       meta.modeVotes ??= 0;
+      meta.endVotes ??= 0;
       meta.mode ??= "FFA";
       if (meta.phaseEndsAt <= Date.now()) meta = await this.advanceMatch(meta);
     }
@@ -131,7 +142,7 @@ export class GameRoom extends DurableObject {
   }
 
   private async advanceMatch(meta: MatchMeta): Promise<MatchMeta> {
-    const next: MatchMeta = { ...meta, phase: meta.phase === "voting" ? "playing" : "voting", phaseEndsAt: Date.now() + (meta.phase === "voting" ? MATCH_DURATION : VOTE_DURATION), votes: 0, modeVotes: 0, map: "CITY BLOCK", mode: "FFA" };
+    const next: MatchMeta = { ...meta, phase: meta.phase === "voting" ? "playing" : "voting", phaseEndsAt: Date.now() + (meta.phase === "voting" ? MATCH_DURATION : VOTE_DURATION), votes: 0, modeVotes: 0, endVotes: 0, map: "CITY BLOCK", mode: "FFA" };
     await this.ctx.storage.put("match", next); await this.ctx.storage.setAlarm(next.phaseEndsAt); this.broadcast({ type: "match", match: next }); return next;
   }
 }

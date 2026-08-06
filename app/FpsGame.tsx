@@ -81,6 +81,8 @@ export function FpsGame() {
   const [matchPhase, setMatchPhase] = useState<"connecting" | "voting" | "playing">("connecting");
   const [mapVotes, setMapVotes] = useState(0);
   const [modeVotes, setModeVotes] = useState(0);
+  const [endGameVotes, setEndGameVotes] = useState(0);
+  const [endGameRequested, setEndGameRequested] = useState(false);
   const [hasVoted, setHasVoted] = useState(false);
   const [hasModeVoted, setHasModeVoted] = useState(false);
   const [matchEndsAt, setMatchEndsAt] = useState(0);
@@ -742,9 +744,10 @@ export function FpsGame() {
       multiplayerSocket.addEventListener("message", (event) => {
         if (typeof event.data !== "string") return;
         try {
-          const packet = JSON.parse(event.data) as { type: string; player?: RemoteState; players?: RemoteState[]; id?: string; match?: { phase: "voting" | "playing"; phaseEndsAt: number; votes: number; modeVotes: number; mode: "FFA" } };
+          const packet = JSON.parse(event.data) as { type: string; player?: RemoteState; players?: RemoteState[]; id?: string; match?: { phase: "voting" | "playing"; phaseEndsAt: number; votes: number; modeVotes: number; endVotes: number; mode: "FFA" } };
           const applyMatch = (match: NonNullable<typeof packet.match>, resetVotes = false) => {
-            setMatchPhase(match.phase); setMapVotes(match.votes); setModeVotes(match.modeVotes ?? 0); setMatchEndsAt(match.phaseEndsAt);
+            setMatchPhase(match.phase); setMapVotes(match.votes); setModeVotes(match.modeVotes ?? 0); setEndGameVotes(match.endVotes ?? 0); setMatchEndsAt(match.phaseEndsAt);
+            if ((match.endVotes ?? 0) === 0) setEndGameRequested(false);
             if (resetVotes) { setHasVoted(false); setHasModeVoted(false); }
             if (match.phase === "voting") document.exitPointerLock();
           };
@@ -1570,6 +1573,9 @@ export function FpsGame() {
           <span>{id === localPlayerId ? "YOU" : `OPERATOR ${String(index + 1).padStart(2, "0")}`}</span><i>0</i><i>0</i>
         </div>)}
         {!connectedPlayerIds.length && <div><span>CONNECTING…</span><i>—</i><i>—</i></div>}
+        <button disabled={endGameRequested} onClick={() => { multiplayerSendRef.current({ type: "end_game" }); setEndGameRequested(true); }}>
+          {endGameRequested ? `END VOTE SENT · ${endGameVotes}/${Math.max(1, connectedPlayerIds.length)}` : "VOTE TO END GAME"}
+        </button>
       </aside>}
       <div className="crosshair" style={{ left: thirdPerson ? leanSide < 0 ? "46%" : "54%" : "50%" }}><span /><span /></div>
       <div className="hud-left"><small>VITALS</small><strong>{health}</strong><div className="health"><i style={{ width: `${health}%` }} /></div></div>
@@ -1737,6 +1743,10 @@ export function FpsGame() {
               <span>RESUME OPERATION</span>
               <small>CLICK TO LOCK CURSOR</small>
             </button>
+            {selectedSector !== "TRAINING SECTOR" && matchPhase === "playing" && <button className="leave" disabled={endGameRequested} onClick={() => { multiplayerSendRef.current({ type: "end_game" }); setEndGameRequested(true); }}>
+              <span>{endGameRequested ? "END VOTE SUBMITTED" : "VOTE TO END GAME"}</span>
+              <small>{endGameVotes}/{Math.max(1, connectedPlayerIds.length)} PLAYERS AGREED</small>
+            </button>}
             <button className="leave" onClick={() => {
               setStarted(false);
               setServerBrowserOpen(false);
