@@ -180,7 +180,7 @@ export function FpsGame() {
 
     // Medical and utility resupply drops.
     const addSupplyDrop = (x: number, color: number, medicalDrop: boolean) => {
-      const drop = new THREE.Group(); drop.position.set(x, 0, 23); scene.add(drop);
+      const drop = new THREE.Group(); drop.position.set(x, .68, 23); drop.scale.setScalar(.48); drop.userData.floatPhase = medicalDrop ? 0 : Math.PI; scene.add(drop);
       const addDropPart = (geometry: THREE.BufferGeometry, partMaterial: THREE.Material, px: number, py: number, pz: number) => {
         const mesh = new THREE.Mesh(geometry, partMaterial); mesh.position.set(px, py, pz); mesh.castShadow = mesh.receiveShadow = true; mesh.raycast = () => {}; drop.add(mesh); return mesh;
       };
@@ -815,6 +815,12 @@ export function FpsGame() {
       const moving = input.lengthSq() > 0 && grounded;
       movementSpread = input.lengthSq() > 0 ? 1.55 : 1;
       const t = clock.getElapsedTime();
+      [medicalSupplyDrop, utilitySupplyDrop].forEach((drop) => {
+        if (!drop.visible) return;
+        drop.position.y = .68 + Math.sin(t * 2.2 + drop.userData.floatPhase) * .16;
+        drop.rotation.y += dt * 1.55;
+        drop.rotation.z = Math.sin(t * 1.1 + drop.userData.floatPhase) * .045;
+      });
       localPlayer.userData.movement = sprinting || sliding ? "sprint" : moving ? "walk" : "static";
       [...dummies, localPlayer].forEach((dummy) => {
         const movement = dummy.userData.movement as "static" | "walk" | "sprint";
