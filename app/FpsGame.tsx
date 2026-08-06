@@ -711,7 +711,12 @@ export function FpsGame() {
         const aimNdc = getAimNdc();
         const offset = new THREE.Vector2(aimNdc.x + (Math.random() - 0.5) * spreadNdc * 2, (Math.random() - 0.5) * spreadNdc * 2);
         raycaster.setFromCamera(offset, camera);
-        const hit = raycaster.intersectObjects(scene.children, true).find((result) => result.object !== camera && result.distance > 1);
+        const cameraToMuzzle = isThirdPerson ? camera.position.distanceTo(tracerStart) : .1;
+        const cameraHit = raycaster.intersectObjects(scene.children, true).find((result) => result.object !== camera && result.distance > cameraToMuzzle);
+        const aimPoint = cameraHit?.point.clone() ?? raycaster.ray.at(shotStats.range, new THREE.Vector3());
+        const muzzleDirection = aimPoint.sub(tracerStart).normalize();
+        raycaster.set(tracerStart, muzzleDirection);
+        const hit = raycaster.intersectObjects(scene.children, true).find((result) => result.object !== camera && result.distance > .1 && result.distance <= shotStats.range);
         const tracerEnd = hit?.point.clone() ?? raycaster.ray.at(shotStats.range, new THREE.Vector3());
         const tracerMaterial = new THREE.LineBasicMaterial({ color: pelletCount > 1 ? 0xffd09a : 0xffb06b, transparent: true, opacity: 0.82 });
         const tracer = new THREE.Line(new THREE.BufferGeometry().setFromPoints([tracerStart, tracerEnd]), tracerMaterial);
