@@ -108,9 +108,9 @@ export function FpsGame() {
 
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x111b21);
-    scene.fog = new THREE.Fog(0x111b21, selectedMap === "CITY BLOCK" ? 42 : 25, selectedMap === "CITY BLOCK" ? 165 : 72);
+    scene.fog = new THREE.Fog(0x111b21, 25, 72);
 
-    const camera = new THREE.PerspectiveCamera(78, mount.clientWidth / mount.clientHeight, 0.05, selectedMap === "CITY BLOCK" ? 260 : 120);
+    const camera = new THREE.PerspectiveCamera(78, mount.clientWidth / mount.clientHeight, 0.05, 120);
     camera.position.set(0, PLAYER_HEIGHT, 15);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
@@ -126,22 +126,21 @@ export function FpsGame() {
     sun.position.set(-18, 28, 12);
     sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
-    const shadowExtent = selectedMap === "CITY BLOCK" ? 100 : 40;
-    sun.shadow.camera.left = -shadowExtent; sun.shadow.camera.right = shadowExtent;
-    sun.shadow.camera.top = shadowExtent; sun.shadow.camera.bottom = -shadowExtent;
+    sun.shadow.camera.left = -40; sun.shadow.camera.right = 40;
+    sun.shadow.camera.top = 40; sun.shadow.camera.bottom = -40;
     scene.add(sun);
 
     const boxes: Box[] = [];
     const material = (color: number, roughness = 0.82, metalness = 0.05) =>
       new THREE.MeshStandardMaterial({ color, roughness, metalness });
 
-    const mapSize = selectedMap === "CITY BLOCK" ? 192 : 64;
+    const mapSize = selectedMap === "CITY BLOCK" ? 96 : 64;
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(mapSize, mapSize), material(selectedMap === "CITY BLOCK" ? 0x252b2d : 0x364044));
     floor.rotation.x = -Math.PI / 2;
     floor.receiveShadow = true;
     scene.add(floor);
 
-    const grid = new THREE.GridHelper(mapSize, selectedMap === "CITY BLOCK" ? 96 : 32, 0x516166, 0x465358);
+    const grid = new THREE.GridHelper(mapSize, selectedMap === "CITY BLOCK" ? 48 : 32, 0x516166, 0x465358);
     grid.position.y = 0.008;
     scene.add(grid);
 
@@ -304,16 +303,13 @@ export function FpsGame() {
     localPlayer.visible = false;
 
     if (selectedMap === "CITY BLOCK") {
-      // Three-by-three street grid spanning the doubled city footprint.
-      const cityRoadCenters = [-60, 0, 60];
-      cityRoadCenters.forEach((center) => {
-        addBox(center, .025, 0, 15, .05, 190, 0x171c1e, false);
-        addBox(0, .03, center, 190, .06, 15, 0x171c1e, false);
-        [-9, 9].forEach((offset) => addBox(center + offset, .11, 0, 3, .22, 190, 0x596064, false));
-        [-9, 9].forEach((offset) => addBox(0, .11, center + offset, 190, .22, 3, 0x596064, false));
-      });
-      addBox(0, 3, -95.5, 192, 6, 1, 0x20282b); addBox(0, 3, 95.5, 192, 6, 1, 0x20282b);
-      addBox(-95.5, 3, 0, 1, 6, 192, 0x20282b); addBox(95.5, 3, 0, 1, 6, 192, 0x20282b);
+      // Asphalt roads and raised sidewalks.
+      addBox(0, .025, 0, 15, .05, 94, 0x171c1e, false);
+      addBox(0, .03, 0, 94, .06, 15, 0x171c1e, false);
+      [-9, 9].forEach((x) => addBox(x, .11, 0, 3, .22, 94, 0x596064, false));
+      [-9, 9].forEach((z) => addBox(0, .11, z, 94, .22, 3, 0x596064, false));
+      addBox(0, 3, -47.5, 96, 6, 1, 0x20282b); addBox(0, 3, 47.5, 96, 6, 1, 0x20282b);
+      addBox(-47.5, 3, 0, 1, 6, 96, 0x20282b); addBox(47.5, 3, 0, 1, 6, 96, 0x20282b);
 
       const addDoor = (x: number, z: number, width: number, color: number, swing: -1 | 1) => {
         const pivot = new THREE.Group(); pivot.position.set(x - width / 2, 0, z); scene.add(pivot);
@@ -359,16 +355,6 @@ export function FpsGame() {
       addBuilding(-38, 29, 10, 22, 11.6, 0x50595b, -1);
       addBuilding(24, 29, 14, 22, 12.9, 0x4f5350, -1);
       addBuilding(38, 29, 10, 22, 16.8, 0x5d5048, -1);
-      // Outer districts continue the skyline into the doubled playable area.
-      const outerBuildings: [number, number, number, number, number, number, -1 | 1][] = [
-        [-78, -80, 20, 20, 15.8, 0x555d60, 1], [-31, -80, 24, 20, 12.6, 0x68594d, 1],
-        [31, -80, 24, 20, 18.2, 0x4e5859, 1], [78, -80, 20, 20, 14.1, 0x62564e, 1],
-        [-78, 80, 20, 20, 17.2, 0x5d554f, -1], [-31, 80, 24, 20, 14.4, 0x515b5d, -1],
-        [31, 80, 24, 20, 19.1, 0x64584c, -1], [78, 80, 20, 20, 13.3, 0x50585a, -1],
-        [-79, -29, 19, 23, 13.7, 0x66584e, 1], [-79, 29, 19, 23, 16.5, 0x50595b, -1],
-        [79, -29, 19, 23, 18.6, 0x555d5c, 1], [79, 29, 19, 23, 14.8, 0x67594d, -1],
-      ];
-      outerBuildings.forEach((building) => addBuilding(...building));
       // Bombed-out corner lots fill the setbacks without closing their flanking routes.
       const addRuinedLot = (cx: number, cz: number, xSide: -1 | 1, zSide: -1 | 1, rubbleColor: number) => {
         const w = 5.2, d = 13.2, wallColor = xSide === zSide ? 0x665f58 : 0x555d5e;
@@ -427,9 +413,7 @@ export function FpsGame() {
       addMajorCollapse(-14.2, 14.2, -1, 1);
       addMajorCollapse(14.2, 14.2, 1, 1);
       // Abandoned vehicles, barriers, rubble, and street furniture.
-      [[-3, -22, 0x70483c], [3, 20, 0x3f5962], [-21, 2, 0x56594d], [22, -2, 0x624b3f],
-        [-60, -27, 0x4d5c60], [-60, 31, 0x674b40], [60, -28, 0x5e5947], [60, 27, 0x455b63],
-        [-29, -60, 0x615047], [31, -60, 0x465c54], [-27, 60, 0x665245], [29, 60, 0x485b63]].forEach(([x, z, color]) => {
+      [[-3, -22, 0x70483c], [3, 20, 0x3f5962], [-21, 2, 0x56594d], [22, -2, 0x624b3f]].forEach(([x, z, color]) => {
         addBox(x, .65, z, 2.1, 1.05, 4.2, color); addBox(x, 1.3, z + .15, 1.75, .62, 2.15, 0x263438);
       });
       // Street fighting cover: barriers, sandbags, dumpsters, and offset roadblocks.
@@ -438,8 +422,6 @@ export function FpsGame() {
         const stripe = addBox(x, .62, z - .33, 2.35, .13, .035, 0xe78a35, false); stripe.rotation.y = rotation;
       };
       addRoadBarrier(-3.8, -10, .08); addRoadBarrier(4.1, 9, -.1); addRoadBarrier(-3.2, 31, .12); addRoadBarrier(3.5, -33, -.08);
-      addRoadBarrier(-63.5, -8, .1); addRoadBarrier(-56.3, 16, -.08); addRoadBarrier(56.5, -15, .1); addRoadBarrier(63.7, 34, -.12);
-      addRoadBarrier(-31, -63.5, .05); addRoadBarrier(28, -56.5, -.1); addRoadBarrier(-25, 56.4, .08); addRoadBarrier(34, 63.6, -.06);
       [[-12, -6], [13, 6], [-13, 18], [12, -19]].forEach(([x, z], groupIndex) => {
         for (let bag = 0; bag < 4; bag++) addBox(x + (bag - 1.5) * .65, .28, z, .72, .42, .48, groupIndex % 2 ? 0x716249 : 0x625946);
       });
@@ -456,19 +438,10 @@ export function FpsGame() {
         const side = i % 2 ? -1 : 1, x = side * (12 + (i % 5) * 2.2), z = -38 + ((i * 7) % 76);
         const rubble = addBox(x, .12 + (i % 3) * .06, z, .35 + (i % 4) * .2, .24, .28 + (i % 3) * .18, i % 2 ? 0x5c5650 : 0x77716a, false); rubble.rotation.y = i * .73; rubble.rotation.z = (i % 3 - 1) * .18;
       }
-      for (let i = 0; i < 44; i++) {
-        const district = i % 4, lane = -88 + ((i * 19) % 176);
-        const x = district < 2 ? (district ? -1 : 1) * (68 + (i % 5) * 3.1) : lane;
-        const z = district < 2 ? lane : (district === 2 ? -1 : 1) * (68 + (i % 5) * 3.1);
-        const rubble = addBox(x, .13 + (i % 4) * .05, z, .45 + (i % 3) * .25, .25, .38 + (i % 4) * .19, i % 2 ? 0x625d57 : 0x77716a, false);
-        rubble.rotation.y = i * .91; rubble.rotation.z = (i % 3 - 1) * .2;
-      }
-      const lampStops = [-84, -72, -36, -12, 12, 36, 72, 84];
-      cityRoadCenters.forEach((roadCenter) => lampStops.forEach((along) => [-7.2, 7.2].forEach((offset) => {
-        const x = roadCenter + offset, z = along;
+      [-36, -12, 12, 36].forEach((z) => [-7.2, 7.2].forEach((x) => {
         addBox(x, 2.4, z, .14, 4.8, .14, 0x252b2c, false);
-        const lamp = new THREE.PointLight(0xffd49a, 7, 9, 2); lamp.position.set(x, 4.55, z); scene.add(lamp);
-      })));
+        const lamp = new THREE.PointLight(0xffd49a, 10, 10, 2); lamp.position.set(x, 4.55, z); scene.add(lamp);
+      }));
     }
 
     if (selectedMap === "TEST YARD") {
