@@ -469,8 +469,9 @@ export function FpsGame() {
     camera.add(gun);
     scene.add(camera);
 
-    const trajectoryMaterial = new THREE.LineBasicMaterial({ color: 0x8fe7ff, transparent: true, opacity: 0.8 });
-    const trajectory = new THREE.Line(new THREE.BufferGeometry(), trajectoryMaterial);
+    const trajectoryMaterial = new THREE.MeshBasicMaterial({ color: 0x91eaff, transparent: true, opacity: .58, depthWrite: false });
+    const trajectory = new THREE.Mesh(new THREE.BufferGeometry(), trajectoryMaterial);
+    trajectory.raycast = () => {};
     trajectory.visible = false;
     scene.add(trajectory);
 
@@ -927,16 +928,30 @@ export function FpsGame() {
           const time = step * 0.09;
           const point = start.clone().addScaledVector(velocity, time);
           point.y -= 7.25 * time * time;
+          const hitsWall = boxes.some((box) => point.x > box.minX && point.x < box.maxX && point.z > box.minZ && point.z < box.maxZ && point.y > 0 && point.y < box.height);
+          if (hitsWall) { points.push(point); break; }
           if (point.y < 0.08) { point.y = 0.08; points.push(point); break; }
           points.push(point);
         }
-        trajectory.geometry.dispose(); trajectory.geometry = new THREE.BufferGeometry().setFromPoints(points);
+        trajectory.geometry.dispose();
+        trajectory.geometry = points.length > 1
+          ? new THREE.TubeGeometry(new THREE.CatmullRomCurve3(points), Math.max(10, points.length * 3), .035, 7, false)
+          : new THREE.BufferGeometry();
       }
       for (let i = projectiles.length - 1; i >= 0; i--) {
         const projectile = projectiles[i]; projectile.age += dt;
         projectile.velocity.y -= 14.5 * dt;
+        const previousPosition = projectile.mesh.position.clone();
         projectile.mesh.position.addScaledVector(projectile.velocity, dt);
         projectile.mesh.rotation.x += dt * 8; projectile.mesh.rotation.z += dt * 6;
+        const wallHit = boxes.find((box) => projectile.mesh.position.x > box.minX && projectile.mesh.position.x < box.maxX && projectile.mesh.position.z > box.minZ && projectile.mesh.position.z < box.maxZ && projectile.mesh.position.y > 0 && projectile.mesh.position.y < box.height);
+        if (wallHit) {
+          const enteredOnX = previousPosition.x <= wallHit.minX || previousPosition.x >= wallHit.maxX;
+          const landedOnTop = previousPosition.y >= wallHit.height;
+          projectile.mesh.position.copy(previousPosition);
+          if (landedOnTop) { projectile.mesh.position.y = wallHit.height + .12; projectile.velocity.y = Math.abs(projectile.velocity.y) * .42; projectile.velocity.x *= .82; projectile.velocity.z *= .82; }
+          else { if (enteredOnX) projectile.velocity.x *= -.48; else projectile.velocity.z *= -.48; projectile.velocity.y *= .82; }
+        }
         if (projectile.mesh.position.y <= 0.12) {
           projectile.mesh.position.y = 0.12;
           projectile.velocity.y = Math.abs(projectile.velocity.y) * 0.42;
