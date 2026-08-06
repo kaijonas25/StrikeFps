@@ -51,7 +51,9 @@ const MEDICAL_STATS: Record<string, { healing: number; duration: number }> = {
 };
 
 const PLAYER_HEIGHT = 1.7;
-const PLAYER_RADIUS = 0.38;
+// Slightly wider than the torso so the visible operator and first-person camera
+// remain fully on the playable side of walls.
+const PLAYER_RADIUS = 0.48;
 const MULTIPLAYER_SERVER = "https://strikeyard-multiplayer.kaigarcia2510.workers.dev";
 const formatMatchTime = (milliseconds: number) => {
   const seconds = Math.max(0, Math.ceil(milliseconds / 1000));
@@ -1106,8 +1108,15 @@ export function FpsGame() {
         dx = slideVelocity.x * dt; dz = slideVelocity.y * dt;
         slideVelocity.multiplyScalar(Math.max(0, 1 - dt * 2.15));
       }
-      if (!collides(playerPosition.x + dx, playerPosition.z)) playerPosition.x += dx;
-      if (!collides(playerPosition.x, playerPosition.z + dz)) playerPosition.z += dz;
+      // Sweep movement in short steps so sprinting, sliding, or a slow frame
+      // cannot tunnel the player through thin walls. Axis separation preserves
+      // natural sliding along a wall when only one direction is blocked.
+      const movementSteps = Math.max(1, Math.ceil(Math.max(Math.abs(dx), Math.abs(dz)) / .1));
+      const stepX = dx / movementSteps, stepZ = dz / movementSteps;
+      for (let step = 0; step < movementSteps; step++) {
+        if (!collides(playerPosition.x + stepX, playerPosition.z)) playerPosition.x += stepX;
+        if (!collides(playerPosition.x, playerPosition.z + stepZ)) playerPosition.z += stepZ;
+      }
       if (isThirdPerson && input.lengthSq() > 0) yaw = Math.atan2(-dx, -dz);
 
       if (now >= nextPadTick) {
