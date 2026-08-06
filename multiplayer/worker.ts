@@ -64,7 +64,14 @@ export class GameRoom extends DurableObject {
         meta.votes += 1;
       }
       socket.serializeAttachment(attachment);
-      await this.ctx.storage.put("match", meta); this.broadcast({ type: "match", match: meta });
+      await this.ctx.storage.put("match", meta);
+      const players = this.ctx.getWebSockets().filter((candidate) => candidate.readyState === WebSocket.OPEN);
+      const everyoneFinished = players.length > 0 && players.every((candidate) => {
+        const vote = candidate.deserializeAttachment() as SocketAttachment;
+        return vote.votedMapPhase === meta.phaseEndsAt && vote.votedModePhase === meta.phaseEndsAt;
+      });
+      if (everyoneFinished) await this.advanceMatch(meta);
+      else this.broadcast({ type: "match", match: meta });
       return;
     }
     if (packet.type !== "state") return;
