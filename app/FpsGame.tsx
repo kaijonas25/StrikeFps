@@ -235,6 +235,28 @@ export function FpsGame() {
       supplyDrops.push({ drop, medical: medicalDrop });
       return drop;
     };
+    const supplySpawnLocations: [number, number][] = selectedMap === "CITY BLOCK"
+      ? [[-5, -14], [5, 14], [-5, 35], [5, -35], [-23, -14], [23, -14], [-23, 14], [23, 14], [-7, -40], [7, 40], [-40, -7], [40, 7]]
+      : [[-25, 23], [25, 23], [-22, -18], [22, -18], [-14, 14], [14, 14]];
+    const clearSupplyDrops = () => {
+      supplyDrops.splice(0).forEach(({ drop }) => {
+        scene.remove(drop);
+        drop.traverse((object) => {
+          if (!(object instanceof THREE.Mesh)) return;
+          object.geometry.dispose();
+          if (Array.isArray(object.material)) object.material.forEach((entry) => entry.dispose()); else object.material.dispose();
+        });
+      });
+    };
+    const spawnSupplyWave = () => {
+      clearSupplyDrops();
+      const locations = [...supplySpawnLocations].sort(() => Math.random() - .5);
+      locations.slice(0, selectedMap === "CITY BLOCK" ? 6 : 2).forEach(([x, z], index) => {
+        const medicalDrop = index % 2 === 0;
+        addSupplyDrop(x, z, medicalDrop ? 0x2c9b67 : 0x397f9e, medicalDrop);
+      });
+    };
+    spawnSupplyWave();
 
     if (selectedMap === "TEST YARD") {
     // Perimeter and cover
@@ -268,9 +290,6 @@ export function FpsGame() {
     addPad(0, 23, 0xff263f);
     addPad(8, 23, 0x37dc80);
 
-    // Medical and utility resupply drops.
-    addSupplyDrop(-25, 23, 0x2c9b67, true);
-    addSupplyDrop(25, 23, 0x397f9e, false);
     }
 
     // Human-shaped test dummies with separate head and body hit zones.
@@ -505,11 +524,6 @@ export function FpsGame() {
         addBox(x, 2.4, z, .14, 4.8, .14, 0x252b2c, false);
         const lamp = new THREE.PointLight(0xffd49a, 10, 10, 2); lamp.position.set(x, 4.55, z); scene.add(lamp);
       }));
-      const citySupplyLocations = [[-5, -14], [5, 14], [-5, 35], [5, -35], [-23, -14], [23, -14], [-23, 14], [23, 14], [-7, -40], [7, 40], [-40, -7], [40, 7]];
-      citySupplyLocations.sort(() => Math.random() - .5).slice(0, 6).forEach(([x, z], index) => {
-        const medicalDrop = index % 2 === 0;
-        addSupplyDrop(x, z, medicalDrop ? 0x2c9b67 : 0x397f9e, medicalDrop);
-      });
     }
 
     if (selectedMap === "TEST YARD") {
@@ -813,6 +827,7 @@ export function FpsGame() {
       keys.clear();
     };
     let last = performance.now();
+    let nextSupplyWave = last + 60_000;
     const clock = new THREE.Clock();
 
     const collides = (x: number, z: number) => boxes.some((b) => b.active !== false &&
@@ -1143,6 +1158,7 @@ export function FpsGame() {
       const now = performance.now();
       const dt = Math.min((now - last) / 1000, 0.05);
       last = now;
+      if (now >= nextSupplyWave) { spawnSupplyWave(); nextSupplyWave = now + 60_000; }
       camera.rotation.order = "YXZ";
       camera.rotation.set(pitch, yaw, 0);
 

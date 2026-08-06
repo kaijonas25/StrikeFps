@@ -17,7 +17,7 @@ type PlayerState = {
 type SocketAttachment = { id: string; state: PlayerState; votedMapPhase?: number; votedModePhase?: number };
 type MatchMeta = { day: string; phase: "voting" | "playing"; phaseEndsAt: number; votes: number; modeVotes: number; map: "CITY BLOCK"; mode: "FFA" };
 const VOTE_DURATION = 30_000;
-const MATCH_DURATION = 5 * 60_000;
+const MATCH_DURATION = 10 * 60_000;
 
 const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), {
   status,
