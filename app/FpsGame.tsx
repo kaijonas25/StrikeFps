@@ -155,7 +155,7 @@ export function FpsGame() {
 
     let medicalSupplyDrop = new THREE.Group(); medicalSupplyDrop.visible = false;
     let utilitySupplyDrop = new THREE.Group(); utilitySupplyDrop.visible = false;
-    const doors: { pivot: THREE.Group; box: Box; target: number; open: boolean }[] = [];
+    const doors: { pivot: THREE.Group; box: Box; target: number; open: boolean; swing: -1 | 1 }[] = [];
 
     if (selectedMap === "TEST YARD") {
     // Perimeter and cover
@@ -311,36 +311,50 @@ export function FpsGame() {
       addBox(0, 3, -47.5, 96, 6, 1, 0x20282b); addBox(0, 3, 47.5, 96, 6, 1, 0x20282b);
       addBox(-47.5, 3, 0, 1, 6, 96, 0x20282b); addBox(47.5, 3, 0, 1, 6, 96, 0x20282b);
 
-      const addDoor = (x: number, z: number, width: number, color: number) => {
+      const addDoor = (x: number, z: number, width: number, color: number, swing: -1 | 1) => {
         const pivot = new THREE.Group(); pivot.position.set(x - width / 2, 0, z); scene.add(pivot);
         const door = new THREE.Mesh(new THREE.BoxGeometry(width, 2.65, .16), material(color, .6, .3)); door.position.set(width / 2, 1.325, 0); door.castShadow = true; pivot.add(door);
         const handle = new THREE.Mesh(new THREE.SphereGeometry(.055, 8, 6), material(0xc4a465, .3, .7)); handle.position.set(width * .82, 1.3, -.12); pivot.add(handle);
         const box: Box = { minX: x - width / 2, maxX: x + width / 2, minZ: z - .18, maxZ: z + .18, height: 2.7, active: true };
-        boxes.push(box); doors.push({ pivot, box, target: 0, open: false });
+        boxes.push(box); doors.push({ pivot, box, target: 0, open: false, swing });
       };
-      const addBuilding = (cx: number, cz: number, w: number, d: number, h: number, color: number) => {
-        const wall = .38, doorWidth = 1.35, frontZ = cz + d / 2;
-        addBox(cx, h / 2, cz - d / 2, w, h, wall, color);
+      const addBuilding = (cx: number, cz: number, w: number, d: number, h: number, color: number, frontSide: -1 | 1) => {
+        const wall = .38, doorWidth = 1.35, doorHeight = 2.7;
+        const frontZ = cz + frontSide * d / 2, rearZ = cz - frontSide * d / 2;
         addBox(cx - w / 2, h / 2, cz, wall, h, d, color); addBox(cx + w / 2, h / 2, cz, wall, h, d, color);
-        const frontSegment = (w - doorWidth) / 2;
-        addBox(cx - doorWidth / 2 - frontSegment / 2, h / 2, frontZ, frontSegment, h, wall, color);
-        addBox(cx + doorWidth / 2 + frontSegment / 2, h / 2, frontZ, frontSegment, h, wall, color);
+        [frontZ, rearZ].forEach((wallZ) => {
+          const sideSegment = (w - doorWidth) / 2;
+          addBox(cx - doorWidth / 2 - sideSegment / 2, h / 2, wallZ, sideSegment, h, wall, color);
+          addBox(cx + doorWidth / 2 + sideSegment / 2, h / 2, wallZ, sideSegment, h, wall, color);
+          addBox(cx, doorHeight + (h - doorHeight) / 2, wallZ, doorWidth, h - doorHeight, wall, color);
+        });
         // Roof collision is visual-only; the simplified ground-up AABB system would otherwise fill the entire interior.
         addBox(cx, h - .12, cz, w, .24, d, 0x242b2d, false);
         addBox(cx, .08, cz, w - .5, .16, d - .5, 0x3b3d3b, false);
-        addDoor(cx, frontZ + .04, doorWidth, 0x49382e);
+        addDoor(cx, frontZ + frontSide * .04, doorWidth, 0x49382e, frontSide === 1 ? -1 : 1);
+        addDoor(cx, rearZ - frontSide * .04, doorWidth, 0x3c322c, frontSide === 1 ? 1 : -1);
         const windowMat = new THREE.MeshStandardMaterial({ color: 0x79a6b2, emissive: 0x142d35, emissiveIntensity: 1.1, metalness: .55, roughness: .18 });
-        [-1, 1].forEach((side) => [-1, 1].forEach((row) => {
-          const pane = new THREE.Mesh(new THREE.BoxGeometry(1.5, .95, .04), windowMat); pane.position.set(cx + side * w * .27, h * .58 + row * .8, frontZ + .21); pane.raycast = () => {}; scene.add(pane);
+        const floors = Math.max(3, Math.floor((h - 1.2) / 2.25));
+        for (let row = 0; row < floors; row++) [-1, 1].forEach((side) => [frontZ, rearZ].forEach((wallZ) => {
+          const pane = new THREE.Mesh(new THREE.BoxGeometry(Math.min(1.45, w * .22), .9, .04), windowMat);
+          pane.position.set(cx + side * w * .27, 1.7 + row * 2.15, wallZ + Math.sign(wallZ - cz) * .21); pane.raycast = () => {}; scene.add(pane);
         }));
+        // Floor bands and rooftop equipment make the taller skyline readable from street level.
+        for (let level = 2.75; level < h - .8; level += 2.15) addBox(cx, level, frontZ + frontSide * .22, w * .94, .12, .12, 0x303638, false);
+        addBox(cx + w * .2, h + .28, cz, Math.min(2.4, w * .3), .55, Math.min(2.2, d * .22), 0x353d3f, false);
         // Interior cover and room divisions keep buildings useful for combat.
         addBox(cx - w * .22, .55, cz - d * .12, 1.5, 1.1, .8, 0x4a4036);
         addBox(cx + w * .18, 1.25, cz - d * .18, .28, 2.5, d * .42, 0x5c6060);
       };
-      addBuilding(-27, -27, 18, 15, 5.2, 0x5e5550);
-      addBuilding(27, -27, 17, 16, 6.1, 0x4b585b);
-      addBuilding(-27, 27, 19, 15, 5.6, 0x665744);
-      addBuilding(27, 27, 18, 15, 5, 0x4f5350);
+      // Paired buildings create dense blocks and narrow, playable side alleys.
+      addBuilding(-24, -29, 14, 22, 12.4, 0x5e5550, 1);
+      addBuilding(-38, -29, 10, 22, 16.2, 0x4c5254, 1);
+      addBuilding(24, -29, 14, 22, 14.5, 0x4b585b, 1);
+      addBuilding(38, -29, 10, 22, 10.8, 0x65584c, 1);
+      addBuilding(-24, 29, 14, 22, 15.1, 0x665744, -1);
+      addBuilding(-38, 29, 10, 22, 11.6, 0x50595b, -1);
+      addBuilding(24, 29, 14, 22, 12.9, 0x4f5350, -1);
+      addBuilding(38, 29, 10, 22, 16.8, 0x5d5048, -1);
       // Abandoned vehicles, barriers, rubble, and street furniture.
       [[-3, -22, 0x70483c], [3, 20, 0x3f5962], [-21, 2, 0x56594d], [22, -2, 0x624b3f]].forEach(([x, z, color]) => {
         addBox(x, .65, z, 2.1, 1.05, 4.2, color); addBox(x, 1.3, z + .15, 1.75, .62, 2.15, 0x263438);
@@ -632,7 +646,7 @@ export function FpsGame() {
         setLeanSide(leanDirection);
       }
       if (e.code === "KeyF" && !e.repeat && nearbyDoor) {
-        nearbyDoor.open = !nearbyDoor.open; nearbyDoor.target = nearbyDoor.open ? -Math.PI / 2 : 0;
+        nearbyDoor.open = !nearbyDoor.open; nearbyDoor.target = nearbyDoor.open ? nearbyDoor.swing * Math.PI / 2 : 0;
         if (nearbyDoor.open) nearbyDoor.box.active = false;
       }
       if (e.code === "KeyR" && currentSlot <= 2 && !reloadEnd) {
