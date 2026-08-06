@@ -865,7 +865,9 @@ export function FpsGame() {
         const headRig = dummy.userData.headRig as THREE.Group;
         const holdingWeaponPose = isLocal && currentSlot <= 2 && aiming;
         const holdingLongWeaponPose = holdingWeaponPose && (currentSlot === 1 || secondary === "DB-2 SAWED-OFF");
-        headRig.rotation.x = THREE.MathUtils.lerp(headRig.rotation.x, holdingWeaponPose ? holdingLongWeaponPose ? -.13 : -.07 : 0, Math.min(1, dt * 10));
+        const aimingHeadPitch = holdingWeaponPose ? holdingLongWeaponPose ? -.13 : -.07 : 0;
+        const proneHeadPitch = isLocal ? proneAmount * 1.2 : 0;
+        headRig.rotation.x = THREE.MathUtils.lerp(headRig.rotation.x, proneHeadPitch + aimingHeadPitch, Math.min(1, dt * 10));
         headRig.rotation.z = THREE.MathUtils.lerp(headRig.rotation.z, holdingWeaponPose ? holdingLongWeaponPose ? -.15 : -.09 : 0, Math.min(1, dt * 10));
         headRig.position.x = THREE.MathUtils.lerp(headRig.position.x, holdingWeaponPose ? holdingLongWeaponPose ? .065 : .035 : 0, Math.min(1, dt * 10));
         const rig = dummy.userData.rig as { kind: "arm" | "leg"; side: number; upper: THREE.Mesh; lower: THREE.Mesh; joint?: THREE.Mesh; end: THREE.Mesh }[];
