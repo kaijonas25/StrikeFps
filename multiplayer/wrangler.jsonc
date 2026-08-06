@@ -12,5 +12,8 @@
   "migrations": [
     { "tag": "v1", "new_sqlite_classes": ["GameRoom"] }
   ],
-  "observability": { "enabled": true }
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 0.01
+  }
 }
