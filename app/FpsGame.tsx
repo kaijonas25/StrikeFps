@@ -180,19 +180,24 @@ export function FpsGame() {
 
     // Medical and utility resupply drops.
     const addSupplyDrop = (x: number, color: number, medicalDrop: boolean) => {
-      addBox(x, .55, 23, 2.2, 1.1, 2.2, color);
-      addBox(x, 1.16, 23, 2.32, .16, 2.32, 0x20292b, false);
-      const glow = new THREE.PointLight(color, 9, 6, 2); glow.position.set(x, 1.8, 23); scene.add(glow);
+      const drop = new THREE.Group(); drop.position.set(x, 0, 23); scene.add(drop);
+      const addDropPart = (geometry: THREE.BufferGeometry, partMaterial: THREE.Material, px: number, py: number, pz: number) => {
+        const mesh = new THREE.Mesh(geometry, partMaterial); mesh.position.set(px, py, pz); mesh.castShadow = mesh.receiveShadow = true; mesh.raycast = () => {}; drop.add(mesh); return mesh;
+      };
+      addDropPart(new THREE.BoxGeometry(2.2, 1.1, 2.2), material(color), 0, .55, 0);
+      addDropPart(new THREE.BoxGeometry(2.32, .16, 2.32), material(0x20292b), 0, 1.16, 0);
+      const glow = new THREE.PointLight(color, 9, 6, 2); glow.position.set(0, 1.8, 0); drop.add(glow);
       if (medicalDrop) {
-        addBox(x, .58, 21.88, .72, .16, .035, 0xe9f2ed, false);
-        addBox(x, .58, 21.86, .16, .72, .035, 0xe9f2ed, false);
+        addDropPart(new THREE.BoxGeometry(.72, .16, .035), material(0xe9f2ed), 0, .58, -1.12);
+        addDropPart(new THREE.BoxGeometry(.16, .72, .035), material(0xe9f2ed), 0, .58, -1.14);
       } else {
         const utilityMark = new THREE.Mesh(new THREE.TorusGeometry(.34, .07, 8, 18), new THREE.MeshBasicMaterial({ color: 0xe9f2ed }));
-        utilityMark.position.set(x, .58, 21.86); utilityMark.raycast = () => {}; scene.add(utilityMark);
+        utilityMark.position.set(0, .58, -1.14); utilityMark.raycast = () => {}; drop.add(utilityMark);
       }
+      return drop;
     };
-    addSupplyDrop(-25, 0x2c9b67, true);
-    addSupplyDrop(25, 0x397f9e, false);
+    const medicalSupplyDrop = addSupplyDrop(-25, 0x2c9b67, true);
+    const utilitySupplyDrop = addSupplyDrop(25, 0x397f9e, false);
 
     // Human-shaped test dummies with separate head and body hit zones.
     const dummies: THREE.Group[] = [];
@@ -793,9 +798,9 @@ export function FpsGame() {
         if (onPad(-8)) playerHealth = Math.max(0, playerHealth - 8);
         if (onPad(0)) playerHealth = 0;
         if (onPad(8)) playerHealth = Math.min(100, playerHealth + 12);
-        const nearSupply = (x: number) => Math.abs(playerPosition.x - x) < 2.8 && Math.abs(playerPosition.z - 23) < 2.8;
-        if (nearSupply(-25) && medicalCharges < 2) { medicalCharges = 2; setMedicalCount(2); }
-        if (nearSupply(25) && grenadesLeft < 2) { grenadesLeft = 2; setUtilityCount(2); }
+        const touchingSupply = (x: number) => Math.abs(playerPosition.x - x) < 1.65 && Math.abs(playerPosition.z - 23) < 1.65;
+        if (medicalSupplyDrop.visible && touchingSupply(-25)) { medicalCharges += 2; setMedicalCount(medicalCharges); medicalSupplyDrop.visible = false; }
+        if (utilitySupplyDrop.visible && touchingSupply(25)) { grenadesLeft += 2; setUtilityCount(grenadesLeft); utilitySupplyDrop.visible = false; }
         setHealth(playerHealth);
         if (playerHealth <= 0) {
           setDead(true); triggerHeld = false; healEnd = 0; setHealing(false); keys.clear();
