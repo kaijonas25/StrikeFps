@@ -21,6 +21,9 @@ const attachmentMobilityPenalty = (attachments: WeaponAttachments) =>
 const attachmentItemPenalty = (attachment: string) =>
   attachment === "SUPPRESSOR" ? 4 : attachment === "EXTENDED MAG" ? 5 : attachment === "DRUM MAG" ? 14 : attachment === "WHITE LIGHT" ? 3 : 0;
 
+const magazineCapacity = (capacity: number, magazine: MagazineAttachment) =>
+  magazine === "DRUM MAG" ? capacity * 2 : magazine === "EXTENDED MAG" ? Math.ceil(capacity * 1.35) : capacity;
+
 const WEAPON_STATS: Record<string, { damage: number; fireRate: number; capacity: number; reload: number; range: number; mobility: number; spread: number; pellets?: number }> = {
   "VXR-4 CARBINE": { damage: 16, fireRate: 72, capacity: 30, reload: 2.35, range: 74, mobility: 68, spread: 1.25 },
   "M12 SMG": { damage: 12, fireRate: 91, capacity: 36, reload: 1.85, range: 48, mobility: 90, spread: 2.1 },
@@ -174,6 +177,22 @@ export function FpsGame() {
     addPad(-8, 23, 0xff8a24);
     addPad(0, 23, 0xff263f);
     addPad(8, 23, 0x37dc80);
+
+    // Medical and utility resupply drops.
+    const addSupplyDrop = (x: number, color: number, medicalDrop: boolean) => {
+      addBox(x, .55, 23, 2.2, 1.1, 2.2, color);
+      addBox(x, 1.16, 23, 2.32, .16, 2.32, 0x20292b, false);
+      const glow = new THREE.PointLight(color, 9, 6, 2); glow.position.set(x, 1.8, 23); scene.add(glow);
+      if (medicalDrop) {
+        addBox(x, .58, 21.88, .72, .16, .035, 0xe9f2ed, false);
+        addBox(x, .58, 21.86, .16, .72, .035, 0xe9f2ed, false);
+      } else {
+        const utilityMark = new THREE.Mesh(new THREE.TorusGeometry(.34, .07, 8, 18), new THREE.MeshBasicMaterial({ color: 0xe9f2ed }));
+        utilityMark.position.set(x, .58, 21.86); utilityMark.raycast = () => {}; scene.add(utilityMark);
+      }
+    };
+    addSupplyDrop(-25, 0x2c9b67, true);
+    addSupplyDrop(25, 0x397f9e, false);
 
     // Human-shaped test dummies with separate head and body hit zones.
     const dummies: THREE.Group[] = [];
@@ -452,7 +471,6 @@ export function FpsGame() {
 
     const keys = new Set<string>();
     let yaw = 0, pitch = 0, cameraYaw = 0, cameraPitch = 0.2, verticalVelocity = 0, grounded = true;
-    const magazineCapacity = (capacity: number, magazine: MagazineAttachment) => magazine === "DRUM MAG" ? capacity * 2 : magazine === "EXTENDED MAG" ? Math.ceil(capacity * 1.35) : capacity;
     const primaryStats = { ...WEAPON_STATS[primary], capacity: magazineCapacity(WEAPON_STATS[primary].capacity, magazineAttachment) };
     const secondaryIsMelee = secondary === "COMBAT KNIFE";
     const baseSecondaryStats = WEAPON_STATS[secondary] ?? { damage: 50, fireRate: 100, capacity: 1, reload: 0.6, range: 5, mobility: 100, spread: 0 };
@@ -775,6 +793,9 @@ export function FpsGame() {
         if (onPad(-8)) playerHealth = Math.max(0, playerHealth - 8);
         if (onPad(0)) playerHealth = 0;
         if (onPad(8)) playerHealth = Math.min(100, playerHealth + 12);
+        const nearSupply = (x: number) => Math.abs(playerPosition.x - x) < 2.8 && Math.abs(playerPosition.z - 23) < 2.8;
+        if (nearSupply(-25) && medicalCharges < 2) { medicalCharges = 2; setMedicalCount(2); }
+        if (nearSupply(25) && grenadesLeft < 2) { grenadesLeft = 2; setUtilityCount(2); }
         setHealth(playerHealth);
         if (playerHealth <= 0) {
           setDead(true); triggerHeld = false; healEnd = 0; setHealing(false); keys.clear();
@@ -1025,6 +1046,9 @@ export function FpsGame() {
   const equippedItems = [primary, secondary, medical, utility];
   const activeIsMelee = activeSlot === 2 && secondary === "COMBAT KNIFE";
   const activeSightAttachment = activeSlot === 1 ? weaponSight : secondarySight;
+  const activeMaxMagazine = activeSlot === 1
+    ? magazineCapacity(WEAPON_STATS[primary].capacity, magazineAttachment)
+    : activeSlot === 2 && WEAPON_STATS[secondary] ? magazineCapacity(WEAPON_STATS[secondary].capacity, secondaryMagazine) : 0;
 
   return (
     <main className={`game-shell${!started ? " game-menu" : ""}`}>
@@ -1042,7 +1066,7 @@ export function FpsGame() {
       <div className="crosshair" style={{ left: thirdPerson ? "54%" : "50%" }}><span /><span /></div>
       <div className="hud-left"><small>VITALS</small><strong>{health}</strong><div className="health"><i style={{ width: `${health}%` }} /></div></div>
       {crouching && <div className="stance-status">CROUCHED · <kbd>C</kbd> STAND</div>}
-      <div className="hud-right"><small>{equippedItems[activeSlot - 1]}{activeIsMelee ? " · MELEE" : activeSlot <= 2 ? ` · ${fireMode}` : " · READY"}</small><strong>{activeSlot === 4 ? utilityCount : activeSlot === 3 ? medicalCount : activeIsMelee ? "—" : ammo} <em>{activeSlot === 4 ? "THROWABLES" : activeSlot === 3 ? "MEDICAL" : activeIsMelee ? "" : "/ 120"}</em></strong></div>
+      <div className="hud-right"><small>{equippedItems[activeSlot - 1]}{activeIsMelee ? " · MELEE" : activeSlot <= 2 ? ` · ${fireMode}` : " · READY"}</small><strong>{activeSlot === 4 ? utilityCount : activeSlot === 3 ? medicalCount : activeIsMelee ? "—" : ammo} <em>{activeSlot === 4 ? "THROWABLES" : activeSlot === 3 ? "MEDICAL" : activeIsMelee ? "" : `/ ${activeMaxMagazine}`}</em></strong></div>
       {reloading && <div className="reload-status"><span>RELOADING</span><i style={{ animationDuration: `${reloadDuration}s` }} /></div>}
       {healing && <div className="heal-status"><span>USING {medical}</span><small>SWITCH EQUIPMENT TO CANCEL</small><i style={{ animationDuration: `${healDuration}s` }} /></div>}
       <div className="quick-slots">
@@ -1054,7 +1078,7 @@ export function FpsGame() {
       </div>
       <div className={`flash-effect${flashed ? " active" : ""}`} />
       <div className={`heal-effect${healingEffect ? " active" : ""}`} />
-      <div className="test-legend"><span className="damage-dot" /> DAMAGE PAD <span className="kill-dot" /> KILL PAD <span className="heal-dot" /> HEAL PAD</div>
+      <div className="test-legend"><span className="damage-dot" /> DAMAGE PAD <span className="kill-dot" /> KILL PAD <span className="heal-dot" /> HEAL PAD <span className="medical-dot" /> MEDICAL DROP <span className="utility-dot" /> UTILITY DROP</div>
       <div className="controls"><kbd>WASD</kbd> MOVE <kbd>SHIFT</kbd> SPRINT <kbd>C</kbd> CROUCH / SLIDE <kbd>RMB</kbd> {thirdPerson ? "ORBIT CAMERA" : "AIM"} <kbd>LMB</kbd> FIRE <kbd>TAB</kbd> {thirdPerson ? "1ST PERSON" : "3RD PERSON"}</div>
       {dead && <div className="death-screen">
         <div className="death-code">KIA</div><h2>OPERATOR DOWN</h2><p>TEST CONDITION: FATAL DAMAGE</p>
