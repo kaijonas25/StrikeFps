@@ -13,15 +13,17 @@ type SightAttachment = "IRON SIGHTS" | "RED DOT" | "HOLOGRAPHIC" | "4X SCOPE";
 type MuzzleAttachment = "STANDARD BARREL" | "SUPPRESSOR";
 type TacticalAttachment = "NONE" | "RED LASER" | "WHITE LIGHT";
 type MagazineAttachment = "STANDARD MAG" | "EXTENDED MAG" | "DRUM MAG";
-type WeaponAttachments = { sight: SightAttachment; muzzle: MuzzleAttachment; tactical: TacticalAttachment; magazine: MagazineAttachment };
+type FireControlAttachment = "STANDARD TRIGGER" | "BURST TRIGGER";
+type WeaponAttachments = { sight: SightAttachment; muzzle: MuzzleAttachment; tactical: TacticalAttachment; magazine: MagazineAttachment; fireControl: FireControlAttachment };
 
 const attachmentMobilityPenalty = (attachments: WeaponAttachments) =>
   (attachments.muzzle === "SUPPRESSOR" ? 4 : 0) +
   (attachments.magazine === "EXTENDED MAG" ? 5 : attachments.magazine === "DRUM MAG" ? 14 : 0) +
-  (attachments.tactical === "WHITE LIGHT" ? 3 : 0);
+  (attachments.tactical === "WHITE LIGHT" ? 3 : 0) +
+  (attachments.fireControl === "BURST TRIGGER" ? 25 : 0);
 
 const attachmentItemPenalty = (attachment: string) =>
-  attachment === "SUPPRESSOR" ? 4 : attachment === "EXTENDED MAG" ? 5 : attachment === "DRUM MAG" ? 14 : attachment === "WHITE LIGHT" ? 3 : 0;
+  attachment === "BURST TRIGGER" ? 25 : attachment === "SUPPRESSOR" ? 4 : attachment === "EXTENDED MAG" ? 5 : attachment === "DRUM MAG" ? 14 : attachment === "WHITE LIGHT" ? 3 : 0;
 
 const magazineCapacity = (capacity: number, magazine: MagazineAttachment) =>
   magazine === "DRUM MAG" ? capacity * 2 : magazine === "EXTENDED MAG" ? Math.ceil(capacity * 1.35) : capacity;
@@ -34,7 +36,7 @@ const WEAPON_STATS: Record<string, { damage: number; fireRate: number; capacity:
   "KSG-12 SHOTGUN": { damage: 9, fireRate: 22, capacity: 8, reload: 4.1, range: 30, mobility: 58, spread: 5.8, pellets: 8 },
   "HMG-6 LMG": { damage: 19, fireRate: 66, capacity: 60, reload: 5.2, range: 78, mobility: 27, spread: 1.75 },
   "AKR-47 ASSAULT": { damage: 22, fireRate: 61, capacity: 30, reload: 2.65, range: 76, mobility: 61, spread: 1.6 },
-  "M8 BURST RIFLE": { damage: 17.5, fireRate: 78, capacity: 27, reload: 2.25, range: 72, mobility: 70, spread: 1.05 },
+  "M8 TACTICAL RIFLE": { damage: 17.5, fireRate: 78, capacity: 27, reload: 2.25, range: 72, mobility: 70, spread: 1.05 },
   "DMR-11 MARKSMAN": { damage: 33.5, fireRate: 34, capacity: 12, reload: 2.9, range: 96, mobility: 45, spread: 0.32 },
   "VX-9 PDW": { damage: 10.5, fireRate: 98, capacity: 42, reload: 2.05, range: 42, mobility: 93, spread: 2.35 },
   "P9 SIDEARM": { damage: 14, fireRate: 58, capacity: 15, reload: 1.45, range: 45, mobility: 94, spread: 1.55 },
@@ -51,6 +53,10 @@ const MEDICAL_STATS: Record<string, { healing: number; duration: number }> = {
 const PLAYER_HEIGHT = 1.7;
 const PLAYER_RADIUS = 0.38;
 const MULTIPLAYER_SERVER = "https://strikeyard-multiplayer.kaigarcia2510.workers.dev";
+const formatMatchTime = (milliseconds: number) => {
+  const seconds = Math.max(0, Math.ceil(milliseconds / 1000));
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+};
 
 export function FpsGame() {
   const mountRef = useRef<HTMLDivElement>(null);
@@ -67,7 +73,13 @@ export function FpsGame() {
   const [serverBrowserOpen, setServerBrowserOpen] = useState(false);
   const [matchPhase, setMatchPhase] = useState<"connecting" | "voting" | "playing">("connecting");
   const [mapVotes, setMapVotes] = useState(0);
+  const [modeVotes, setModeVotes] = useState(0);
   const [hasVoted, setHasVoted] = useState(false);
+  const [hasModeVoted, setHasModeVoted] = useState(false);
+  const [matchEndsAt, setMatchEndsAt] = useState(0);
+  const [matchTimeLeft, setMatchTimeLeft] = useState(0);
+  const [localPlayerId, setLocalPlayerId] = useState("");
+  const [connectedPlayerIds, setConnectedPlayerIds] = useState<string[]>([]);
   const [multiplayerStatus, setMultiplayerStatus] = useState<"OFFLINE" | "CONNECTING" | "ONLINE">("OFFLINE");
   const [doorPrompt, setDoorPrompt] = useState(false);
   const [primary, setPrimary] = useState("VXR-4 CARBINE");
@@ -106,10 +118,19 @@ export function FpsGame() {
   const [muzzleAttachment, setMuzzleAttachment] = useState<MuzzleAttachment>("STANDARD BARREL");
   const [tacticalAttachment, setTacticalAttachment] = useState<TacticalAttachment>("NONE");
   const [magazineAttachment, setMagazineAttachment] = useState<MagazineAttachment>("STANDARD MAG");
+  const [fireControlAttachment, setFireControlAttachment] = useState<FireControlAttachment>("STANDARD TRIGGER");
   const [secondarySight, setSecondarySight] = useState<SightAttachment>("IRON SIGHTS");
   const [secondaryMuzzle, setSecondaryMuzzle] = useState<MuzzleAttachment>("STANDARD BARREL");
   const [secondaryTactical, setSecondaryTactical] = useState<TacticalAttachment>("NONE");
   const [secondaryMagazine, setSecondaryMagazine] = useState<MagazineAttachment>("STANDARD MAG");
+  const [secondaryFireControl, setSecondaryFireControl] = useState<FireControlAttachment>("STANDARD TRIGGER");
+
+  useEffect(() => {
+    const updateClock = () => setMatchTimeLeft(Math.max(0, matchEndsAt - Date.now()));
+    updateClock();
+    const timer = window.setInterval(updateClock, 250);
+    return () => window.clearInterval(timer);
+  }, [matchEndsAt]);
 
   useEffect(() => {
     const mount = mountRef.current;
@@ -479,8 +500,8 @@ export function FpsGame() {
     // Detailed procedural weapon view models. All sights share the same centerline for ADS.
     const gun = new THREE.Group();
     const weaponMaterial = (color: number, metalness = 0.72) => material(color, 0.34, metalness);
-    const primaryAttachments: WeaponAttachments = { sight: weaponSight, muzzle: muzzleAttachment, tactical: tacticalAttachment, magazine: magazineAttachment };
-    const secondaryAttachments: WeaponAttachments = { sight: secondarySight, muzzle: secondaryMuzzle, tactical: secondaryTactical, magazine: secondaryMagazine };
+    const primaryAttachments: WeaponAttachments = { sight: weaponSight, muzzle: muzzleAttachment, tactical: tacticalAttachment, magazine: magazineAttachment, fireControl: fireControlAttachment };
+    const secondaryAttachments: WeaponAttachments = { sight: secondarySight, muzzle: secondaryMuzzle, tactical: secondaryTactical, magazine: secondaryMagazine, fireControl: secondaryFireControl };
     const buildWeapon = (name: string, attachments: WeaponAttachments) => {
       const model = new THREE.Group();
       const addPart = (w: number, h: number, d: number, x: number, y: number, z: number, color = 0x20282b) => {
@@ -521,7 +542,7 @@ export function FpsGame() {
         const isShotgun = name === "KSG-12 SHOTGUN";
         const isLmg = name === "HMG-6 LMG";
         const isAkr = name === "AKR-47 ASSAULT";
-        const isBurst = name === "M8 BURST RIFLE";
+        const isBurst = name === "M8 TACTICAL RIFLE";
         const isRifle = name === "BR-7 RIFLE" || name === "DMR-11 MARKSMAN" || isSniper;
         const accent = isAkr ? 0x76513a : isBurst ? 0x4b555d : isSmg ? 0x2f4a4e : isRifle ? 0x584f3c : isShotgun ? 0x3f3430 : isLmg ? 0x384638 : 0x343e40;
         addPart(isSmg ? 0.21 : isLmg ? 0.3 : 0.23, isLmg ? 0.25 : 0.2, isRifle ? 0.72 : isShotgun ? 0.78 : 0.6, x, -0.28, -0.57, 0x1b2224);
@@ -667,11 +688,26 @@ export function FpsGame() {
       multiplayerSocket.addEventListener("message", (event) => {
         if (typeof event.data !== "string") return;
         try {
-          const packet = JSON.parse(event.data) as { type: string; player?: RemoteState; players?: RemoteState[]; id?: string; match?: { phase: "voting" | "playing"; votes: number } };
-          if (packet.type === "welcome") { packet.players?.forEach(upsertRemotePlayer); if (packet.match) { setMatchPhase(packet.match.phase); setMapVotes(packet.match.votes); if (packet.match.phase === "voting") document.exitPointerLock(); } }
-          else if ((packet.type === "joined" || packet.type === "state") && packet.player) upsertRemotePlayer(packet.player);
-          else if (packet.type === "left" && packet.id) { const avatar = remotePlayers.get(packet.id); if (avatar) scene.remove(avatar); remotePlayers.delete(packet.id); }
-          else if (packet.type === "match" && packet.match) { setMatchPhase(packet.match.phase); setMapVotes(packet.match.votes); setHasVoted(false); if (packet.match.phase === "voting") document.exitPointerLock(); }
+          const packet = JSON.parse(event.data) as { type: string; player?: RemoteState; players?: RemoteState[]; id?: string; match?: { phase: "voting" | "playing"; phaseEndsAt: number; votes: number; modeVotes: number; mode: "FFA" } };
+          const applyMatch = (match: NonNullable<typeof packet.match>, resetVotes = false) => {
+            setMatchPhase(match.phase); setMapVotes(match.votes); setModeVotes(match.modeVotes ?? 0); setMatchEndsAt(match.phaseEndsAt);
+            if (resetVotes) { setHasVoted(false); setHasModeVoted(false); }
+            if (match.phase === "voting") document.exitPointerLock();
+          };
+          if (packet.type === "welcome") {
+            packet.players?.forEach(upsertRemotePlayer);
+            if (packet.id) { setLocalPlayerId(packet.id); setConnectedPlayerIds([packet.id, ...(packet.players ?? []).map((player) => player.id)]); }
+            if (packet.match) applyMatch(packet.match);
+          }
+          else if ((packet.type === "joined" || packet.type === "state") && packet.player) {
+            upsertRemotePlayer(packet.player);
+            if (packet.type === "joined") setConnectedPlayerIds((ids) => ids.includes(packet.player!.id) ? ids : [...ids, packet.player!.id]);
+          }
+          else if (packet.type === "left" && packet.id) {
+            const avatar = remotePlayers.get(packet.id); if (avatar) scene.remove(avatar); remotePlayers.delete(packet.id);
+            setConnectedPlayerIds((ids) => ids.filter((id) => id !== packet.id));
+          }
+          else if (packet.type === "match" && packet.match) applyMatch(packet.match, packet.match.votes === 0 && packet.match.modeVotes === 0);
         } catch {}
       });
     } else setMultiplayerStatus("OFFLINE");
@@ -716,7 +752,7 @@ export function FpsGame() {
     let currentFireMode: FireMode = "AUTO", triggerHeld = false, lastShot = 0, currentSlot = 1, movementSpread = 1;
     let nearbyDoor: typeof doors[number] | undefined;
     const activeAttachments = (): WeaponAttachments => currentSlot > 2 || (currentSlot === 2 && secondaryIsMelee)
-      ? { sight: "IRON SIGHTS", muzzle: "STANDARD BARREL", tactical: "NONE", magazine: "STANDARD MAG" }
+      ? { sight: "IRON SIGHTS", muzzle: "STANDARD BARREL", tactical: "NONE", magazine: "STANDARD MAG", fireControl: "STANDARD TRIGGER" }
       : currentSlot === 1 ? primaryAttachments : secondaryAttachments;
     let playerHealth = 100, nextPadTick = 0, healEnd = 0;
     const playerPosition = new THREE.Vector3(0, PLAYER_HEIGHT, spawnZ);
@@ -784,13 +820,17 @@ export function FpsGame() {
         }
       }
       if (e.code === "KeyB" && !e.repeat) {
-        const modes: FireMode[] = ["SEMI", "BURST", "AUTO"];
+        const modes: FireMode[] = activeAttachments().fireControl === "BURST TRIGGER" ? ["SEMI", "BURST", "AUTO"] : ["SEMI", "AUTO"];
         currentFireMode = modes[(modes.indexOf(currentFireMode) + 1) % modes.length];
         setFireMode(currentFireMode);
       }
       if (["Digit1", "Digit2", "Digit3", "Digit4"].includes(e.code)) {
         currentSlot = Number(e.code.slice(-1));
         setActiveSlot(currentSlot);
+        if (currentFireMode === "BURST" && activeAttachments().fireControl !== "BURST TRIGGER") {
+          currentFireMode = "AUTO";
+          setFireMode(currentFireMode);
+        }
         if (currentSlot <= 2) { ammoCount = ammoCounts[currentSlot - 1]; setAmmo(ammoCount); }
         aiming = false; setAdsActive(false);
         triggerHeld = false;
@@ -936,7 +976,8 @@ export function FpsGame() {
       const worldMuzzle = (currentSlot === 1 ? worldPrimary : worldSecondary).getObjectByName("muzzleAnchor");
       (isThirdPerson && worldMuzzle ? worldMuzzle : currentSlot === 1 ? primaryWeapon.muzzleAnchor : secondaryWeapon.muzzleAnchor).getWorldPosition(tracerStart);
       const pelletCount = shotStats.pellets ?? 1;
-      const spreadDegrees = shotStats.spread * (aiming ? 0.42 : 1) * movementSpread;
+      const burstAccuracyPenalty = activeAttachments().fireControl === "BURST TRIGGER" ? 1.25 : 1;
+      const spreadDegrees = shotStats.spread * burstAccuracyPenalty * (aiming ? 0.42 : 1) * movementSpread;
       for (let pellet = 0; pellet < pelletCount; pellet++) {
         const spreadNdc = spreadDegrees / camera.fov;
         const aimNdc = getAimNdc();
@@ -1360,10 +1401,11 @@ export function FpsGame() {
       multiplayerSocket?.close(1000, "leaving sector");
       multiplayerSendRef.current = () => {};
       setMultiplayerStatus("OFFLINE");
+      setConnectedPlayerIds([]); setLocalPlayerId("");
       renderer.dispose();
       mount.removeChild(renderer.domElement);
     };
-  }, [sessionId, started, selectedSector, selectedMap, primary, secondary, medical, utility, characterSkin, characterUniform, characterArmor, characterHelmet, faceGear, headAccessory, chestRig, backpack, pantsColor, gloveColor, bootColor, weaponSight, muzzleAttachment, tacticalAttachment, magazineAttachment, secondarySight, secondaryMuzzle, secondaryTactical, secondaryMagazine]);
+  }, [sessionId, started, selectedSector, selectedMap, primary, secondary, medical, utility, characterSkin, characterUniform, characterArmor, characterHelmet, faceGear, headAccessory, chestRig, backpack, pantsColor, gloveColor, bootColor, weaponSight, muzzleAttachment, tacticalAttachment, magazineAttachment, fireControlAttachment, secondarySight, secondaryMuzzle, secondaryTactical, secondaryMagazine, secondaryFireControl]);
 
   const equippedItems = [primary, secondary, medical, utility];
   const activeIsMelee = activeSlot === 2 && secondary === "COMBAT KNIFE";
@@ -1385,6 +1427,14 @@ export function FpsGame() {
       <div className="kill-feed" aria-live="polite">
         {killFeed.map((entry) => <div key={entry.id}><b>YOU</b><span>{entry.weapon}</span>{entry.headshot && <i>HEADSHOT</i>}<strong>{entry.victim}</strong></div>)}
       </div>
+      {started && matchPhase === "playing" && <aside className="leaderboard">
+        <header><span>FREE FOR ALL</span><strong>{formatMatchTime(matchTimeLeft)}</strong></header>
+        <div className="leaderboard-columns"><span>OPERATOR</span><i>K</i><i>D</i></div>
+        {connectedPlayerIds.map((id, index) => <div className={id === localPlayerId ? "local" : ""} key={id}>
+          <span>{id === localPlayerId ? "YOU" : `OPERATOR ${String(index + 1).padStart(2, "0")}`}</span><i>0</i><i>0</i>
+        </div>)}
+        {!connectedPlayerIds.length && <div><span>CONNECTING…</span><i>—</i><i>—</i></div>}
+      </aside>}
       <div className="crosshair" style={{ left: thirdPerson ? leanSide < 0 ? "46%" : "54%" : "50%" }}><span /><span /></div>
       <div className="hud-left"><small>VITALS</small><strong>{health}</strong><div className="health"><i style={{ width: `${health}%` }} /></div></div>
       {(crouching || prone) && <div className="stance-status">{prone ? "PRONE" : "CROUCHED"} · <kbd>{prone ? "X" : "C"}</kbd> STAND</div>}
@@ -1405,14 +1455,20 @@ export function FpsGame() {
       <div className="controls"><kbd>WASD</kbd> MOVE <kbd>SHIFT</kbd> SPRINT <kbd>C</kbd> CROUCH / SLIDE <kbd>X</kbd> PRONE <kbd>Q/E</kbd> LEAN <kbd>RMB</kbd> {thirdPerson ? "ORBIT CAMERA" : "AIM"} <kbd>LMB</kbd> FIRE <kbd>TAB</kbd> {thirdPerson ? "1ST PERSON" : "3RD PERSON"}</div>
       {started && matchPhase === "voting" && <div className="match-vote-overlay">
         <div className="match-vote-panel">
-          <small>{selectedSector} · MATCH COMPLETE</small>
-          <h2><span>MAP</span> VOTING</h2>
-          <p>CHOOSE THE NEXT BATTLEFIELD</p>
-          <button className={hasVoted ? "voted" : ""} disabled={hasVoted} onClick={() => { multiplayerSendRef.current({ type: "vote", map: "CITY BLOCK" }); setHasVoted(true); }}>
+          <small>{selectedSector} · NEXT MATCH STARTS IN <b>{formatMatchTime(matchTimeLeft)}</b></small>
+          <h2><span>MATCH</span> VOTING</h2>
+          <p>CHOOSE THE NEXT BATTLEFIELD AND GAMEMODE</p>
+          <h3>MAP</h3>
+          <button className={hasVoted ? "voted" : ""} disabled={hasVoted} onClick={() => { multiplayerSendRef.current({ type: "vote", category: "map", map: "CITY BLOCK" }); setHasVoted(true); }}>
             <i>01</i><span><b>CITY BLOCK</b><small>URBAN WARFARE · ENTERABLE BUILDINGS · DEBRIS</small></span><em>{hasVoted ? "VOTE LOCKED" : "VOTE"}</em>
           </button>
           <div className="vote-total"><i style={{ width: mapVotes ? "100%" : "0%" }} /><span>{mapVotes} VOTE{mapVotes === 1 ? "" : "S"}</span></div>
-          <footer>CITY BLOCK IS THE ONLY MAP IN THE CURRENT ROTATION</footer>
+          <h3>GAMEMODE</h3>
+          <button className={hasModeVoted ? "voted" : ""} disabled={hasModeVoted} onClick={() => { multiplayerSendRef.current({ type: "vote", category: "mode", mode: "FFA" }); setHasModeVoted(true); }}>
+            <i>01</i><span><b>FREE FOR ALL</b><small>5 MINUTES · EVERY OPERATOR FOR THEMSELVES</small></span><em>{hasModeVoted ? "VOTE LOCKED" : "VOTE"}</em>
+          </button>
+          <div className="vote-total"><i style={{ width: modeVotes ? "100%" : "0%" }} /><span>{modeVotes} VOTE{modeVotes === 1 ? "" : "S"}</span></div>
+          <footer>MORE MAPS AND GAMEMODES WILL BE ADDED LATER</footer>
         </div>
       </div>}
       {dead && <div className="death-screen">
@@ -1451,7 +1507,7 @@ export function FpsGame() {
                 setServerBrowserOpen(false);
                 setSelectedMap("CITY BLOCK");
                 setMatchPhase("connecting");
-                setMapVotes(0); setHasVoted(false);
+                setMapVotes(0); setModeVotes(0); setHasVoted(false); setHasModeVoted(false); setMatchEndsAt(0);
                 setStarted(true);
                 setSessionId((id) => id + 1);
               }}>
@@ -1466,7 +1522,7 @@ export function FpsGame() {
               <LoadoutSlot label="PRIMARY WEAPON" selected={primary} options={[
                 ["VXR-4 CARBINE", "BALANCED · AUTO"], ["M12 SMG", "MOBILE · CLOSE RANGE"], ["BR-7 RIFLE", "PRECISION · SEMI"],
                 ["SNR-90 SNIPER", "EXTREME RANGE · BOLT ACTION"], ["KSG-12 SHOTGUN", "8 PELLETS · CLOSE RANGE"], ["HMG-6 LMG", "60 ROUNDS · SUPPRESSION"],
-                ["AKR-47 ASSAULT", "HEAVY DAMAGE · HARD RECOIL"], ["M8 BURST RIFLE", "CONTROLLED · THREE ROUND"], ["DMR-11 MARKSMAN", "SEMI AUTO · LONG RANGE"], ["VX-9 PDW", "EXTREME RATE · MOBILE"]
+                ["AKR-47 ASSAULT", "HEAVY DAMAGE · HARD RECOIL"], ["M8 TACTICAL RIFLE", "CONTROLLED · 27 ROUNDS"], ["DMR-11 MARKSMAN", "SEMI AUTO · LONG RANGE"], ["VX-9 PDW", "EXTREME RATE · MOBILE"]
               ]} onSelect={setPrimary} />
               <LoadoutSlot label="SECONDARY" selected={secondary} options={[
                 ["P9 SIDEARM", "RELIABLE · 15 ROUNDS"], ["R45 REVOLVER", "HEAVY · 6 ROUNDS"], ["G18 AUTO PISTOL", "24 ROUNDS · FULL AUTO"], ["DB-2 SAWED-OFF", "TWO SHELLS · 6 PELLETS"], ["COMBAT KNIFE", "FAST · SILENT"]
@@ -1485,6 +1541,7 @@ export function FpsGame() {
                 <AttachmentOption label="MUZZLE" value={muzzleAttachment} options={["STANDARD BARREL", "SUPPRESSOR"]} onSelect={(value) => setMuzzleAttachment(value as typeof muzzleAttachment)} />
                 <AttachmentOption label="MAGAZINE" value={magazineAttachment} options={["STANDARD MAG", "EXTENDED MAG", "DRUM MAG"]} onSelect={(value) => setMagazineAttachment(value as typeof magazineAttachment)} />
                 <AttachmentOption label="TACTICAL" value={tacticalAttachment} options={["NONE", "RED LASER", "WHITE LIGHT"]} onSelect={(value) => setTacticalAttachment(value as typeof tacticalAttachment)} />
+                <AttachmentOption label="FIRE CONTROL" value={fireControlAttachment} options={["STANDARD TRIGGER", "BURST TRIGGER"]} onSelect={(value) => setFireControlAttachment(value as typeof fireControlAttachment)} />
               </div>
               <div className="attachments-heading secondary"><span>SECONDARY</span> ATTACHMENTS <small>{secondary}</small></div>
               <div className="attachments-grid">
@@ -1492,6 +1549,7 @@ export function FpsGame() {
                 <AttachmentOption label="MUZZLE" value={secondaryMuzzle} options={["STANDARD BARREL", "SUPPRESSOR"]} onSelect={(value) => setSecondaryMuzzle(value as typeof secondaryMuzzle)} />
                 <AttachmentOption label="MAGAZINE" value={secondaryMagazine} options={["STANDARD MAG", "EXTENDED MAG", "DRUM MAG"]} onSelect={(value) => setSecondaryMagazine(value as typeof secondaryMagazine)} />
                 <AttachmentOption label="TACTICAL" value={secondaryTactical} options={["NONE", "RED LASER", "WHITE LIGHT"]} onSelect={(value) => setSecondaryTactical(value as typeof secondaryTactical)} />
+                <AttachmentOption label="FIRE CONTROL" value={secondaryFireControl} options={["STANDARD TRIGGER", "BURST TRIGGER"]} onSelect={(value) => setSecondaryFireControl(value as typeof secondaryFireControl)} />
               </div>
             </div>
             <button className="confirm-loadout" onClick={() => setMenuPage("HOME")}>CONFIRM LOADOUT</button>
@@ -1651,7 +1709,7 @@ function GearOption({ label, value, options, onSelect }: { label: string; value:
 function AttachmentOption({ label, value, options, onSelect }: { label: string; value: string; options: string[]; onSelect: (value: string) => void }) {
   return <section className="attachment-option"><h2>{label}</h2><div>
     {options.map((option) => { const penalty = attachmentItemPenalty(option); return <button key={option} className={value === option ? "selected" : ""} onClick={() => onSelect(option)}>
-      <i /> <span>{option}</span><small>{value === option ? "EQUIPPED" : "SELECT"}{penalty > 0 && ` · −${penalty} MOBILITY`}</small>
+      <i /> <span>{option}</span><small>{value === option ? "EQUIPPED" : "SELECT"}{penalty > 0 && ` · −${penalty}% MOBILITY${option === "BURST TRIGGER" ? " · −25% ACCURACY" : ""}`}</small>
     </button>; })}
   </div></section>;
 }
