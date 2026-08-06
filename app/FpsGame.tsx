@@ -3,9 +3,10 @@
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 
-type Box = { minX: number; maxX: number; minZ: number; maxZ: number; height: number };
+type Box = { minX: number; maxX: number; minZ: number; maxZ: number; height: number; active?: boolean };
 type FireMode = "SEMI" | "BURST" | "AUTO";
 type MenuPage = "HOME" | "LOADOUT" | "CHARACTER";
+type GameMap = "TEST YARD" | "CITY BLOCK";
 type KillFeedEntry = { id: number; victim: string; weapon: string; headshot: boolean };
 type SightAttachment = "IRON SIGHTS" | "RED DOT" | "HOLOGRAPHIC" | "4X SCOPE";
 type MuzzleAttachment = "STANDARD BARREL" | "SUPPRESSOR";
@@ -58,6 +59,8 @@ export function FpsGame() {
   const [fireMode, setFireMode] = useState<FireMode>("AUTO");
   const [sessionId, setSessionId] = useState(0);
   const [menuPage, setMenuPage] = useState<MenuPage>("HOME");
+  const [selectedMap, setSelectedMap] = useState<GameMap>("TEST YARD");
+  const [doorPrompt, setDoorPrompt] = useState(false);
   const [primary, setPrimary] = useState("VXR-4 CARBINE");
   const [secondary, setSecondary] = useState("P9 SIDEARM");
   const [medical, setMedical] = useState("FIELD MEDKIT");
@@ -131,12 +134,13 @@ export function FpsGame() {
     const material = (color: number, roughness = 0.82, metalness = 0.05) =>
       new THREE.MeshStandardMaterial({ color, roughness, metalness });
 
-    const floor = new THREE.Mesh(new THREE.PlaneGeometry(64, 64), material(0x364044));
+    const mapSize = selectedMap === "CITY BLOCK" ? 96 : 64;
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(mapSize, mapSize), material(selectedMap === "CITY BLOCK" ? 0x252b2d : 0x364044));
     floor.rotation.x = -Math.PI / 2;
     floor.receiveShadow = true;
     scene.add(floor);
 
-    const grid = new THREE.GridHelper(64, 32, 0x516166, 0x465358);
+    const grid = new THREE.GridHelper(mapSize, selectedMap === "CITY BLOCK" ? 48 : 32, 0x516166, 0x465358);
     grid.position.y = 0.008;
     scene.add(grid);
 
@@ -149,6 +153,11 @@ export function FpsGame() {
       return mesh;
     }
 
+    let medicalSupplyDrop = new THREE.Group(); medicalSupplyDrop.visible = false;
+    let utilitySupplyDrop = new THREE.Group(); utilitySupplyDrop.visible = false;
+    const doors: { pivot: THREE.Group; box: Box; target: number; open: boolean }[] = [];
+
+    if (selectedMap === "TEST YARD") {
     // Perimeter and cover
     addBox(0, 2.5, -31.5, 64, 5, 1, 0x263238);
     addBox(0, 2.5, 31.5, 64, 5, 1, 0x263238);
@@ -198,8 +207,9 @@ export function FpsGame() {
       }
       return drop;
     };
-    const medicalSupplyDrop = addSupplyDrop(-25, 0x2c9b67, true);
-    const utilitySupplyDrop = addSupplyDrop(25, 0x397f9e, false);
+    medicalSupplyDrop = addSupplyDrop(-25, 0x2c9b67, true);
+    utilitySupplyDrop = addSupplyDrop(25, 0x397f9e, false);
+    }
 
     // Human-shaped test dummies with separate head and body hit zones.
     const dummies: THREE.Group[] = [];
@@ -283,12 +293,68 @@ export function FpsGame() {
       scene.add(dummy); if (targetable) dummies.push(dummy); return dummy;
     };
     const namedDummy = (dummy: THREE.Group, callsign: string) => { dummy.userData.callsign = callsign; return dummy; };
-    namedDummy(addDummy(-7, -14, 0x4d7182), "TARGET ALPHA"); namedDummy(addDummy(0, -14, 0x706347), "TARGET BRAVO"); namedDummy(addDummy(7, -14, 0x754b4b), "TARGET CHARLIE");
-    namedDummy(addDummy(15, -15, 0x38785d, "walk"), "WALKER ONE"); namedDummy(addDummy(26, -15, 0x804f32, "sprint"), "RUNNER ONE");
-    const localPlayer = addDummy(0, 15, 0x435e70, "static", false);
+    if (selectedMap === "TEST YARD") {
+      namedDummy(addDummy(-7, -14, 0x4d7182), "TARGET ALPHA"); namedDummy(addDummy(0, -14, 0x706347), "TARGET BRAVO"); namedDummy(addDummy(7, -14, 0x754b4b), "TARGET CHARLIE");
+      namedDummy(addDummy(15, -15, 0x38785d, "walk"), "WALKER ONE"); namedDummy(addDummy(26, -15, 0x804f32, "sprint"), "RUNNER ONE");
+    }
+    const spawnZ = selectedMap === "CITY BLOCK" ? 38 : 15;
+    const localPlayer = addDummy(0, spawnZ, 0x435e70, "static", false);
     localPlayer.rotation.order = "YXZ";
     localPlayer.visible = false;
 
+    if (selectedMap === "CITY BLOCK") {
+      // Asphalt roads and raised sidewalks.
+      addBox(0, .025, 0, 15, .05, 94, 0x171c1e, false);
+      addBox(0, .03, 0, 94, .06, 15, 0x171c1e, false);
+      [-9, 9].forEach((x) => addBox(x, .11, 0, 3, .22, 94, 0x596064, false));
+      [-9, 9].forEach((z) => addBox(0, .11, z, 94, .22, 3, 0x596064, false));
+      addBox(0, 3, -47.5, 96, 6, 1, 0x20282b); addBox(0, 3, 47.5, 96, 6, 1, 0x20282b);
+      addBox(-47.5, 3, 0, 1, 6, 96, 0x20282b); addBox(47.5, 3, 0, 1, 6, 96, 0x20282b);
+
+      const addDoor = (x: number, z: number, width: number, color: number) => {
+        const pivot = new THREE.Group(); pivot.position.set(x - width / 2, 0, z); scene.add(pivot);
+        const door = new THREE.Mesh(new THREE.BoxGeometry(width, 2.65, .16), material(color, .6, .3)); door.position.set(width / 2, 1.325, 0); door.castShadow = true; pivot.add(door);
+        const handle = new THREE.Mesh(new THREE.SphereGeometry(.055, 8, 6), material(0xc4a465, .3, .7)); handle.position.set(width * .82, 1.3, -.12); pivot.add(handle);
+        const box: Box = { minX: x - width / 2, maxX: x + width / 2, minZ: z - .18, maxZ: z + .18, height: 2.7, active: true };
+        boxes.push(box); doors.push({ pivot, box, target: 0, open: false });
+      };
+      const addBuilding = (cx: number, cz: number, w: number, d: number, h: number, color: number) => {
+        const wall = .38, doorWidth = 1.35, frontZ = cz + d / 2;
+        addBox(cx, h / 2, cz - d / 2, w, h, wall, color);
+        addBox(cx - w / 2, h / 2, cz, wall, h, d, color); addBox(cx + w / 2, h / 2, cz, wall, h, d, color);
+        const frontSegment = (w - doorWidth) / 2;
+        addBox(cx - doorWidth / 2 - frontSegment / 2, h / 2, frontZ, frontSegment, h, wall, color);
+        addBox(cx + doorWidth / 2 + frontSegment / 2, h / 2, frontZ, frontSegment, h, wall, color);
+        addBox(cx, h - .12, cz, w, .24, d, 0x242b2d);
+        addBox(cx, .08, cz, w - .5, .16, d - .5, 0x3b3d3b, false);
+        addDoor(cx, frontZ + .04, doorWidth, 0x49382e);
+        const windowMat = new THREE.MeshStandardMaterial({ color: 0x79a6b2, emissive: 0x142d35, emissiveIntensity: 1.1, metalness: .55, roughness: .18 });
+        [-1, 1].forEach((side) => [-1, 1].forEach((row) => {
+          const pane = new THREE.Mesh(new THREE.BoxGeometry(1.5, .95, .04), windowMat); pane.position.set(cx + side * w * .27, h * .58 + row * .8, frontZ + .21); pane.raycast = () => {}; scene.add(pane);
+        }));
+        // Interior cover and room divisions keep buildings useful for combat.
+        addBox(cx - w * .22, .55, cz - d * .12, 1.5, 1.1, .8, 0x4a4036);
+        addBox(cx + w * .18, 1.25, cz - d * .18, .28, 2.5, d * .42, 0x5c6060);
+      };
+      addBuilding(-27, -27, 18, 15, 5.2, 0x5e5550);
+      addBuilding(27, -27, 17, 16, 6.1, 0x4b585b);
+      addBuilding(-27, 27, 19, 15, 5.6, 0x665744);
+      addBuilding(27, 27, 18, 15, 5, 0x4f5350);
+      // Abandoned vehicles, barriers, rubble, and street furniture.
+      [[-3, -22, 0x70483c], [3, 20, 0x3f5962], [-21, 2, 0x56594d], [22, -2, 0x624b3f]].forEach(([x, z, color]) => {
+        addBox(x, .65, z, 2.1, 1.05, 4.2, color); addBox(x, 1.3, z + .15, 1.75, .62, 2.15, 0x263438);
+      });
+      for (let i = 0; i < 24; i++) {
+        const side = i % 2 ? -1 : 1, x = side * (12 + (i % 5) * 2.2), z = -38 + ((i * 7) % 76);
+        const rubble = addBox(x, .12 + (i % 3) * .06, z, .35 + (i % 4) * .2, .24, .28 + (i % 3) * .18, i % 2 ? 0x5c5650 : 0x77716a, false); rubble.rotation.y = i * .73; rubble.rotation.z = (i % 3 - 1) * .18;
+      }
+      [-36, -12, 12, 36].forEach((z) => [-7.2, 7.2].forEach((x) => {
+        addBox(x, 2.4, z, .14, 4.8, .14, 0x252b2c, false);
+        const lamp = new THREE.PointLight(0xffd49a, 10, 10, 2); lamp.position.set(x, 4.55, z); scene.add(lamp);
+      }));
+    }
+
+    if (selectedMap === "TEST YARD") {
     // Landmark tower and emissive arena lights
     addBox(22, 4, -20, 5, 8, 5, 0x343f43);
     const beacon = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 4, 12), new THREE.MeshStandardMaterial({ color: 0xff6b35, emissive: 0xff4b18, emissiveIntensity: 4 }));
@@ -301,6 +367,7 @@ export function FpsGame() {
       scene.add(lamp);
       addBox(x, 3.9, 30.8, 0.35, 0.35, 0.35, 0x9de8ff, false);
     });
+    }
 
     // Detailed procedural weapon view models. All sights share the same centerline for ADS.
     const gun = new THREE.Group();
@@ -490,15 +557,16 @@ export function FpsGame() {
     let throwableAiming = false, grenadesLeft = 2, medicalCharges = 2;
     const projectiles: { mesh: THREE.Object3D; velocity: THREE.Vector3; age: number; type: string }[] = [];
     let currentFireMode: FireMode = "AUTO", triggerHeld = false, lastShot = 0, currentSlot = 1, movementSpread = 1;
+    let nearbyDoor: typeof doors[number] | undefined;
     const activeAttachments = (): WeaponAttachments => currentSlot > 2 || (currentSlot === 2 && secondaryIsMelee)
       ? { sight: "IRON SIGHTS", muzzle: "STANDARD BARREL", tactical: "NONE", magazine: "STANDARD MAG" }
       : currentSlot === 1 ? primaryAttachments : secondaryAttachments;
     let playerHealth = 100, nextPadTick = 0, healEnd = 0;
-    const playerPosition = new THREE.Vector3(0, PLAYER_HEIGHT, 15);
+    const playerPosition = new THREE.Vector3(0, PLAYER_HEIGHT, spawnZ);
     let isThirdPerson = false, orbiting = false, isCrouching = false, isProne = false, slideEnd = 0, stanceOffset = 0, crouchPoseAmount = 0, proneAmount = 0, leanDirection: -1 | 0 | 1 = 0, leanAmount = 0;
     const slideVelocity = new THREE.Vector2();
     respawnRef.current = () => {
-      playerPosition.set(0, PLAYER_HEIGHT, 15); camera.position.copy(playerPosition);
+      playerPosition.set(0, PLAYER_HEIGHT, spawnZ); camera.position.copy(playerPosition);
       yaw = 0; pitch = 0; verticalVelocity = 0; playerHealth = 100;
       isCrouching = false; isProne = false; sliding = false; slideEnd = 0; stanceOffset = 0; crouchPoseAmount = 0; proneAmount = 0; leanDirection = 0; leanAmount = 0; setCrouching(false); setProne(false); setLeanSide(0);
       keys.clear();
@@ -506,7 +574,7 @@ export function FpsGame() {
     let last = performance.now();
     const clock = new THREE.Clock();
 
-    const collides = (x: number, z: number) => boxes.some((b) =>
+    const collides = (x: number, z: number) => boxes.some((b) => b.active !== false &&
       x + PLAYER_RADIUS > b.minX && x - PLAYER_RADIUS < b.maxX &&
       z + PLAYER_RADIUS > b.minZ && z - PLAYER_RADIUS < b.maxZ && b.height > 0.25
     );
@@ -543,6 +611,10 @@ export function FpsGame() {
         const requested = e.code === "KeyQ" ? -1 : 1;
         leanDirection = leanDirection === requested ? 0 : requested;
         setLeanSide(leanDirection);
+      }
+      if (e.code === "KeyF" && !e.repeat && nearbyDoor) {
+        nearbyDoor.open = !nearbyDoor.open; nearbyDoor.target = nearbyDoor.open ? -Math.PI / 2 : 0;
+        if (nearbyDoor.open) nearbyDoor.box.active = false;
       }
       if (e.code === "KeyR" && currentSlot <= 2 && !reloadEnd) {
         const stats = currentSlot === 1 ? primaryStats : secondaryStats;
@@ -817,7 +889,7 @@ export function FpsGame() {
       if (!collides(playerPosition.x, playerPosition.z + dz)) playerPosition.z += dz;
       if (isThirdPerson && input.lengthSq() > 0) yaw = Math.atan2(-dx, -dz);
 
-      if (now >= nextPadTick) {
+      if (selectedMap === "TEST YARD" && now >= nextPadTick) {
         nextPadTick = now + 250;
         const onPad = (x: number) => Math.abs(playerPosition.x - x) < 2 && Math.abs(playerPosition.z - 23) < 2;
         if (onPad(-8)) playerHealth = Math.max(0, playerHealth - 8);
@@ -846,6 +918,12 @@ export function FpsGame() {
         drop.rotation.y += dt * 1.55;
         drop.rotation.z = Math.sin(t * 1.1 + drop.userData.floatPhase) * .045;
       });
+      doors.forEach((door) => {
+        door.pivot.rotation.y = THREE.MathUtils.lerp(door.pivot.rotation.y, door.target, Math.min(1, dt * 8));
+        if (!door.open && Math.abs(door.pivot.rotation.y) < .04) door.box.active = true;
+      });
+      nearbyDoor = doors.find((door) => Math.hypot(playerPosition.x - door.pivot.position.x, playerPosition.z - door.pivot.position.z) < 2.35);
+      setDoorPrompt(Boolean(nearbyDoor));
       localPlayer.userData.movement = isProne ? "static" : sprinting || sliding ? "sprint" : moving ? "walk" : "static";
       [...dummies, localPlayer].forEach((dummy) => {
         const movement = dummy.userData.movement as "static" | "walk" | "sprint";
@@ -1108,7 +1186,7 @@ export function FpsGame() {
       renderer.dispose();
       mount.removeChild(renderer.domElement);
     };
-  }, [sessionId, primary, secondary, medical, utility, characterSkin, characterUniform, characterArmor, characterHelmet, faceGear, headAccessory, chestRig, backpack, pantsColor, gloveColor, bootColor, weaponSight, muzzleAttachment, tacticalAttachment, magazineAttachment, secondarySight, secondaryMuzzle, secondaryTactical, secondaryMagazine]);
+  }, [sessionId, selectedMap, primary, secondary, medical, utility, characterSkin, characterUniform, characterArmor, characterHelmet, faceGear, headAccessory, chestRig, backpack, pantsColor, gloveColor, bootColor, weaponSight, muzzleAttachment, tacticalAttachment, magazineAttachment, secondarySight, secondaryMuzzle, secondaryTactical, secondaryMagazine]);
 
   const equippedItems = [primary, secondary, medical, utility];
   const activeIsMelee = activeSlot === 2 && secondary === "COMBAT KNIFE";
@@ -1124,7 +1202,7 @@ export function FpsGame() {
       {adsActive && activeSightAttachment === "4X SCOPE" && !activeIsMelee && !thirdPerson && <div className="scope-overlay"><div className="scope-view"><i className="scope-line horizontal" /><i className="scope-line vertical" /><b /><span>4×</span></div></div>}
       <header className="topbar">
         <div className="brand"><span>STRIKE</span><b>YARD</b></div>
-        <div className="mission"><small>TRAINING SECTOR 01</small><strong>FREE ROAM</strong></div>
+        <div className="mission"><small>{selectedMap}</small><strong>FREE ROAM</strong></div>
         <div className="status"><i /> SYSTEMS ONLINE</div>
       </header>
       <div className="kill-feed" aria-live="polite">
@@ -1133,6 +1211,7 @@ export function FpsGame() {
       <div className="crosshair" style={{ left: thirdPerson ? leanSide < 0 ? "46%" : "54%" : "50%" }}><span /><span /></div>
       <div className="hud-left"><small>VITALS</small><strong>{health}</strong><div className="health"><i style={{ width: `${health}%` }} /></div></div>
       {(crouching || prone) && <div className="stance-status">{prone ? "PRONE" : "CROUCHED"} · <kbd>{prone ? "X" : "C"}</kbd> STAND</div>}
+      {doorPrompt && <div className="door-prompt"><kbd>F</kbd> OPEN / CLOSE DOOR</div>}
       <div className="hud-right"><small>{equippedItems[activeSlot - 1]}{activeIsMelee ? " · MELEE" : activeSlot <= 2 ? ` · ${fireMode}` : " · READY"}</small><strong>{activeSlot === 4 ? utilityCount : activeSlot === 3 ? medicalCount : activeIsMelee ? "—" : ammo} <em>{activeSlot === 4 ? "THROWABLES" : activeSlot === 3 ? "MEDICAL" : activeIsMelee ? "" : `/ ${activeMaxMagazine}`}</em></strong></div>
       {reloading && <div className="reload-status"><span>RELOADING</span><i style={{ animationDuration: `${reloadDuration}s` }} /></div>}
       {healing && <div className="heal-status"><span>USING {medical}</span><small>SWITCH EQUIPMENT TO CANCEL</small><i style={{ animationDuration: `${healDuration}s` }} /></div>}
@@ -1145,7 +1224,7 @@ export function FpsGame() {
       </div>
       <div className={`flash-effect${flashed ? " active" : ""}`} />
       <div className={`heal-effect${healingEffect ? " active" : ""}`} />
-      <div className="test-legend"><span className="damage-dot" /> DAMAGE PAD <span className="kill-dot" /> KILL PAD <span className="heal-dot" /> HEAL PAD <span className="medical-dot" /> MEDICAL DROP <span className="utility-dot" /> UTILITY DROP</div>
+      {selectedMap === "TEST YARD" && <div className="test-legend"><span className="damage-dot" /> DAMAGE PAD <span className="kill-dot" /> KILL PAD <span className="heal-dot" /> HEAL PAD <span className="medical-dot" /> MEDICAL DROP <span className="utility-dot" /> UTILITY DROP</div>}
       <div className="controls"><kbd>WASD</kbd> MOVE <kbd>SHIFT</kbd> SPRINT <kbd>C</kbd> CROUCH / SLIDE <kbd>X</kbd> PRONE <kbd>Q/E</kbd> LEAN <kbd>RMB</kbd> {thirdPerson ? "ORBIT CAMERA" : "AIM"} <kbd>LMB</kbd> FIRE <kbd>TAB</kbd> {thirdPerson ? "1ST PERSON" : "3RD PERSON"}</div>
       {dead && <div className="death-screen">
         <div className="death-code">KIA</div><h2>OPERATOR DOWN</h2><p>TEST CONDITION: FATAL DAMAGE</p>
@@ -1156,6 +1235,9 @@ export function FpsGame() {
       </div>}
       {!locked && !dead && <div className={`menu-screen${!started ? " main-menu-screen" : " pause-screen"}`}>
         <div className="menu-rule" />
+        {!started && menuPage === "HOME" && <aside className="map-select"><small>TEMPORARY MAP SELECT</small><h2>DEPLOYMENT</h2>
+          {(["TEST YARD", "CITY BLOCK"] as GameMap[]).map((map) => <button key={map} className={selectedMap === map ? "selected" : ""} onClick={() => setSelectedMap(map)}><i /> <span>{map}</span><b>{map === "CITY BLOCK" ? "URBAN · ENTERABLE BUILDINGS" : "SYSTEMS TESTING"}</b></button>)}
+        </aside>}
         {!started && menuPage !== "LOADOUT" && <button className="character-preview" onClick={() => setMenuPage("CHARACTER")} aria-label="Customize character">
           <div className="preview-glow" />
           <OperatorPreview3D skin={characterSkin} uniform={characterUniform} armor={characterArmor} helmet={characterHelmet} faceGear={faceGear} headAccessory={headAccessory} chestRig={chestRig} backpack={backpack} pants={pantsColor} gloves={gloveColor} boots={bootColor} />
