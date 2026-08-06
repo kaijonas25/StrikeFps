@@ -636,6 +636,21 @@ export function FpsGame() {
     trajectory.visible = false;
     scene.add(trajectory);
 
+    // Small overlapping pools keep automatic fire responsive without cutting off the previous shot.
+    const makeShotPool = (source: string, volume: number) => Array.from({ length: 8 }, () => {
+      const audio = new Audio(source); audio.preload = "auto"; audio.volume = volume; return audio;
+    });
+    const suppressedShotPool = makeShotPool("/audio/suppressed-shot.mp3", .18);
+    const unsuppressedShotPool = makeShotPool("/audio/unsuppressed-shot.mp3", .68);
+    let suppressedSoundIndex = 0, unsuppressedSoundIndex = 0;
+    const playShotSound = (suppressed: boolean) => {
+      const pool = suppressed ? suppressedShotPool : unsuppressedShotPool;
+      const index = suppressed ? suppressedSoundIndex++ : unsuppressedSoundIndex++;
+      const audio = pool[index % pool.length];
+      audio.pause(); audio.currentTime = 0; audio.playbackRate = .96 + Math.random() * .08;
+      void audio.play().catch(() => {});
+    };
+
     const keys = new Set<string>();
     let yaw = 0, pitch = 0, cameraYaw = 0, cameraPitch = 0.2, verticalVelocity = 0, grounded = true;
     const primaryStats = { ...WEAPON_STATS[primary], capacity: magazineCapacity(WEAPON_STATS[primary].capacity, magazineAttachment) };
@@ -861,6 +876,7 @@ export function FpsGame() {
       ammoCount -= 1;
       ammoCounts[currentSlot - 1] = ammoCount;
       setAmmo(ammoCount);
+      playShotSound(activeAttachments().muzzle === "SUPPRESSOR");
       recoil = Math.min(recoil + 0.055, 0.11);
       muzzle.intensity = activeAttachments().muzzle === "SUPPRESSOR" ? 5 : 35;
       muzzleTimer = 0.045;
@@ -1274,6 +1290,7 @@ export function FpsGame() {
       document.removeEventListener("pointerlockchange", onLockChange);
       renderer.domElement.removeEventListener("mousedown", onMouseDown);
       renderer.domElement.removeEventListener("contextmenu", onContextMenu);
+      [...suppressedShotPool, ...unsuppressedShotPool].forEach((audio) => { audio.pause(); audio.src = ""; });
       renderer.dispose();
       mount.removeChild(renderer.domElement);
     };
