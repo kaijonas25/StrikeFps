@@ -405,8 +405,8 @@ export function FpsGame() {
       if (name === "FIELD MEDKIT" || name === "TRAUMA KIT") {
         const trauma = name === "TRAUMA KIT";
         visualOnly(new THREE.Mesh(new THREE.BoxGeometry(trauma ? .52 : .4, trauma ? .42 : .32, .24), equipmentMat(trauma ? 0x5a4435 : 0x334c3e))).position.set(x, y, z);
-        visualOnly(new THREE.Mesh(new THREE.BoxGeometry(.16, .055, .252), equipmentMat(0xe5e8df))).position.set(x, y, z - .126);
-        visualOnly(new THREE.Mesh(new THREE.BoxGeometry(.055, .16, .252), equipmentMat(0xe5e8df))).position.set(x, y, z - .127);
+        visualOnly(new THREE.Mesh(new THREE.BoxGeometry(.16, .055, .012), equipmentMat(0xe5e8df))).position.set(x, y, z - .126);
+        visualOnly(new THREE.Mesh(new THREE.BoxGeometry(.055, .16, .012), equipmentMat(0xe5e8df))).position.set(x, y, z - .127);
         const handle = visualOnly(new THREE.Mesh(new THREE.TorusGeometry(.12, .025, 8, 16, Math.PI), equipmentMat(0x171d1e))); handle.position.set(x, y + (trauma ? .27 : .22), z); handle.rotation.z = Math.PI;
       } else if (name === "STIM INJECTOR") {
         const syringe = visualOnly(new THREE.Mesh(new THREE.CylinderGeometry(.055, .055, .48, 12), equipmentMat(0x9fe7dc, .3))); syringe.rotation.x = Math.PI / 2; syringe.position.set(x, y, z);
@@ -461,7 +461,7 @@ export function FpsGame() {
     setAmmo(primaryStats.capacity);
     let ammoCount = ammoCounts[0], recoil = 0, muzzleTimer = 0, aiming = false, sprinting = false, sliding = false, reloadEnd = 0, meleeSwing = 0, lastMelee = 0;
     let throwableAiming = false, grenadesLeft = 2, medicalCharges = 2;
-    const projectiles: { mesh: THREE.Mesh; velocity: THREE.Vector3; age: number; type: string }[] = [];
+    const projectiles: { mesh: THREE.Object3D; velocity: THREE.Vector3; age: number; type: string }[] = [];
     let currentFireMode: FireMode = "AUTO", triggerHeld = false, lastShot = 0, currentSlot = 1, movementSpread = 1;
     const activeAttachments = (): WeaponAttachments => currentSlot > 2 || (currentSlot === 2 && secondaryIsMelee)
       ? { sight: "IRON SIGHTS", muzzle: "STANDARD BARREL", tactical: "NONE", magazine: "STANDARD MAG" }
@@ -592,13 +592,17 @@ export function FpsGame() {
     const throwUtility = () => {
       if (grenadesLeft <= 0) return;
       const { start, velocity } = getThrow();
-      const color = utility === "FRAG GRENADE" ? 0x53634d : utility === "SMOKE GRENADE" ? 0xa6afb0 : 0x617585;
-      const grenade = new THREE.Mesh(new THREE.SphereGeometry(0.12, 10, 8), weaponMaterial(color, 0.5));
-      grenade.position.copy(start); grenade.castShadow = true; scene.add(grenade);
+      const flash = utility === "FLASHBANG", smoke = utility === "SMOKE GRENADE";
+      const grenade = new THREE.Group();
+      const body = new THREE.Mesh(new THREE.CylinderGeometry(flash ? .085 : .11, flash ? .085 : .1, flash ? .38 : .31, 12), weaponMaterial(flash ? 0xb8c1c0 : smoke ? 0x7d8787 : 0x495b43, .35));
+      body.castShadow = true; grenade.add(body);
+      const cap = new THREE.Mesh(new THREE.BoxGeometry(.16, .07, .11), weaponMaterial(0x202729, .5)); cap.position.y = .19; cap.castShadow = true; grenade.add(cap);
+      const pin = new THREE.Mesh(new THREE.TorusGeometry(.065, .012, 7, 14), weaponMaterial(0x9da5a4, .75)); pin.position.set(.11, .2, 0); pin.rotation.x = Math.PI / 2; pin.castShadow = true; grenade.add(pin);
+      grenade.traverse((object) => { if (object instanceof THREE.Mesh) object.raycast = () => {}; }); grenade.position.copy(start); scene.add(grenade);
       projectiles.push({ mesh: grenade, velocity, age: 0, type: utility });
       grenadesLeft -= 1; setUtilityCount(grenadesLeft);
     };
-    const detonate = (projectile: { mesh: THREE.Mesh; type: string }) => {
+    const detonate = (projectile: { mesh: THREE.Object3D; type: string }) => {
       const position = projectile.mesh.position.clone();
       scene.remove(projectile.mesh);
       if (projectile.type === "SMOKE GRENADE") {
@@ -815,8 +819,8 @@ export function FpsGame() {
         rig.forEach((limb) => {
           if (limb.kind === "arm") {
             const holdingWeapon = isLocal && currentSlot <= 2;
-            const holdingMedical = isLocal && currentSlot === 3;
-            const holdingUtility = isLocal && currentSlot === 4 && limb.side === 1;
+            const holdingMedical = isLocal && currentSlot === 3 && medicalCharges > 0;
+            const holdingUtility = isLocal && currentSlot === 4 && grenadesLeft > 0 && limb.side === 1;
             const holdingItem = holdingWeapon || holdingMedical || holdingUtility;
             const holdingLongGun = holdingWeapon && (currentSlot === 1 || secondary === "DB-2 SAWED-OFF");
             const isRightArm = limb.side === 1;
@@ -947,12 +951,12 @@ export function FpsGame() {
       gun.visible = !isThirdPerson;
       primaryWeapon.model.visible = currentSlot === 1;
       secondaryWeapon.model.visible = currentSlot === 2;
-      medicalModel.visible = currentSlot === 3;
-      utilityModel.visible = currentSlot === 4;
+      medicalModel.visible = currentSlot === 3 && medicalCharges > 0;
+      utilityModel.visible = currentSlot === 4 && grenadesLeft > 0;
       worldPrimary.visible = isThirdPerson && currentSlot === 1;
       worldSecondary.visible = isThirdPerson && currentSlot === 2;
-      worldMedical.visible = isThirdPerson && currentSlot === 3;
-      worldUtility.visible = isThirdPerson && currentSlot === 4;
+      worldMedical.visible = isThirdPerson && currentSlot === 3 && medicalCharges > 0;
+      worldUtility.visible = isThirdPerson && currentSlot === 4 && grenadesLeft > 0;
       [worldPrimary, worldSecondary].forEach((worldWeapon) => {
         const carryLow = sprinting || sliding;
         worldWeapon.position.x = THREE.MathUtils.lerp(worldWeapon.position.x, carryLow ? -.07 : -.055, Math.min(1, dt * 12));
