@@ -7,6 +7,7 @@ type Box = { minX: number; maxX: number; minZ: number; maxZ: number; height: num
 type FireMode = "SEMI" | "BURST" | "AUTO";
 type MenuPage = "HOME" | "LOADOUT" | "CHARACTER";
 type GameMap = "TEST YARD" | "CITY BLOCK";
+type GameSector = "SECTOR 1" | "SECTOR 2" | "SECTOR 3" | "SECTOR 4";
 type KillFeedEntry = { id: number; victim: string; weapon: string; headshot: boolean };
 type SightAttachment = "IRON SIGHTS" | "RED DOT" | "HOLOGRAPHIC" | "4X SCOPE";
 type MuzzleAttachment = "STANDARD BARREL" | "SUPPRESSOR";
@@ -49,6 +50,7 @@ const MEDICAL_STATS: Record<string, { healing: number; duration: number }> = {
 
 const PLAYER_HEIGHT = 1.7;
 const PLAYER_RADIUS = 0.38;
+const MULTIPLAYER_SERVER = "https://strikeyard-multiplayer.kaigarcia2510.workers.dev";
 
 export function FpsGame() {
   const mountRef = useRef<HTMLDivElement>(null);
@@ -60,6 +62,9 @@ export function FpsGame() {
   const [sessionId, setSessionId] = useState(0);
   const [menuPage, setMenuPage] = useState<MenuPage>("HOME");
   const [selectedMap, setSelectedMap] = useState<GameMap>("TEST YARD");
+  const [selectedSector, setSelectedSector] = useState<GameSector>("SECTOR 1");
+  const [serverBrowserOpen, setServerBrowserOpen] = useState(false);
+  const [multiplayerStatus, setMultiplayerStatus] = useState<"OFFLINE" | "CONNECTING" | "ONLINE">("OFFLINE");
   const [doorPrompt, setDoorPrompt] = useState(false);
   const [primary, setPrimary] = useState("VXR-4 CARBINE");
   const [secondary, setSecondary] = useState("P9 SIDEARM");
@@ -631,6 +636,39 @@ export function FpsGame() {
       item.scale.setScalar(.78); item.position.set(-.045, 1.56, .03);
       item.traverse((object) => { if (object instanceof THREE.Mesh) object.raycast = () => {}; }); localPlayer.add(item);
     });
+    type RemoteState = { id: string; x: number; y: number; z: number; yaw: number; movement: "static" | "walk" | "sprint"; crouching: boolean; prone: boolean; slot: number };
+    const remotePlayers = new Map<string, THREE.Group>();
+    const upsertRemotePlayer = (state: RemoteState) => {
+      let avatar = remotePlayers.get(state.id);
+      if (!avatar) {
+        avatar = addDummy(state.x, state.z, 0x435e70, "static", false);
+        avatar.visible = true; avatar.userData.targetPosition = new THREE.Vector3(state.x, state.y - PLAYER_HEIGHT, state.z);
+        const remoteWeapon = worldPrimary.clone(true); remoteWeapon.visible = true; avatar.add(remoteWeapon);
+        remotePlayers.set(state.id, avatar);
+      }
+      avatar.userData.targetPosition.set(state.x, state.y - PLAYER_HEIGHT - (state.crouching ? .42 : 0), state.z);
+      avatar.userData.targetYaw = state.yaw; avatar.userData.movement = state.prone ? "static" : state.movement;
+      avatar.userData.remoteProne = state.prone; avatar.userData.remoteCrouching = state.crouching;
+    };
+    let multiplayerSocket: WebSocket | undefined;
+    let lastMultiplayerSend = 0;
+    if (started && MULTIPLAYER_SERVER) {
+      setMultiplayerStatus("CONNECTING");
+      const serverUrl = MULTIPLAYER_SERVER.replace(/^http/, "ws").replace(/\/$/, "");
+      multiplayerSocket = new WebSocket(`${serverUrl}/room/${selectedSector.toLowerCase().replace(" ", "-")}`);
+      multiplayerSocket.addEventListener("open", () => setMultiplayerStatus("ONLINE"));
+      multiplayerSocket.addEventListener("close", () => setMultiplayerStatus("OFFLINE"));
+      multiplayerSocket.addEventListener("error", () => setMultiplayerStatus("OFFLINE"));
+      multiplayerSocket.addEventListener("message", (event) => {
+        if (typeof event.data !== "string") return;
+        try {
+          const packet = JSON.parse(event.data) as { type: string; player?: RemoteState; players?: RemoteState[]; id?: string };
+          if (packet.type === "welcome") packet.players?.forEach(upsertRemotePlayer);
+          else if ((packet.type === "joined" || packet.type === "state") && packet.player) upsertRemotePlayer(packet.player);
+          else if (packet.type === "left" && packet.id) { const avatar = remotePlayers.get(packet.id); if (avatar) scene.remove(avatar); remotePlayers.delete(packet.id); }
+        } catch {}
+      });
+    } else setMultiplayerStatus("OFFLINE");
     const muzzle = new THREE.PointLight(0xff7b35, 0, 2.5, 2);
     muzzle.position.set(0.34, -0.2, -1.1);
     gun.add(muzzle);
@@ -1044,7 +1082,13 @@ export function FpsGame() {
       nearbyDoor = doors.find((door) => Math.hypot(playerPosition.x - door.pivot.position.x, playerPosition.z - door.pivot.position.z) < 2.35);
       setDoorPrompt(Boolean(nearbyDoor));
       localPlayer.userData.movement = isProne ? "static" : sprinting || sliding ? "sprint" : moving ? "walk" : "static";
-      [...dummies, localPlayer].forEach((dummy) => {
+      remotePlayers.forEach((avatar) => {
+        const target = avatar.userData.targetPosition as THREE.Vector3 | undefined;
+        if (target) avatar.position.lerp(target, Math.min(1, dt * 12));
+        avatar.rotation.y = THREE.MathUtils.lerp(avatar.rotation.y, avatar.userData.targetYaw ?? avatar.rotation.y, Math.min(1, dt * 12));
+        avatar.rotation.x = THREE.MathUtils.lerp(avatar.rotation.x, avatar.userData.remoteProne ? -Math.PI / 2 : 0, Math.min(1, dt * 9));
+      });
+      [...dummies, ...remotePlayers.values(), localPlayer].forEach((dummy) => {
         const movement = dummy.userData.movement as "static" | "walk" | "sprint";
         const isLocal = dummy === localPlayer;
         const healthBarRoot = dummy.userData.healthBarRoot as THREE.Group | undefined;
@@ -1248,6 +1292,10 @@ export function FpsGame() {
       crouchPoseAmount = THREE.MathUtils.lerp(crouchPoseAmount, isCrouching ? 1 : 0, Math.min(1, dt * 10));
       proneAmount = THREE.MathUtils.lerp(proneAmount, isProne ? 1 : 0, Math.min(1, dt * 8));
       localPlayer.scale.set(1, 1, 1);
+      if (multiplayerSocket?.readyState === WebSocket.OPEN && now - lastMultiplayerSend >= 66) {
+        lastMultiplayerSend = now;
+        multiplayerSocket.send(JSON.stringify({ type: "state", x: playerPosition.x, y: playerPosition.y, z: playerPosition.z, yaw, movement: localPlayer.userData.movement, crouching: isCrouching, prone: isProne, slot: currentSlot, primary, secondary }));
+      }
       if (isThirdPerson) {
         const orbitDistance = 4.2;
         const horizontalDistance = Math.cos(cameraPitch) * orbitDistance;
@@ -1303,10 +1351,12 @@ export function FpsGame() {
       renderer.domElement.removeEventListener("mousedown", onMouseDown);
       renderer.domElement.removeEventListener("contextmenu", onContextMenu);
       [...suppressedShotPool, ...unsuppressedShotPool].forEach((audio) => { audio.pause(); audio.src = ""; });
+      multiplayerSocket?.close(1000, "leaving sector");
+      setMultiplayerStatus("OFFLINE");
       renderer.dispose();
       mount.removeChild(renderer.domElement);
     };
-  }, [sessionId, selectedMap, primary, secondary, medical, utility, characterSkin, characterUniform, characterArmor, characterHelmet, faceGear, headAccessory, chestRig, backpack, pantsColor, gloveColor, bootColor, weaponSight, muzzleAttachment, tacticalAttachment, magazineAttachment, secondarySight, secondaryMuzzle, secondaryTactical, secondaryMagazine]);
+  }, [sessionId, started, selectedSector, selectedMap, primary, secondary, medical, utility, characterSkin, characterUniform, characterArmor, characterHelmet, faceGear, headAccessory, chestRig, backpack, pantsColor, gloveColor, bootColor, weaponSight, muzzleAttachment, tacticalAttachment, magazineAttachment, secondarySight, secondaryMuzzle, secondaryTactical, secondaryMagazine]);
 
   const equippedItems = [primary, secondary, medical, utility];
   const activeIsMelee = activeSlot === 2 && secondary === "COMBAT KNIFE";
@@ -1322,8 +1372,8 @@ export function FpsGame() {
       {adsActive && activeSightAttachment === "4X SCOPE" && !activeIsMelee && !thirdPerson && <div className="scope-overlay"><div className="scope-view"><i className="scope-line horizontal" /><i className="scope-line vertical" /><b /><span>4×</span></div></div>}
       <header className="topbar">
         <div className="brand"><span>STRIKE</span><b>YARD</b></div>
-        <div className="mission"><small>{selectedMap}</small><strong>FREE ROAM</strong></div>
-        <div className="status"><i /> SYSTEMS ONLINE</div>
+        <div className="mission"><small>{selectedMap}</small><strong>{selectedSector}</strong></div>
+        <div className="status"><i /> {started ? `${selectedSector} · ${multiplayerStatus}` : "SYSTEMS ONLINE"}</div>
       </header>
       <div className="kill-feed" aria-live="polite">
         {killFeed.map((entry) => <div key={entry.id}><b>YOU</b><span>{entry.weapon}</span>{entry.headshot && <i>HEADSHOT</i>}<strong>{entry.victim}</strong></div>)}
@@ -1365,18 +1415,32 @@ export function FpsGame() {
         </button>}
         <section className="menu-card">
           <div className="menu-kicker">TACTICAL TRAINING SIMULATION</div>
-          {(!started && menuPage === "HOME") && <>
+          {(!started && menuPage === "HOME" && !serverBrowserOpen) && <>
           <h1><span>STRIKE</span>YARD</h1>
           <p>SECTOR 01 · COMBAT READINESS COURSE</p>
           <nav className="main-nav" aria-label="Main menu">
             <button className="nav-active" onClick={() => {
-              mountRef.current?.querySelector("canvas")?.requestPointerLock();
-              setStarted(true);
-            }}><b>01</b><span>PLAY</span><small>ENTER TRAINING YARD</small></button>
+              setServerBrowserOpen(true);
+            }}><b>01</b><span>PLAY</span><small>SELECT MULTIPLAYER SERVER</small></button>
             <button onClick={() => setMenuPage("LOADOUT")}><b>02</b><span>LOADOUT</span><small>EDIT EQUIPMENT</small></button>
             <button onClick={() => setMenuPage("CHARACTER")}><b>03</b><span>OPERATOR</span><small>CUSTOMIZE CHARACTER</small></button>
             <button disabled><b>04</b><span>SETTINGS</span><small>COMING SOON</small></button>
           </nav></>}
+          {(!started && menuPage === "HOME" && serverBrowserOpen) && <div className="server-browser">
+            <button className="back-button" onClick={() => setServerBrowserOpen(false)}>← MAIN MENU</button>
+            <div className="server-heading"><div><span>LIVE</span> SERVERS</div><small>SELECT A SECTOR TO DEPLOY</small></div>
+            <div className="server-list">
+              {(["SECTOR 1", "SECTOR 2", "SECTOR 3", "SECTOR 4"] as GameSector[]).map((sector, index) => <button key={sector} onClick={() => {
+                setSelectedSector(sector);
+                setServerBrowserOpen(false);
+                setStarted(true);
+                setSessionId((id) => id + 1);
+                window.setTimeout(() => mountRef.current?.querySelector("canvas")?.requestPointerLock(), 50);
+              }}>
+                <i>{String(index + 1).padStart(2, "0")}</i><span><b>{sector}</b><small>{selectedMap} · MULTIPLAYER</small></span><em>JOIN</em>
+              </button>)}
+            </div>
+          </div>}
           {(!started && menuPage === "LOADOUT") && <div className="loadout-panel">
             <button className="back-button" onClick={() => setMenuPage("HOME")}>← MAIN MENU</button>
             <div className="loadout-heading"><div><span>COMBAT</span> LOADOUT</div><small>SELECT ONE ITEM PER SLOT</small></div>
@@ -1452,6 +1516,7 @@ export function FpsGame() {
             </button>
             <button className="leave" onClick={() => {
               setStarted(false);
+              setServerBrowserOpen(false);
               setAmmo(30);
               setFireMode("AUTO");
               setActiveSlot(1);
