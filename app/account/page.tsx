@@ -1,6 +1,6 @@
 "use client";
 
-import { onAuthStateChanged, signOut, User } from "firebase/auth";
+import { onAuthStateChanged, signOut, updateProfile, User } from "firebase/auth";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -16,6 +16,9 @@ export default function AccountPage() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [adminStatus, setAdminStatus] = useState<AdminStatus>("idle");
   const [adminError, setAdminError] = useState("");
+  const [nickname, setNickname] = useState("");
+  const [nicknameStatus, setNicknameStatus] = useState<AdminStatus>("idle");
+  const [nicknameError, setNicknameError] = useState("");
 
   useEffect(() => onAuthStateChanged(auth, async (currentUser) => {
     if (!currentUser) { router.replace("/login"); return; }
@@ -25,6 +28,7 @@ export default function AccountPage() {
     if (response.ok) {
       const data = await response.json() as { player: Player; isAdmin?: boolean };
       setPlayer(data.player);
+      setNickname(data.player.callsign);
       setIsAdmin(Boolean(data.isAdmin));
     }
   }), [router]);
@@ -54,13 +58,29 @@ export default function AccountPage() {
     }
   };
 
+  const saveNickname = async () => {
+    if (!user) return;
+    const cleaned = nickname.trim().replace(/\s+/g, " ").toUpperCase();
+    if (cleaned.length < 3 || cleaned.length > 18) { setNicknameError("Nickname must be 3–18 characters."); setNicknameStatus("error"); return; }
+    if (!/^[A-Z0-9 _-]+$/.test(cleaned)) { setNicknameError("Use letters, numbers, spaces, dashes, or underscores."); setNicknameStatus("error"); return; }
+    setNicknameStatus("saving"); setNicknameError("");
+    try {
+      const token = await user.getIdToken();
+      const response = await fetch("/api/player", { method: "PATCH", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({ callsign: cleaned }) });
+      const data = await response.json() as { callsign?: string; error?: string };
+      if (!response.ok || !data.callsign) throw new Error(data.error || "Unable to save nickname.");
+      await updateProfile(user, { displayName: data.callsign });
+      setNickname(data.callsign); setPlayer((current) => current ? { ...current, callsign: data.callsign! } : current); setNicknameStatus("saved");
+    } catch (error) { setNicknameError(error instanceof Error ? error.message : "Unable to save nickname."); setNicknameStatus("error"); }
+  };
+
   if (!user || !player) return <main className="account-shell account-loading"><div>LOADING OPERATOR RECORD…</div></main>;
 
   return <main className="account-shell">
     <header className="account-topbar"><div className="account-brand"><span>STRIKE</span>YARD</div><Link className="account-back" href="/">← MAIN MENU</Link></header>
     <section className="profile-header"><div><small>ACTIVE OPERATOR PROFILE</small><h1><span>ACCOUNT</span> RECORD</h1></div><button className="signout" onClick={async () => { await signOut(auth); router.replace("/"); }}>SIGN OUT</button></section>
     <section className="profile-grid">
-      <article className="profile-card identity-card"><small>IDENTIFICATION</small><strong>{player.callsign}</strong><p>{user.email}</p><div className="level-badge"><b>{player.level}</b><span>OPERATOR LEVEL</span></div></article>
+      <article className="profile-card identity-card"><small>IDENTIFICATION</small><strong>{player.callsign}</strong><p>{user.email}</p><div className="nickname-editor"><label htmlFor="nickname">CUSTOM NICKNAME</label><div><input id="nickname" value={nickname} maxLength={18} onChange={(event) => { setNickname(event.target.value); setNicknameStatus("idle"); }} /><button disabled={nicknameStatus === "saving" || nickname.trim().toUpperCase() === player.callsign} onClick={() => void saveNickname()}>{nicknameStatus === "saving" ? "SAVING…" : "SAVE"}</button></div><span className={nicknameStatus}>{nicknameStatus === "saved" ? "NICKNAME UPDATED" : nicknameStatus === "error" ? nicknameError : "3–18 CHARACTERS"}</span></div><div className="level-badge"><b>{player.level}</b><span>OPERATOR LEVEL</span></div></article>
       <article className="profile-card"><small>COMBAT RECORD</small><div className="stat-grid"><div><strong>{player.matchesPlayed}</strong><span>MATCHES</span></div><div><strong>{player.wins}</strong><span>WINS</span></div><div><strong>{player.kills}</strong><span>KILLS</span></div><div><strong>{player.deaths}</strong><span>DEATHS</span></div></div><p className="profile-note">This Firebase identity is connected to your persistent Strikeyard operator record.</p></article>
     </section>
     {isAdmin && <section className="admin-panel">

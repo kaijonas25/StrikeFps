@@ -56,3 +56,17 @@ export async function PUT(request: Request) {
   }
   return Response.json({ saved: true });
 }
+
+export async function PATCH(request: Request) {
+  const account = await verifiedAccount(request);
+  if (!account) return Response.json({ error: "Unauthorized" }, { status: 401 });
+  const payload = await request.json() as { callsign?: string };
+  const callsign = payload.callsign?.trim().replace(/\s+/g, " ").toUpperCase() ?? "";
+  if (callsign.length < 3 || callsign.length > 18) return Response.json({ error: "Nickname must be 3–18 characters." }, { status: 400 });
+  if (!/^[A-Z0-9 _-]+$/.test(callsign)) return Response.json({ error: "Use letters, numbers, spaces, dashes, or underscores." }, { status: 400 });
+  const db = getDb();
+  const existing = await db.select({ id: players.id }).from(players).where(eq(players.id, account.localId)).limit(1);
+  if (!existing.length) await db.insert(players).values({ id: account.localId, email: account.email, callsign });
+  else await db.update(players).set({ callsign, updatedAt: new Date().toISOString() }).where(eq(players.id, account.localId));
+  return Response.json({ callsign });
+}
