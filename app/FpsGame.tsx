@@ -91,6 +91,7 @@ export function FpsGame() {
   const mountRef = useRef<HTMLDivElement>(null);
   const respawnRef = useRef<() => void>(() => {});
   const multiplayerSendRef = useRef<(packet: unknown) => void>(() => {});
+  const playerCallsignRef = useRef("OPERATOR");
   const mobileLookRef = useRef<{ id: number; x: number; y: number } | null>(null);
   const mobileMoveRef = useRef<{ id: number; centerX: number; centerY: number } | null>(null);
   const previousHealthRef = useRef(100);
@@ -201,12 +202,13 @@ export function FpsGame() {
   };
 
   useEffect(() => onAuthStateChanged(auth, async (user) => {
-    if (!user) { adminAuthorizedRef.current = false; setAdminAuthorized(false); setAdminPanelOpen(false); setAccountSaveStatus("idle"); return; }
+    if (!user) { playerCallsignRef.current = "OPERATOR"; adminAuthorizedRef.current = false; setAdminAuthorized(false); setAdminPanelOpen(false); setAccountSaveStatus("idle"); return; }
     try {
       const token = await user.getIdToken();
       const response = await fetch("/api/player", { headers: { Authorization: `Bearer ${token}` } });
       if (!response.ok) throw new Error("Unable to load preferences");
-      const data = await response.json() as { isAdmin?: boolean; player?: { loadout?: Partial<SavedLoadout>; operator?: Partial<SavedOperator> } };
+      const data = await response.json() as { isAdmin?: boolean; player?: { callsign?: string; loadout?: Partial<SavedLoadout>; operator?: Partial<SavedOperator> } };
+      playerCallsignRef.current = data.player?.callsign?.slice(0,18) || user.displayName?.slice(0,18).toUpperCase() || "OPERATOR";
       adminAuthorizedRef.current = Boolean(data.isAdmin);
       setAdminAuthorized(Boolean(data.isAdmin));
       const loadout = data.player?.loadout;
@@ -948,7 +950,7 @@ export function FpsGame() {
       item.scale.setScalar(.78); item.position.set(-.045, 1.56, .03);
       item.traverse((object) => { if (object instanceof THREE.Mesh) object.raycast = () => {}; }); localPlayer.add(item);
     });
-    type RemoteState = { id: string; x: number; y: number; z: number; yaw: number; movement: "static" | "walk" | "sprint"; crouching: boolean; prone: boolean; slot: number; primary?: string; secondary?: string; health?: number; team?: "ALPHA" | "BRAVO" } & Partial<PlayerAppearance>;
+    type RemoteState = { id: string; x: number; y: number; z: number; yaw: number; movement: "static" | "walk" | "sprint"; crouching: boolean; prone: boolean; slot: number; primary?: string; secondary?: string; health?: number; team?: "ALPHA" | "BRAVO"; callsign?: string } & Partial<PlayerAppearance>;
     const objectiveMarkers: THREE.Group[] = [];
     const updateObjectiveMarkers = (zones: ObjectiveZone[], mode: GameMode) => {
       objectiveMarkers.splice(0).forEach((marker) => { scene.remove(marker); marker.traverse((object) => { if (object instanceof THREE.Mesh) { object.geometry.dispose(); if (Array.isArray(object.material)) object.material.forEach((entry) => entry.dispose()); else object.material.dispose(); } }); });
@@ -961,9 +963,21 @@ export function FpsGame() {
       });
     };
     const remotePlayers = new Map<string, THREE.Group>();
+    let localNetworkTeam: "ALPHA" | "BRAVO" = "ALPHA";
+    let activeNetworkMode: GameMode = "FFA";
+    const teamModeActive = () => activeNetworkMode === "TDM" || activeNetworkMode === "CTP";
+    const createTeammateMarker = (callsign: string) => {
+      const canvas = document.createElement("canvas"); canvas.width = 512; canvas.height = 96;
+      const context = canvas.getContext("2d")!; context.fillStyle = "rgba(5,18,24,.82)"; context.strokeStyle = "rgba(99,211,255,.9)"; context.lineWidth = 4;
+      context.beginPath(); context.roundRect(4,4,504,88,16); context.fill(); context.stroke();
+      context.fillStyle = "#8fe4ff"; context.font = "700 34px monospace"; context.textAlign = "center"; context.textBaseline = "middle"; context.fillText(callsign.slice(0,18).toUpperCase(),256,49);
+      const texture = new THREE.CanvasTexture(canvas); texture.colorSpace = THREE.SRGBColorSpace;
+      const marker = new THREE.Sprite(new THREE.SpriteMaterial({ map:texture, transparent:true, depthTest:false, depthWrite:false })); marker.position.set(0,2.85,0); marker.scale.set(2.7,.51,1); marker.raycast = () => {}; marker.userData.markerTexture = texture; return marker;
+    };
+    const refreshTeammateMarkers = () => remotePlayers.forEach((avatar) => { const marker = avatar.userData.teammateMarker as THREE.Sprite | undefined; if (marker) marker.visible = teamModeActive() && avatar.userData.remoteTeam === localNetworkTeam && avatar.visible; });
     const upsertRemotePlayer = (state: RemoteState) => {
       const appearance: PlayerAppearance = { ...localAppearance, skin: state.skin ?? localAppearance.skin, uniform: state.uniform ?? localAppearance.uniform, armor: state.armor ?? localAppearance.armor, helmet: state.helmet ?? localAppearance.helmet, faceGear: state.faceGear ?? localAppearance.faceGear, headAccessory: state.headAccessory ?? localAppearance.headAccessory, chestRig: state.chestRig ?? localAppearance.chestRig, backpack: state.backpack ?? localAppearance.backpack, pants: state.pants ?? localAppearance.pants, gloves: state.gloves ?? localAppearance.gloves, boots: state.boots ?? localAppearance.boots };
-      const avatarSignature = JSON.stringify([appearance, state.primary ?? "VXR-4 CARBINE", state.secondary ?? "P9 SIDEARM"]);
+      const avatarSignature = JSON.stringify([appearance, state.primary ?? "VXR-4 CARBINE", state.secondary ?? "P9 SIDEARM", state.callsign ?? `OPERATOR ${state.id.slice(0,4).toUpperCase()}`]);
       let avatar = remotePlayers.get(state.id);
       if (avatar && avatar.userData.avatarSignature !== avatarSignature) {
         scene.remove(avatar); remotePlayers.delete(state.id); avatar = undefined;
@@ -980,6 +994,7 @@ export function FpsGame() {
           avatar!.add(weapon);
         });
         avatar.userData.remotePrimary = remotePrimary; avatar.userData.remoteSecondary = remoteSecondary;
+        const teammateMarker = createTeammateMarker(state.callsign ?? `OPERATOR ${state.id.slice(0,4).toUpperCase()}`); avatar.add(teammateMarker); avatar.userData.teammateMarker = teammateMarker;
         avatar.userData.isRemotePlayer = true; avatar.userData.avatarSignature = avatarSignature;
         avatar.traverse((object) => {
           if (!(object instanceof THREE.Mesh) || object.userData.remoteWeaponVisual) return;
@@ -992,10 +1007,13 @@ export function FpsGame() {
       avatar.userData.targetPosition.set(state.x, state.y - PLAYER_HEIGHT - (state.crouching ? .42 : 0), state.z);
       avatar.userData.targetYaw = state.yaw; avatar.userData.movement = state.prone ? "static" : state.movement;
       avatar.userData.remoteProne = state.prone; avatar.userData.remoteCrouching = state.crouching;
+      avatar.userData.remoteTeam = state.team ?? "ALPHA";
       avatar.userData.remoteSlot = state.slot; avatar.userData.remoteSecondaryName = state.secondary ?? "P9 SIDEARM";
       if (avatar.userData.remotePrimary) avatar.userData.remotePrimary.visible = state.slot === 1;
       if (avatar.userData.remoteSecondary) avatar.userData.remoteSecondary.visible = state.slot === 2;
       avatar.visible = (state.health ?? 100) > 0;
+      const teammateMarker = avatar.userData.teammateMarker as THREE.Sprite | undefined;
+      if (teammateMarker) teammateMarker.visible = teamModeActive() && avatar.userData.remoteTeam === localNetworkTeam && avatar.visible;
     };
     const showRemoteTracers = (playerId: string, tracerEnds: number[][]) => {
       const avatar = remotePlayers.get(playerId);
@@ -1030,6 +1048,7 @@ export function FpsGame() {
         try {
           const packet = JSON.parse(event.data) as { type: string; player?: RemoteState; players?: RemoteState[]; id?: string; health?: number; score?: number; attackerId?: string; weapon?: string; headshot?: boolean; tracerEnds?: number[][]; effect?: string; duration?: number; yourMapVote?: Exclude<GameMap, "TEST YARD"> | null; yourModeVote?: GameMode | null; map?: Exclude<GameMap, "TEST YARD">; match?: { phase: "voting" | "playing" | "results"; phaseEndsAt: number; votes: number; mapVotes?: { "CITY BLOCK"?: number; "BLACKWOOD FOREST"?: number }; map: Exclude<GameMap, "TEST YARD">; modeVotes: number; modeVoteCounts?: { FFA?: number; TDM?: number; KOTH?: number; CTP?: number }; endVotes: number; mode: GameMode; teamScores?: { ALPHA: number; BRAVO: number }; objectiveZones?: ObjectiveZone[]; winnerId: string | null; winningTeam?: "ALPHA" | "BRAVO" | null; winningKills: number } };
           const applyMatch = (match: NonNullable<typeof packet.match>, resetVotes = false) => {
+            activeNetworkMode = match.mode ?? "FFA";
             setMatchPhase(match.phase); setMapVotes(match.votes); setCityMapVotes(match.mapVotes?.["CITY BLOCK"] ?? match.votes); setForestMapVotes(match.mapVotes?.["BLACKWOOD FOREST"] ?? 0); setModeVotes(match.modeVotes ?? 0); setFfaModeVotes(match.modeVoteCounts?.FFA ?? match.modeVotes); setTdmModeVotes(match.modeVoteCounts?.TDM ?? 0); setKothModeVotes(match.modeVoteCounts?.KOTH ?? 0); setCtpModeVotes(match.modeVoteCounts?.CTP ?? 0); setEndGameVotes(match.endVotes ?? 0); setMatchEndsAt(match.phaseEndsAt);
             setMatchMode(match.mode ?? "FFA"); setTeamScores(match.teamScores ?? { ALPHA: 0, BRAVO: 0 }); setObjectiveZones(match.objectiveZones ?? []); updateObjectiveMarkers(match.objectiveZones ?? [], match.mode ?? "FFA"); setMatchWinnerId(match.winnerId ?? null); setWinningTeam(match.winningTeam ?? null); setWinningKills(match.winningKills ?? 0);
             if (match.phase === "playing" && match.map !== selectedMap) setSelectedMap(match.map);
@@ -1039,17 +1058,18 @@ export function FpsGame() {
               setHasVoted(false); setHasModeVoted(false); setSelectedMapVote(null); setSelectedModeVote(null);
             } else if (resetVotes && match.phase !== "voting") { setHasVoted(false); setHasModeVoted(false); setSelectedMapVote(null); setSelectedModeVote(null); }
             if (match.phase === "voting" || match.phase === "results") document.exitPointerLock();
+            refreshTeammateMarkers();
           };
           if (packet.type === "welcome") {
             const otherPlayers = (packet.players ?? []).filter((player) => player.id !== packet.id);
-            otherPlayers.forEach(upsertRemotePlayer);
             if (packet.id) { localNetworkId = packet.id; setLocalPlayerId(packet.id); setConnectedPlayerIds([...new Set([packet.id, ...otherPlayers.map((player) => player.id)])]); }
-            if (packet.player) { playerPosition.set(packet.player.x, packet.player.y, packet.player.z); camera.position.copy(playerPosition); yaw = packet.player.yaw; if (packet.player.team) setLocalTeam(packet.player.team); }
+            if (packet.player) { playerPosition.set(packet.player.x, packet.player.y, packet.player.z); camera.position.copy(playerPosition); yaw = packet.player.yaw; if (packet.player.team) { localNetworkTeam = packet.player.team; setLocalTeam(packet.player.team); } }
             if (packet.match) {
               applyMatch(packet.match);
               if (packet.yourMapVote) { setSelectedMapVote(packet.yourMapVote); setHasVoted(true); }
               if (packet.yourModeVote) { setSelectedModeVote(packet.yourModeVote); setHasModeVoted(true); }
             }
+            otherPlayers.forEach(upsertRemotePlayer); refreshTeammateMarkers();
           }
           else if ((packet.type === "joined" || packet.type === "state") && packet.player) {
             if (packet.player.id === localNetworkId) return;
@@ -1085,6 +1105,7 @@ export function FpsGame() {
           else if ((packet.type === "round_start" || packet.type === "respawned") && packet.player) {
             playerPosition.set(packet.player.x, packet.player.y, packet.player.z); camera.position.copy(playerPosition); lastClearPosition.copy(playerPosition);
             yaw = packet.player.yaw; playerHealth = 100; setHealth(100); setDead(false); setHealing(false); keys.clear();
+            if (packet.player.team) { localNetworkTeam = packet.player.team; setLocalTeam(packet.player.team); refreshTeammateMarkers(); }
             if (packet.map && packet.map !== selectedMap) setSelectedMap(packet.map);
           }
           else if (packet.type === "match" && packet.match) applyMatch(packet.match, packet.match.votes === 0 && packet.match.modeVotes === 0);
@@ -1973,7 +1994,7 @@ export function FpsGame() {
       localPlayer.scale.set(1, 1, 1);
       if (multiplayerSocket?.readyState === WebSocket.OPEN && now - lastMultiplayerSend >= 66) {
         lastMultiplayerSend = now;
-        multiplayerSocket.send(JSON.stringify({ type: "state", x: playerPosition.x, y: playerPosition.y, z: playerPosition.z, yaw, movement: localPlayer.userData.movement, crouching: isCrouching, prone: isProne, slot: currentSlot, primary, secondary, skin: characterSkin, uniform: characterUniform, armor: characterArmor, helmet: characterHelmet, faceGear, headAccessory, chestRig, backpack, pants: pantsColor, gloves: gloveColor, boots: bootColor }));
+        multiplayerSocket.send(JSON.stringify({ type: "state", x: playerPosition.x, y: playerPosition.y, z: playerPosition.z, yaw, movement: localPlayer.userData.movement, crouching: isCrouching, prone: isProne, slot: currentSlot, primary, secondary, skin: characterSkin, uniform: characterUniform, armor: characterArmor, helmet: characterHelmet, faceGear, headAccessory, chestRig, backpack, pants: pantsColor, gloves: gloveColor, boots: bootColor, callsign:playerCallsignRef.current }));
       }
       if (isThirdPerson) {
         const orbitDistance = 4.2;

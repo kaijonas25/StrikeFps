@@ -29,6 +29,7 @@ type PlayerState = {
   team: "ALPHA" | "BRAVO";
   objectiveScore: number;
   spawnProtectedUntil: number;
+  callsign: string;
 };
 
 type MultiplayerMap = "CITY BLOCK" | "BLACKWOOD FOREST";
@@ -95,7 +96,7 @@ export class GameRoom extends DurableObject {
     const team: PlayerState["team"] = playerNumber % 2 === 0 ? "ALPHA" : "BRAVO";
     const spawn = chooseSpawn(meta, team, existingPlayers);
     const spawnX = spawn.x, spawnZ = spawn.z;
-    const initial: PlayerState = { id, x: spawnX, y: 1.7, z: spawnZ, yaw: spawnZ > 0 ? 0 : Math.PI, movement: "static", crouching: false, prone: false, slot: 1, primary: "VXR-4 CARBINE", secondary: "P9 SIDEARM", skin: "#a9795e", uniform: "#303a3b", armor: "#20292b", helmet: "TACTICAL", faceGear: "GOGGLES", headAccessory: "HEADSET", chestRig: "PLATE CARRIER", backpack: "ASSAULT PACK", pants: "#303a3b", gloves: "#20292b", boots: "#151b1d", kills: 0, deaths: 0, health: 100, team, objectiveScore: 0, spawnProtectedUntil: Date.now() + 3000 };
+    const initial: PlayerState = { id, x: spawnX, y: 1.7, z: spawnZ, yaw: spawnZ > 0 ? 0 : Math.PI, movement: "static", crouching: false, prone: false, slot: 1, primary: "VXR-4 CARBINE", secondary: "P9 SIDEARM", skin: "#a9795e", uniform: "#303a3b", armor: "#20292b", helmet: "TACTICAL", faceGear: "GOGGLES", headAccessory: "HEADSET", chestRig: "PLATE CARRIER", backpack: "ASSAULT PACK", pants: "#303a3b", gloves: "#20292b", boots: "#151b1d", kills: 0, deaths: 0, health: 100, team, objectiveScore: 0, spawnProtectedUntil: Date.now() + 3000, callsign:`OPERATOR ${id.slice(0,4).toUpperCase()}` };
     this.ctx.acceptWebSocket(server);
     server.serializeAttachment({ id, state: initial } satisfies SocketAttachment);
 
@@ -229,6 +230,7 @@ export class GameRoom extends DurableObject {
       helmet: safeString(packet.helmet, attachment.state.helmet, 24), faceGear: safeString(packet.faceGear, attachment.state.faceGear, 24), headAccessory: safeString(packet.headAccessory, attachment.state.headAccessory, 24),
       chestRig: safeString(packet.chestRig, attachment.state.chestRig, 24), backpack: safeString(packet.backpack, attachment.state.backpack, 24),
       pants: safeString(packet.pants, attachment.state.pants, 16), gloves: safeString(packet.gloves, attachment.state.gloves, 16), boots: safeString(packet.boots, attachment.state.boots, 16),
+      callsign: safeString(packet.callsign, attachment.state.callsign, 18).replace(/[^a-z0-9 _-]/gi, "").trim() || attachment.state.callsign,
     };
     socket.serializeAttachment(attachment);
     this.broadcast({ type: "state", player: attachment.state }, socket);
