@@ -1802,17 +1802,18 @@ export function FpsGame() {
       <div className="kill-feed" aria-live="polite">
         {killFeed.map((entry) => <div key={entry.id}><b>YOU</b><span>{entry.weapon}</span>{entry.headshot && <i>HEADSHOT</i>}<strong>{entry.victim}</strong></div>)}
       </div>
-      {started && selectedSector !== "TRAINING SECTOR" && matchPhase === "playing" && <aside className="leaderboard">
-        <header><span>{matchMode === "TDM" ? `TEAM DEATHMATCH · ${localTeam}` : "FREE FOR ALL"}</span><strong>{formatMatchTime(matchTimeLeft)}</strong></header>
-        {matchMode === "TDM" && <><div className={localTeam === "ALPHA" ? "local" : ""}><span>TEAM ALPHA</span><i>{teamScores.ALPHA}</i><i>—</i></div><div className={localTeam === "BRAVO" ? "local" : ""}><span>TEAM BRAVO</span><i>{teamScores.BRAVO}</i><i>—</i></div></>}
+      {started && selectedSector !== "TRAINING SECTOR" && matchPhase === "playing" && matchMode === "TDM" && <aside className="tdm-scoreboard">
+        <div className={`tdm-team alpha${localTeam === "ALPHA" ? " local-team" : ""}`}><small>TEAM</small><span>ALPHA</span><strong>{teamScores.ALPHA}</strong></div>
+        <div className="tdm-clock"><small>TEAM DEATHMATCH</small><strong>{formatMatchTime(matchTimeLeft)}</strong><span>{selectedMap}</span></div>
+        <div className={`tdm-team bravo${localTeam === "BRAVO" ? " local-team" : ""}`}><strong>{teamScores.BRAVO}</strong><span>BRAVO</span><small>TEAM</small></div>
+        <button disabled={endGameRequested} onClick={() => { multiplayerSendRef.current({ type: "end_game" }); setEndGameRequested(true); }}>{endGameRequested ? `${endGameVotes}/${Math.max(1, connectedPlayerIds.length)}` : "END VOTE"}</button>
+      </aside>}
+      {started && selectedSector !== "TRAINING SECTOR" && matchPhase === "playing" && matchMode === "FFA" && <aside className="leaderboard">
+        <header><span>FREE FOR ALL</span><strong>{formatMatchTime(matchTimeLeft)}</strong></header>
         <div className="leaderboard-columns"><span>OPERATOR</span><i>K</i><i>D</i></div>
-        {connectedPlayerIds.map((id, index) => <div className={id === localPlayerId ? "local" : ""} key={id}>
-          <span>{id === localPlayerId ? "YOU" : `OPERATOR ${String(index + 1).padStart(2, "0")}`}</span><i>0</i><i>0</i>
-        </div>)}
+        {connectedPlayerIds.map((id, index) => <div className={id === localPlayerId ? "local" : ""} key={id}><span>{id === localPlayerId ? "YOU" : `OPERATOR ${String(index + 1).padStart(2, "0")}`}</span><i>0</i><i>0</i></div>)}
         {!connectedPlayerIds.length && <div><span>CONNECTING…</span><i>—</i><i>—</i></div>}
-        <button disabled={endGameRequested} onClick={() => { multiplayerSendRef.current({ type: "end_game" }); setEndGameRequested(true); }}>
-          {endGameRequested ? `END VOTE SENT · ${endGameVotes}/${Math.max(1, connectedPlayerIds.length)}` : "VOTE TO END GAME"}
-        </button>
+        <button disabled={endGameRequested} onClick={() => { multiplayerSendRef.current({ type: "end_game" }); setEndGameRequested(true); }}>{endGameRequested ? `END VOTE SENT · ${endGameVotes}/${Math.max(1, connectedPlayerIds.length)}` : "VOTE TO END GAME"}</button>
       </aside>}
       <div className="crosshair" style={{ left: thirdPerson ? leanSide < 0 ? "46%" : "54%" : "50%" }}><span /><span /></div>
       <div className="hud-left"><small>VITALS</small><strong>{health}</strong><div className="health"><i style={{ width: `${health}%` }} /></div></div>
