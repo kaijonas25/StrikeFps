@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 
-type Box = { minX: number; maxX: number; minZ: number; maxZ: number; height: number; active?: boolean };
+type Box = { minX: number; maxX: number; minY: number; maxY: number; minZ: number; maxZ: number; active?: boolean };
+type PlayerStance = "standing" | "crouching" | "prone";
 type FireMode = "SEMI" | "BURST" | "AUTO";
 type MenuPage = "HOME" | "LOADOUT" | "CHARACTER";
 type GameMap = "TEST YARD" | "CITY BLOCK";
@@ -56,9 +57,12 @@ const MEDICAL_STATS: Record<string, { healing: number; duration: number }> = {
 };
 
 const PLAYER_HEIGHT = 1.7;
-// Slightly wider than the torso so the visible operator and first-person camera
-// remain fully on the playable side of walls.
-const PLAYER_RADIUS = 0.48;
+const STANCE_COLLIDERS: Record<PlayerStance, { radius: number; height: number; halfLength: number }> = {
+  standing: { radius: .48, height: 1.82, halfLength: 0 },
+  crouching: { radius: .44, height: 1.16, halfLength: 0 },
+  // Three overlapping circles form an oriented capsule around the prone body.
+  prone: { radius: .32, height: .62, halfLength: .55 },
+};
 const MULTIPLAYER_SERVER = "https://strikeyard-multiplayer.kaigarcia2510.workers.dev";
 const formatMatchTime = (milliseconds: number) => {
   const seconds = Math.max(0, Math.ceil(milliseconds / 1000));
@@ -214,7 +218,7 @@ export function FpsGame() {
       mesh.position.set(x, y, z);
       mesh.castShadow = mesh.receiveShadow = true;
       scene.add(mesh);
-      if (collide) { boxes.push({ minX: x - w / 2, maxX: x + w / 2, minZ: z - d / 2, maxZ: z + d / 2, height: y + h / 2 }); placementSurfaces.push(mesh); }
+      if (collide) { boxes.push({ minX: x - w / 2, maxX: x + w / 2, minY: y - h / 2, maxY: y + h / 2, minZ: z - d / 2, maxZ: z + d / 2 }); placementSurfaces.push(mesh); }
       return mesh;
     }
 
@@ -402,7 +406,7 @@ export function FpsGame() {
         const pivot = new THREE.Group(); pivot.position.set(x - width / 2, 0, z); scene.add(pivot);
         const door = new THREE.Mesh(new THREE.BoxGeometry(width, 2.65, .16), material(color, .6, .3)); door.position.set(width / 2, 1.325, 0); door.castShadow = true; pivot.add(door);
         const handle = new THREE.Mesh(new THREE.SphereGeometry(.055, 8, 6), material(0xc4a465, .3, .7)); handle.position.set(width * .82, 1.3, -.12); pivot.add(handle);
-        const box: Box = { minX: x - width / 2, maxX: x + width / 2, minZ: z - .18, maxZ: z + .18, height: 2.7, active: true };
+        const box: Box = { minX: x - width / 2, maxX: x + width / 2, minY: 0, maxY: 2.7, minZ: z - .18, maxZ: z + .18, active: true };
         boxes.push(box); doors.push({ pivot, box, target: 0, open: false, swing });
       };
       const addBuilding = (cx: number, cz: number, w: number, d: number, h: number, color: number, frontSide: -1 | 1) => {
@@ -876,10 +880,23 @@ export function FpsGame() {
     let nextSupplyWave = last + 60_000;
     const clock = new THREE.Clock();
 
-    const collides = (x: number, z: number) => boxes.some((b) => b.active !== false &&
-      x + PLAYER_RADIUS > b.minX && x - PLAYER_RADIUS < b.maxX &&
-      z + PLAYER_RADIUS > b.minZ && z - PLAYER_RADIUS < b.maxZ && b.height > 0.25
-    );
+    const currentStance = (): PlayerStance => isProne ? "prone" : isCrouching ? "crouching" : "standing";
+    const collides = (x: number, z: number, stance: PlayerStance = currentStance()) => {
+      const collider = STANCE_COLLIDERS[stance];
+      const feetY = playerPosition.y - PLAYER_HEIGHT;
+      const forwardX = -Math.sin(yaw), forwardZ = -Math.cos(yaw);
+      const samples = collider.halfLength > 0 ? [-collider.halfLength, 0, collider.halfLength] : [0];
+      return boxes.some((box) => {
+        if (box.active === false || feetY + collider.height <= box.minY || feetY >= box.maxY) return false;
+        return samples.some((offset) => {
+          const centerX = x + forwardX * offset, centerZ = z + forwardZ * offset;
+          const closestX = THREE.MathUtils.clamp(centerX, box.minX, box.maxX);
+          const closestZ = THREE.MathUtils.clamp(centerZ, box.minZ, box.maxZ);
+          return (centerX - closestX) ** 2 + (centerZ - closestZ) ** 2 < collider.radius ** 2;
+        });
+      });
+    };
+    const canUseStance = (stance: PlayerStance) => !collides(playerPosition.x, playerPosition.z, stance);
 
     const onKeyDown = (e: KeyboardEvent) => {
       keys.add(e.code);
@@ -890,9 +907,13 @@ export function FpsGame() {
         else { yaw = cameraYaw; pitch = 0; }
         localPlayer.visible = isThirdPerson;
       }
-      if (e.code === "Space" && grounded) { isProne = false; isCrouching = false; setProne(false); setCrouching(false); verticalVelocity = 5.7; grounded = false; }
+      if (e.code === "Space" && grounded) {
+        if ((isProne || isCrouching) && !canUseStance("standing")) return;
+        isProne = false; isCrouching = false; setProne(false); setCrouching(false); verticalVelocity = 5.7; grounded = false;
+      }
       if (e.code === "KeyC" && !e.repeat && grounded) {
         if (isProne) {
+          if (!canUseStance("crouching")) return;
           isProne = false; isCrouching = true; setProne(false);
         } else if (sprinting) {
           isCrouching = true; sliding = true; slideEnd = performance.now() + 850;
@@ -900,11 +921,13 @@ export function FpsGame() {
           const slideSpeed = 10.5 * (1 - attachmentMobilityPenalty(activeAttachments()) / 100);
           slideVelocity.set(-Math.sin(movementYaw) * slideSpeed, -Math.cos(movementYaw) * slideSpeed);
         } else {
+          if (isCrouching && !canUseStance("standing")) return;
           sliding = false; slideEnd = 0; isCrouching = !isCrouching;
         }
         aiming = false; setAdsActive(false); setCrouching(isCrouching);
       }
       if (e.code === "KeyX" && !e.repeat && grounded) {
+        if (isProne && !canUseStance("standing")) return;
         isProne = !isProne; isCrouching = false; sliding = false; slideEnd = 0;
         if (isProne && isThirdPerson) cameraPitch = 0;
         aiming = false; setAdsActive(false); setProne(isProne); setCrouching(false);
