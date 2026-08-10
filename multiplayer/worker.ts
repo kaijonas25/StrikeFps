@@ -34,6 +34,7 @@ type MatchMeta = { day: string; phase: "voting" | "playing" | "results"; phaseEn
 const VOTE_DURATION = 30_000;
 const MATCH_DURATION = 10 * 60_000;
 const RESULTS_DURATION = 5_000;
+const EMPTY_ROOM_GRACE = 10_000;
 const safeString = (value: unknown, fallback: string, maxLength: number) =>
   typeof value === "string" ? value.slice(0, maxLength) : fallback;
 
@@ -51,6 +52,9 @@ export class GameRoom extends DurableObject {
     }
     if (request.headers.get("Upgrade") !== "websocket") return json({ error: "WebSocket upgrade required" }, 426);
     const meta = await this.currentMatch();
+    // Cancel a pending empty-room reset when clients return after loading a map.
+    await this.ctx.storage.delete("emptyResetAt");
+    await this.ctx.storage.setAlarm(meta.phaseEndsAt);
     const pair = new WebSocketPair();
     const client = pair[0], server = pair[1];
     const id = crypto.randomUUID();
@@ -160,9 +164,15 @@ export class GameRoom extends DurableObject {
 
   async alarm() {
     if (this.ctx.getWebSockets().length === 0) {
+      const emptyResetAt = await this.ctx.storage.get<number>("emptyResetAt");
+      if (emptyResetAt && emptyResetAt > Date.now()) {
+        await this.ctx.storage.setAlarm(emptyResetAt);
+        return;
+      }
       await this.resetEmptyRoom();
       return;
     }
+    await this.ctx.storage.delete("emptyResetAt");
     const meta = await this.currentMatch();
     if (meta.phaseEndsAt > Date.now()) { await this.ctx.storage.setAlarm(meta.phaseEndsAt); return; }
     await this.advanceMatch(meta);
@@ -174,7 +184,12 @@ export class GameRoom extends DurableObject {
     const remainingPlayers = this.ctx.getWebSockets().filter((candidate) => candidate !== socket && candidate.readyState === WebSocket.OPEN);
     // Clients briefly reconnect when the winning map changes. Deleting match
     // state here restarted voting before those clients could load the winner.
-    if (remainingPlayers.length === 0) return;
+    if (remainingPlayers.length === 0) {
+      const emptyResetAt = Date.now() + EMPTY_ROOM_GRACE;
+      await this.ctx.storage.put("emptyResetAt", emptyResetAt);
+      await this.ctx.storage.setAlarm(emptyResetAt);
+      return;
+    }
     const meta = await this.currentMatch();
     if (meta.phase === "voting" && remainingPlayers.every((candidate) => {
       const vote = candidate.deserializeAttachment() as SocketAttachment;
@@ -194,6 +209,7 @@ export class GameRoom extends DurableObject {
 
   private async resetEmptyRoom() {
     await this.ctx.storage.delete("match");
+    await this.ctx.storage.delete("emptyResetAt");
     await this.ctx.storage.deleteAlarm();
   }
 
