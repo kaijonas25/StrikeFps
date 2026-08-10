@@ -585,6 +585,27 @@ export function FpsGame() {
         addBox(x + 1.1, .38, z + 1.2, 1.4, .76, 1.3, 0x4f554e);
       });
 
+      // Extra cover closes the exposed lanes without blocking the main trail.
+      [[-34,-17],[-31,10],[-21,-29],[-16,29],[-2,-23],[4,11],[15,-7],[20,20],[31,-25],[34,5]].forEach(([x,z], i) => {
+        const width = 1.8 + (i % 3) * .55;
+        addBox(x, .62, z, width, 1.24, 1.55 + (i % 2) * .5, i % 2 ? 0x565d55 : 0x656a61);
+        addBox(x + (i % 2 ? -.9 : .9), .34, z + .75, 1.25, .68, 1.1, 0x484f49);
+      });
+      // Rough timber fighting positions provide directional cover near objectives.
+      [[-25,-20,0],[6,-12,Math.PI/2],[17,29,0],[29,14,Math.PI/2],[-29,34,0]].forEach(([x,z,r]) => {
+        const turned = r !== 0;
+        addBox(x, .82, z, turned ? .5 : 4.4, 1.64, turned ? 4.4 : .5, 0x4b3526);
+        for (let post = -1; post <= 1; post++) {
+          addBox(x + (turned ? 0 : post * 1.65), .9, z + (turned ? post * 1.65 : 0), turned ? .72 : .26, 1.8, turned ? .26 : .72, 0x38271e, false);
+        }
+      });
+      // Cut stumps add compact crouch cover around the creek approaches.
+      [[-15,-15],[-6,-7],[-15,9],[-6,17],[-14,25]].forEach(([x,z], i) => {
+        const stump = new THREE.Mesh(new THREE.CylinderGeometry(.72 + i * .04, .9 + i * .04, 1.25, 10), trunkMat);
+        stump.position.set(x, .625, z); stump.castShadow = stump.receiveShadow = true; scene.add(stump);
+        boxes.push({ minX:x-.86, maxX:x+.86, minY:0, maxY:1.25, minZ:z-.86, maxZ:z+.86 });
+      });
+
       // Ranger outpost landmark with an open front and a raised watch platform.
       addBox(27, 1.5, 28, 9, .3, 8, 0x553e2b, false);
       addBox(22.7, 2.2, 28, .4, 4.4, 8, 0x60442e); addBox(31.3, 2.2, 28, .4, 4.4, 8, 0x60442e);
@@ -1359,8 +1380,10 @@ export function FpsGame() {
       if (sliding && now >= slideEnd) { sliding = false; slideEnd = 0; }
       sprinting = !isCrouching && !isProne && !sliding && (keys.has("ShiftLeft") || keys.has("ShiftRight")) && input.y > 0 && input.lengthSq() > 0;
       if (sprinting || sliding) { aiming = false; setAdsActive(false); }
+      // The creek follows a slightly diagonal north/south channel through the forest.
+      const inForestCreek = forestMap && Math.abs((playerPosition.x + 10) + playerPosition.z * .08) < 3.5 && Math.abs(playerPosition.z) < 42;
       const baseSpeed = isProne ? 1.55 : isCrouching ? 2.8 : sprinting ? 8.2 : aiming ? 3.8 : 5.2;
-      const speed = baseSpeed * (1 - attachmentMobilityPenalty(activeAttachments()) / 100);
+      const speed = baseSpeed * (1 - attachmentMobilityPenalty(activeAttachments()) / 100) * (inForestCreek ? .52 : 1);
       const movementYaw = isThirdPerson ? cameraYaw : yaw;
       const sin = Math.sin(movementYaw), cos = Math.cos(movementYaw);
       const leanRightX = Math.cos(yaw), leanRightZ = -Math.sin(yaw);
@@ -1372,6 +1395,12 @@ export function FpsGame() {
       if (sliding) {
         dx = slideVelocity.x * dt; dz = slideVelocity.y * dt;
         slideVelocity.multiplyScalar(Math.max(0, 1 - dt * 2.15));
+      }
+      if (inForestCreek) {
+        // A steady downstream current carries players toward the southern boundary.
+        const currentSpeed = 1.45;
+        dz += currentSpeed * dt;
+        dx -= currentSpeed * .08 * dt;
       }
       // Sweep movement in short steps so sprinting, sliding, or a slow frame
       // cannot tunnel the player through thin walls. Axis separation preserves
@@ -1410,9 +1439,11 @@ export function FpsGame() {
         }
       }
 
+      const standingInCreek = forestMap && Math.abs((playerPosition.x + 10) + playerPosition.z * .08) < 3.5 && Math.abs(playerPosition.z) < 42;
+      const groundHeight = standingInCreek ? PLAYER_HEIGHT - .7 : PLAYER_HEIGHT;
       verticalVelocity -= 14.5 * dt;
       playerPosition.y += verticalVelocity * dt;
-      if (playerPosition.y <= PLAYER_HEIGHT) { playerPosition.y = PLAYER_HEIGHT; verticalVelocity = 0; grounded = true; }
+      if (playerPosition.y <= groundHeight) { playerPosition.y = groundHeight; verticalVelocity = 0; grounded = true; }
 
       const moving = input.lengthSq() > 0 && grounded;
       movementSpread = input.lengthSq() > 0 ? 1.55 : 1;
