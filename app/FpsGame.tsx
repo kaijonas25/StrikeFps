@@ -16,6 +16,7 @@ type TacticalAttachment = "NONE" | "RED LASER" | "WHITE LIGHT";
 type MagazineAttachment = "STANDARD MAG" | "EXTENDED MAG" | "DRUM MAG";
 type FireControlAttachment = "STANDARD TRIGGER" | "BURST TRIGGER";
 type WeaponAttachments = { sight: SightAttachment; muzzle: MuzzleAttachment; tactical: TacticalAttachment; magazine: MagazineAttachment; fireControl: FireControlAttachment };
+type PlayerAppearance = { skin: string; uniform: string; armor: string; helmet: string; faceGear: string; headAccessory: string; chestRig: string; backpack: string; pants: string; gloves: string; boots: string };
 
 const attachmentMobilityPenalty = (attachments: WeaponAttachments) =>
   (attachments.muzzle === "SUPPRESSOR" ? 4 : 0) +
@@ -194,7 +195,7 @@ export function FpsGame() {
 
     const boxes: Box[] = [];
     const placementSurfaces: THREE.Object3D[] = [];
-    const material = (color: number, roughness = 0.82, metalness = 0.05) =>
+    const material = (color: THREE.ColorRepresentation, roughness = 0.82, metalness = 0.05) =>
       new THREE.MeshStandardMaterial({ color, roughness, metalness });
 
     const mapSize = selectedMap === "CITY BLOCK" ? 96 : 64;
@@ -298,17 +299,18 @@ export function FpsGame() {
 
     // Human-shaped test dummies with separate head and body hit zones.
     const dummies: THREE.Group[] = [];
-    const addDummy = (x: number, z: number, color: number, movement: "static" | "walk" | "sprint" = "static", targetable = true) => {
+    const localAppearance: PlayerAppearance = { skin: characterSkin, uniform: characterUniform, armor: characterArmor, helmet: characterHelmet, faceGear, headAccessory, chestRig, backpack, pants: pantsColor, gloves: gloveColor, boots: bootColor };
+    const addDummy = (x: number, z: number, color: number, movement: "static" | "walk" | "sprint" = "static", targetable = true, appearance: PlayerAppearance = localAppearance) => {
       const dummy = new THREE.Group(); dummy.position.set(x, 0, z);
       dummy.userData.health = 150; dummy.userData.maxHealth = 150;
       dummy.userData.movement = movement; dummy.userData.laneOrigin = z;
       dummy.userData.rig = [] as { kind: "arm" | "leg"; side: number; upper: THREE.Mesh; lower: THREE.Mesh; joint?: THREE.Mesh; end: THREE.Mesh }[];
-      const dummyMat = material(targetable ? color : Number(`0x${characterSkin.slice(1)}`), 0.55, 0.15);
-      const armorMat = material(targetable ? 0x20292b : Number(`0x${characterArmor.slice(1)}`), 0.7, 0.28);
-      const fabricMat = material(targetable ? 0x303a3b : Number(`0x${characterUniform.slice(1)}`), 0.92, 0.02);
-      const pantsMat = material(targetable ? 0x303a3b : Number(`0x${pantsColor.slice(1)}`), 0.92, 0.02);
-      const gloveMat = material(targetable ? 0x20292b : Number(`0x${gloveColor.slice(1)}`), 0.72, 0.18);
-      const bootMat = material(targetable ? 0x171d1f : Number(`0x${bootColor.slice(1)}`), 0.8, 0.12);
+      const dummyMat = material(targetable ? color : new THREE.Color(appearance.skin), 0.55, 0.15);
+      const armorMat = material(targetable ? 0x20292b : new THREE.Color(appearance.armor), 0.7, 0.28);
+      const fabricMat = material(targetable ? 0x303a3b : new THREE.Color(appearance.uniform), 0.92, 0.02);
+      const pantsMat = material(targetable ? 0x303a3b : new THREE.Color(appearance.pants), 0.92, 0.02);
+      const gloveMat = material(targetable ? 0x20292b : new THREE.Color(appearance.gloves), 0.72, 0.18);
+      const bootMat = material(targetable ? 0x171d1f : new THREE.Color(appearance.boots), 0.8, 0.12);
       const darkMat = material(0x111719, .62, .38);
       const visorMat = new THREE.MeshStandardMaterial({ color: 0x76b9c7, emissive: 0x173b43, emissiveIntensity: 0.8, metalness: 0.65, roughness: 0.18 });
       const addLimb = (geometry: THREE.BufferGeometry, px: number, py: number, pz: number, multiplier = 1, partMaterial: THREE.Material = dummyMat) => {
@@ -319,15 +321,15 @@ export function FpsGame() {
       };
       // Torso, plate carrier, pouches, belt and backpack.
       addLimb(new THREE.BoxGeometry(0.6, 0.78, 0.3), 0, 1.38, 0, 1, fabricMat);
-      const chestWidth = !targetable && chestRig === "LIGHT" ? .56 : !targetable && chestRig === "HEAVY" ? .74 : .66;
-      const chestDepth = !targetable && chestRig === "LIGHT" ? .11 : !targetable && chestRig === "HEAVY" ? .23 : .16;
+      const chestWidth = !targetable && appearance.chestRig === "LIGHT" ? .56 : !targetable && appearance.chestRig === "HEAVY" ? .74 : .66;
+      const chestDepth = !targetable && appearance.chestRig === "LIGHT" ? .11 : !targetable && appearance.chestRig === "HEAVY" ? .23 : .16;
       addLimb(new THREE.BoxGeometry(chestWidth, 0.56, chestDepth), 0, 1.48, -0.19, 1, armorMat);
       addLimb(new THREE.BoxGeometry(0.17, 0.14, 0.12), -0.2, 1.18, -0.25, 1, armorMat);
       addLimb(new THREE.BoxGeometry(0.17, 0.14, 0.12), 0, 1.18, -0.25, 1, armorMat);
       addLimb(new THREE.BoxGeometry(0.17, 0.14, 0.12), 0.2, 1.18, -0.25, 1, armorMat);
       addLimb(new THREE.BoxGeometry(0.56, 0.1, 0.34), 0, 0.98, 0, 1, armorMat);
-      if (targetable || backpack !== "NONE") {
-        const radioPack = !targetable && backpack === "RADIO PACK";
+      if (targetable || appearance.backpack !== "NONE") {
+        const radioPack = !targetable && appearance.backpack === "RADIO PACK";
         addLimb(new THREE.BoxGeometry(radioPack ? .56 : .5, radioPack ? .68 : .58, radioPack ? .27 : .2), 0, 1.48, radioPack ? .28 : .24, 1, armorMat);
         if (radioPack) addLimb(new THREE.CylinderGeometry(.018, .018, .72, 7), .2, 1.98, .29, 1, armorMat).rotation.z = -.12;
       }
@@ -340,20 +342,20 @@ export function FpsGame() {
       };
       addHeadLimb(new THREE.CylinderGeometry(0.13, 0.15, 0.16, 10), 0, -.01, 0, 1.5, fabricMat);
       addHeadLimb(new THREE.SphereGeometry(0.235, 16, 11), 0, .25, 0, 2, dummyMat);
-      const helmetScale = !targetable && characterHelmet === "LIGHT" ? 0.92 : !targetable && characterHelmet === "HEAVY" ? 1.1 : 1;
+      const helmetScale = !targetable && appearance.helmet === "LIGHT" ? 0.92 : !targetable && appearance.helmet === "HEAVY" ? 1.1 : 1;
       const helmet = addHeadLimb(new THREE.SphereGeometry(0.265, 16, 8, 0, Math.PI * 2, 0, Math.PI * 0.54), 0, .34, .01, 2, armorMat);
-      helmet.scale.set(helmetScale, !targetable && characterHelmet === "HEAVY" ? 1.08 : 1, helmetScale);
-      if (targetable || faceGear === "GOGGLES") addHeadLimb(new THREE.BoxGeometry(0.34, 0.095, 0.04), 0, .26, -.222, 2, visorMat);
-      if (!targetable && faceGear === "MASK") addHeadLimb(new THREE.BoxGeometry(.29, .2, .08), 0, .16, -.22, 2, fabricMat);
-      if (targetable || headAccessory === "HEADSET") addHeadLimb(new THREE.BoxGeometry(0.055, 0.18, 0.08), -.255, .26, 0, 2, armorMat);
-      if (!targetable && headAccessory === "NVG") {
+      helmet.scale.set(helmetScale, !targetable && appearance.helmet === "HEAVY" ? 1.08 : 1, helmetScale);
+      if (targetable || appearance.faceGear === "GOGGLES") addHeadLimb(new THREE.BoxGeometry(0.34, 0.095, 0.04), 0, .26, -.222, 2, visorMat);
+      if (!targetable && appearance.faceGear === "MASK") addHeadLimb(new THREE.BoxGeometry(.29, .2, .08), 0, .16, -.22, 2, fabricMat);
+      if (targetable || appearance.headAccessory === "HEADSET") addHeadLimb(new THREE.BoxGeometry(0.055, 0.18, 0.08), -.255, .26, 0, 2, armorMat);
+      if (!targetable && appearance.headAccessory === "NVG") {
         addHeadLimb(new THREE.BoxGeometry(.24, .07, .09), 0, .36, -.23, 2, armorMat);
         addHeadLimb(new THREE.CylinderGeometry(.045, .055, .16, 9), -.075, .31, -.31, 2, darkMat).rotation.x = Math.PI / 2;
         addHeadLimb(new THREE.CylinderGeometry(.045, .055, .16, 9), .075, .31, -.31, 2, darkMat).rotation.x = Math.PI / 2;
       }
       // Segmented arms, shoulder armor and gloves.
       [-1, 1].forEach((side) => {
-        if (targetable || chestRig !== "LIGHT") addLimb(new THREE.SphereGeometry(0.17, 10, 8), side * 0.43, 1.65, 0, 1, armorMat);
+        if (targetable || appearance.chestRig !== "LIGHT") addLimb(new THREE.SphereGeometry(0.17, 10, 8), side * 0.43, 1.65, 0, 1, armorMat);
         const upper = addLimb(new THREE.CylinderGeometry(0.105, 0.095, 0.44, 9), side * 0.45, 1.42, 0, 1, fabricMat); upper.rotation.z = side * -0.08;
         const forearm = addLimb(new THREE.CylinderGeometry(0.09, 0.075, 0.38, 9), side * 0.47, 1.04, -0.02, 1, fabricMat);
         const glove = addLimb(new THREE.BoxGeometry(0.17, 0.16, 0.18), side * 0.48, 0.8, -0.02, 1, gloveMat);
@@ -719,17 +721,30 @@ export function FpsGame() {
       item.scale.setScalar(.78); item.position.set(-.045, 1.56, .03);
       item.traverse((object) => { if (object instanceof THREE.Mesh) object.raycast = () => {}; }); localPlayer.add(item);
     });
-    type RemoteState = { id: string; x: number; y: number; z: number; yaw: number; movement: "static" | "walk" | "sprint"; crouching: boolean; prone: boolean; slot: number; health?: number };
+    type RemoteState = { id: string; x: number; y: number; z: number; yaw: number; movement: "static" | "walk" | "sprint"; crouching: boolean; prone: boolean; slot: number; primary?: string; secondary?: string; health?: number } & Partial<PlayerAppearance>;
     const remotePlayers = new Map<string, THREE.Group>();
     const upsertRemotePlayer = (state: RemoteState) => {
+      const appearance: PlayerAppearance = { ...localAppearance, skin: state.skin ?? localAppearance.skin, uniform: state.uniform ?? localAppearance.uniform, armor: state.armor ?? localAppearance.armor, helmet: state.helmet ?? localAppearance.helmet, faceGear: state.faceGear ?? localAppearance.faceGear, headAccessory: state.headAccessory ?? localAppearance.headAccessory, chestRig: state.chestRig ?? localAppearance.chestRig, backpack: state.backpack ?? localAppearance.backpack, pants: state.pants ?? localAppearance.pants, gloves: state.gloves ?? localAppearance.gloves, boots: state.boots ?? localAppearance.boots };
+      const avatarSignature = JSON.stringify([appearance, state.primary ?? "VXR-4 CARBINE", state.secondary ?? "P9 SIDEARM"]);
       let avatar = remotePlayers.get(state.id);
+      if (avatar && avatar.userData.avatarSignature !== avatarSignature) {
+        scene.remove(avatar); remotePlayers.delete(state.id); avatar = undefined;
+      }
       if (!avatar) {
-        avatar = addDummy(state.x, state.z, 0x435e70, "static", false);
+        avatar = addDummy(state.x, state.z, 0x435e70, "static", false, appearance);
         avatar.visible = true; avatar.userData.targetPosition = new THREE.Vector3(state.x, state.y - PLAYER_HEIGHT, state.z);
-        const remoteWeapon = worldPrimary.clone(true); remoteWeapon.visible = true; avatar.add(remoteWeapon);
-        avatar.userData.isRemotePlayer = true;
+        const stockAttachments: WeaponAttachments = { sight: "IRON SIGHTS", muzzle: "STANDARD BARREL", tactical: "NONE", magazine: "STANDARD MAG", fireControl: "STANDARD TRIGGER" };
+        const remotePrimary = buildWeapon(state.primary ?? "VXR-4 CARBINE", stockAttachments).model;
+        const remoteSecondary = buildWeapon(state.secondary ?? "P9 SIDEARM", stockAttachments).model;
+        [remotePrimary, remoteSecondary].forEach((weapon) => {
+          weapon.scale.setScalar(.72); weapon.position.set(-.055, 1.58, .03); weapon.rotation.x = -.04;
+          weapon.traverse((object) => { if (object instanceof THREE.Mesh) { object.raycast = () => {}; object.userData.remoteWeaponVisual = true; } });
+          avatar!.add(weapon);
+        });
+        avatar.userData.remotePrimary = remotePrimary; avatar.userData.remoteSecondary = remoteSecondary;
+        avatar.userData.isRemotePlayer = true; avatar.userData.avatarSignature = avatarSignature;
         avatar.traverse((object) => {
-          if (!(object instanceof THREE.Mesh) || remoteWeapon.getObjectById(object.id)) return;
+          if (!(object instanceof THREE.Mesh) || object.userData.remoteWeaponVisual) return;
           object.raycast = THREE.Mesh.prototype.raycast;
           object.userData.remotePlayerId = state.id;
           object.userData.damageMultiplier = object.parent === avatar!.userData.headRig ? 2 : 1;
@@ -739,6 +754,9 @@ export function FpsGame() {
       avatar.userData.targetPosition.set(state.x, state.y - PLAYER_HEIGHT - (state.crouching ? .42 : 0), state.z);
       avatar.userData.targetYaw = state.yaw; avatar.userData.movement = state.prone ? "static" : state.movement;
       avatar.userData.remoteProne = state.prone; avatar.userData.remoteCrouching = state.crouching;
+      avatar.userData.remoteSlot = state.slot; avatar.userData.remoteSecondaryName = state.secondary ?? "P9 SIDEARM";
+      if (avatar.userData.remotePrimary) avatar.userData.remotePrimary.visible = state.slot === 1;
+      if (avatar.userData.remoteSecondary) avatar.userData.remoteSecondary.visible = state.slot === 2;
       avatar.visible = (state.health ?? 100) > 0;
     };
     let multiplayerSocket: WebSocket | undefined;
@@ -1280,7 +1298,7 @@ export function FpsGame() {
         const isLocal = dummy === localPlayer;
         const healthBarRoot = dummy.userData.healthBarRoot as THREE.Group | undefined;
         if (healthBarRoot) healthBarRoot.lookAt(camera.position);
-        if (!dummy.visible || (movement === "static" && !isLocal)) return;
+        if (!dummy.visible) return;
         const speed = movement === "sprint" ? 4.2 : 1.75;
         const travel = (t * speed) % 24;
         if (isLocal) {
@@ -1297,8 +1315,10 @@ export function FpsGame() {
         const amplitude = movement === "static" ? 0 : movement === "sprint" ? 0.92 : 0.5;
         if (!isLocal) dummy.position.y = Math.abs(Math.sin(t * (movement === "sprint" ? 12 : 6.5))) * (movement === "sprint" ? .075 : .035);
         const headRig = dummy.userData.headRig as THREE.Group;
-        const holdingWeaponPose = isLocal && currentSlot <= 2 && aiming;
-        const holdingLongWeaponPose = holdingWeaponPose && (currentSlot === 1 || secondary === "DB-2 SAWED-OFF" || secondary === "MP5K COMPACT");
+        const actorSlot = isLocal ? currentSlot : (dummy.userData.remoteSlot ?? 1);
+        const actorSecondary = isLocal ? secondary : (dummy.userData.remoteSecondaryName ?? "P9 SIDEARM");
+        const holdingWeaponPose = actorSlot <= 2 && (isLocal ? aiming : true);
+        const holdingLongWeaponPose = holdingWeaponPose && (actorSlot === 1 || actorSecondary === "DB-2 SAWED-OFF" || actorSecondary === "MP5K COMPACT");
         const aimingHeadPitch = holdingWeaponPose ? holdingLongWeaponPose ? -.13 : -.07 : 0;
         const proneHeadPitch = isLocal ? proneAmount * 1.2 : 0;
         headRig.rotation.x = THREE.MathUtils.lerp(headRig.rotation.x, proneHeadPitch + aimingHeadPitch, Math.min(1, dt * 10));
@@ -1307,11 +1327,11 @@ export function FpsGame() {
         const rig = dummy.userData.rig as { kind: "arm" | "leg"; side: number; upper: THREE.Mesh; lower: THREE.Mesh; joint?: THREE.Mesh; end: THREE.Mesh }[];
         rig.forEach((limb) => {
           if (limb.kind === "arm") {
-            const holdingWeapon = isLocal && currentSlot <= 2;
+            const holdingWeapon = actorSlot <= 2;
             const holdingMedical = isLocal && currentSlot === 3 && medicalCharges > 0;
             const holdingUtility = isLocal && currentSlot === 4 && grenadesLeft > 0 && limb.side === 1;
             const holdingItem = holdingWeapon || holdingMedical || holdingUtility;
-            const holdingLongGun = holdingWeapon && (currentSlot === 1 || secondary === "DB-2 SAWED-OFF" || secondary === "MP5K COMPACT");
+            const holdingLongGun = holdingWeapon && (actorSlot === 1 || actorSecondary === "DB-2 SAWED-OFF" || actorSecondary === "MP5K COMPACT");
             const isRightArm = limb.side === 1;
             const alignLimb = (mesh: THREE.Mesh, start: THREE.Vector3, end: THREE.Vector3) => {
               mesh.position.copy(start).add(end).multiplyScalar(.5);
@@ -1319,7 +1339,7 @@ export function FpsGame() {
             };
             if (holdingItem) {
               const shoulder = new THREE.Vector3(limb.side * .43, 1.65, 0);
-              const sprintCarry = sprinting || sliding;
+              const sprintCarry = isLocal ? sprinting || sliding : movement === "sprint";
               const elbow = holdingMedical
                 ? isRightArm ? new THREE.Vector3(.4, 1.38, -.16) : new THREE.Vector3(-.38, 1.38, -.16)
                 : holdingUtility ? new THREE.Vector3(.46, 1.4, -.12)
@@ -1510,7 +1530,7 @@ export function FpsGame() {
       localPlayer.scale.set(1, 1, 1);
       if (multiplayerSocket?.readyState === WebSocket.OPEN && now - lastMultiplayerSend >= 66) {
         lastMultiplayerSend = now;
-        multiplayerSocket.send(JSON.stringify({ type: "state", x: playerPosition.x, y: playerPosition.y, z: playerPosition.z, yaw, movement: localPlayer.userData.movement, crouching: isCrouching, prone: isProne, slot: currentSlot, primary, secondary }));
+        multiplayerSocket.send(JSON.stringify({ type: "state", x: playerPosition.x, y: playerPosition.y, z: playerPosition.z, yaw, movement: localPlayer.userData.movement, crouching: isCrouching, prone: isProne, slot: currentSlot, primary, secondary, skin: characterSkin, uniform: characterUniform, armor: characterArmor, helmet: characterHelmet, faceGear, headAccessory, chestRig, backpack, pants: pantsColor, gloves: gloveColor, boots: bootColor }));
       }
       if (isThirdPerson) {
         const orbitDistance = 4.2;

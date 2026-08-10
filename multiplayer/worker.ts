@@ -12,6 +12,17 @@ type PlayerState = {
   slot: number;
   primary: string;
   secondary: string;
+  skin: string;
+  uniform: string;
+  armor: string;
+  helmet: string;
+  faceGear: string;
+  headAccessory: string;
+  chestRig: string;
+  backpack: string;
+  pants: string;
+  gloves: string;
+  boots: string;
   kills: number;
   deaths: number;
   health: number;
@@ -22,6 +33,8 @@ type MatchMeta = { day: string; phase: "voting" | "playing" | "results"; phaseEn
 const VOTE_DURATION = 30_000;
 const MATCH_DURATION = 10 * 60_000;
 const RESULTS_DURATION = 5_000;
+const safeString = (value: unknown, fallback: string, maxLength: number) =>
+  typeof value === "string" ? value.slice(0, maxLength) : fallback;
 
 const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), {
   status,
@@ -43,7 +56,7 @@ export class GameRoom extends DurableObject {
     const playerNumber = this.ctx.getWebSockets().filter((socket) => socket.readyState === WebSocket.OPEN).length;
     const spawnX = [-6, 6, -6, 6][playerNumber % 4];
     const spawnZ = [38, -38, -38, 38][playerNumber % 4];
-    const initial: PlayerState = { id, x: spawnX, y: 1.7, z: spawnZ, yaw: spawnZ > 0 ? 0 : Math.PI, movement: "static", crouching: false, prone: false, slot: 1, primary: "VXR-4 CARBINE", secondary: "P9 SIDEARM", kills: 0, deaths: 0, health: 100 };
+    const initial: PlayerState = { id, x: spawnX, y: 1.7, z: spawnZ, yaw: spawnZ > 0 ? 0 : Math.PI, movement: "static", crouching: false, prone: false, slot: 1, primary: "VXR-4 CARBINE", secondary: "P9 SIDEARM", skin: "#a9795e", uniform: "#303a3b", armor: "#20292b", helmet: "TACTICAL", faceGear: "GOGGLES", headAccessory: "HEADSET", chestRig: "PLATE CARRIER", backpack: "ASSAULT PACK", pants: "#303a3b", gloves: "#20292b", boots: "#151b1d", kills: 0, deaths: 0, health: 100 };
     this.ctx.acceptWebSocket(server);
     server.serializeAttachment({ id, state: initial } satisfies SocketAttachment);
 
@@ -130,6 +143,10 @@ export class GameRoom extends DurableObject {
       slot: typeof packet.slot === "number" && packet.slot >= 1 && packet.slot <= 4 ? packet.slot : attachment.state.slot,
       primary: typeof packet.primary === "string" ? packet.primary.slice(0, 40) : attachment.state.primary,
       secondary: typeof packet.secondary === "string" ? packet.secondary.slice(0, 40) : attachment.state.secondary,
+      skin: safeString(packet.skin, attachment.state.skin, 16), uniform: safeString(packet.uniform, attachment.state.uniform, 16), armor: safeString(packet.armor, attachment.state.armor, 16),
+      helmet: safeString(packet.helmet, attachment.state.helmet, 24), faceGear: safeString(packet.faceGear, attachment.state.faceGear, 24), headAccessory: safeString(packet.headAccessory, attachment.state.headAccessory, 24),
+      chestRig: safeString(packet.chestRig, attachment.state.chestRig, 24), backpack: safeString(packet.backpack, attachment.state.backpack, 24),
+      pants: safeString(packet.pants, attachment.state.pants, 16), gloves: safeString(packet.gloves, attachment.state.gloves, 16), boots: safeString(packet.boots, attachment.state.boots, 16),
     };
     socket.serializeAttachment(attachment);
     this.broadcast({ type: "state", player: attachment.state }, socket);
