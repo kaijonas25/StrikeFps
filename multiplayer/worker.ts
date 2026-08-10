@@ -65,7 +65,8 @@ export class GameRoom extends DurableObject {
     const players = this.ctx.getWebSockets()
       .filter((socket) => socket.readyState === WebSocket.OPEN && (socket.deserializeAttachment() as SocketAttachment).id !== id)
       .map((socket) => (socket.deserializeAttachment() as SocketAttachment).state);
-    server.send(JSON.stringify({ type: "welcome", id, player: initial, players, match: meta }));
+    const joiningAttachment = server.deserializeAttachment() as SocketAttachment;
+    server.send(JSON.stringify({ type: "welcome", id, player: initial, players, match: meta, yourMapVote: joiningAttachment.votedMapPhase === meta.phaseEndsAt ? joiningAttachment.votedMap : null, yourModeVote: joiningAttachment.votedModePhase === meta.phaseEndsAt }));
     this.broadcast({ type: "joined", player: initial }, server);
     return new Response(null, { status: 101, webSocket: client });
   }
@@ -129,13 +130,9 @@ export class GameRoom extends DurableObject {
       }
       socket.serializeAttachment(attachment);
       await this.ctx.storage.put("match", meta);
-      const players = this.ctx.getWebSockets().filter((candidate) => candidate.readyState === WebSocket.OPEN);
-      const everyoneFinished = players.length > 0 && players.every((candidate) => {
-        const vote = candidate.deserializeAttachment() as SocketAttachment;
-        return vote.votedMapPhase === meta.phaseEndsAt && vote.votedModePhase === meta.phaseEndsAt;
-      });
-      if (everyoneFinished) await this.advanceMatch(meta);
-      else this.broadcast({ type: "match", match: meta });
+      // Keep voting open for the full advertised window. Advancing as soon as all
+      // currently-connected players voted made the UI jump when players joined or left.
+      this.broadcast({ type: "match", match: meta });
       return;
     }
     if (packet.type !== "state") return;
@@ -231,7 +228,12 @@ export class GameRoom extends DurableObject {
       winnerId = leaders.length === 1 ? leaders[0].id : null;
     } else { phase = "voting"; duration = VOTE_DURATION; }
     const next: MatchMeta = { ...meta, phase, phaseEndsAt: Date.now() + duration, votes: 0, mapVotes: { "CITY BLOCK": 0, "BLACKWOOD FOREST": 0 }, modeVotes: 0, endVotes: 0, mode: "FFA", winnerId, winningKills };
-    await this.ctx.storage.put("match", next); await this.ctx.storage.setAlarm(next.phaseEndsAt); this.broadcast({ type: "match", match: next }); return next;
+    await this.ctx.storage.put("match", next); await this.ctx.storage.setAlarm(next.phaseEndsAt); this.broadcast({ type: "match", match: next });
+    if (phase === "playing") this.ctx.getWebSockets().forEach((socket) => {
+      const attachment = socket.deserializeAttachment() as SocketAttachment;
+      try { socket.send(JSON.stringify({ type: "round_start", map: next.map, player: attachment.state })); } catch {}
+    });
+    return next;
   }
 }
 

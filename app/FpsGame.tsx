@@ -87,6 +87,7 @@ export function FpsGame() {
   const [mapVotes, setMapVotes] = useState(0);
   const [cityMapVotes, setCityMapVotes] = useState(0);
   const [forestMapVotes, setForestMapVotes] = useState(0);
+  const [selectedMapVote, setSelectedMapVote] = useState<Exclude<GameMap, "TEST YARD"> | null>(null);
   const [modeVotes, setModeVotes] = useState(0);
   const [endGameVotes, setEndGameVotes] = useState(0);
   const [endGameRequested, setEndGameRequested] = useState(false);
@@ -834,16 +835,20 @@ export function FpsGame() {
       multiplayerSocket.addEventListener("open", () => setMultiplayerStatus("ONLINE"));
       multiplayerSocket.addEventListener("close", () => setMultiplayerStatus("OFFLINE"));
       multiplayerSocket.addEventListener("error", () => setMultiplayerStatus("OFFLINE"));
+      let lastVotingPhase = 0;
       multiplayerSocket.addEventListener("message", (event) => {
         if (typeof event.data !== "string") return;
         try {
-          const packet = JSON.parse(event.data) as { type: string; player?: RemoteState; players?: RemoteState[]; id?: string; health?: number; attackerId?: string; weapon?: string; headshot?: boolean; match?: { phase: "voting" | "playing" | "results"; phaseEndsAt: number; votes: number; mapVotes?: { "CITY BLOCK"?: number; "BLACKWOOD FOREST"?: number }; map: Exclude<GameMap, "TEST YARD">; modeVotes: number; endVotes: number; mode: "FFA"; winnerId: string | null; winningKills: number } };
+          const packet = JSON.parse(event.data) as { type: string; player?: RemoteState; players?: RemoteState[]; id?: string; health?: number; attackerId?: string; weapon?: string; headshot?: boolean; yourMapVote?: Exclude<GameMap, "TEST YARD"> | null; yourModeVote?: boolean; map?: Exclude<GameMap, "TEST YARD">; match?: { phase: "voting" | "playing" | "results"; phaseEndsAt: number; votes: number; mapVotes?: { "CITY BLOCK"?: number; "BLACKWOOD FOREST"?: number }; map: Exclude<GameMap, "TEST YARD">; modeVotes: number; endVotes: number; mode: "FFA"; winnerId: string | null; winningKills: number } };
           const applyMatch = (match: NonNullable<typeof packet.match>, resetVotes = false) => {
             setMatchPhase(match.phase); setMapVotes(match.votes); setCityMapVotes(match.mapVotes?.["CITY BLOCK"] ?? match.votes); setForestMapVotes(match.mapVotes?.["BLACKWOOD FOREST"] ?? 0); setModeVotes(match.modeVotes ?? 0); setEndGameVotes(match.endVotes ?? 0); setMatchEndsAt(match.phaseEndsAt);
             setMatchWinnerId(match.winnerId ?? null); setWinningKills(match.winningKills ?? 0);
             if (match.phase === "playing" && match.map !== selectedMap) setSelectedMap(match.map);
             if ((match.endVotes ?? 0) === 0) setEndGameRequested(false);
-            if (resetVotes) { setHasVoted(false); setHasModeVoted(false); }
+            if (match.phase === "voting" && match.phaseEndsAt !== lastVotingPhase) {
+              lastVotingPhase = match.phaseEndsAt;
+              setHasVoted(false); setHasModeVoted(false); setSelectedMapVote(null);
+            } else if (resetVotes && match.phase !== "voting") { setHasVoted(false); setHasModeVoted(false); setSelectedMapVote(null); }
             if (match.phase === "voting" || match.phase === "results") document.exitPointerLock();
           };
           if (packet.type === "welcome") {
@@ -851,7 +856,11 @@ export function FpsGame() {
             otherPlayers.forEach(upsertRemotePlayer);
             if (packet.id) { localNetworkId = packet.id; setLocalPlayerId(packet.id); setConnectedPlayerIds([...new Set([packet.id, ...otherPlayers.map((player) => player.id)])]); }
             if (packet.player) { playerPosition.set(packet.player.x, packet.player.y, packet.player.z); camera.position.copy(playerPosition); yaw = packet.player.yaw; }
-            if (packet.match) applyMatch(packet.match);
+            if (packet.match) {
+              applyMatch(packet.match);
+              if (packet.yourMapVote) { setSelectedMapVote(packet.yourMapVote); setHasVoted(true); }
+              if (packet.yourModeVote) setHasModeVoted(true);
+            }
           }
           else if ((packet.type === "joined" || packet.type === "state") && packet.player) {
             if (packet.player.id === localNetworkId) return;
@@ -871,6 +880,11 @@ export function FpsGame() {
           }
           else if (packet.type === "player_health" && packet.id && packet.health === 100) {
             const avatar = remotePlayers.get(packet.id); if (avatar) avatar.visible = true;
+          }
+          else if (packet.type === "round_start" && packet.player) {
+            playerPosition.set(packet.player.x, packet.player.y, packet.player.z); camera.position.copy(playerPosition); lastClearPosition.copy(playerPosition);
+            yaw = packet.player.yaw; playerHealth = 100; setHealth(100); setDead(false); setHealing(false); keys.clear();
+            if (packet.map && packet.map !== selectedMap) setSelectedMap(packet.map);
           }
           else if (packet.type === "match" && packet.match) applyMatch(packet.match, packet.match.votes === 0 && packet.match.modeVotes === 0);
         } catch {}
@@ -1780,12 +1794,12 @@ export function FpsGame() {
           <h2><span>MATCH</span> VOTING</h2>
           <p>CHOOSE THE NEXT BATTLEFIELD AND GAMEMODE</p>
           <h3>MAP</h3>
-          <button className={hasVoted ? "voted" : ""} disabled={hasVoted} onClick={() => { multiplayerSendRef.current({ type: "vote", category: "map", map: "CITY BLOCK" }); setHasVoted(true); }}>
-            <i>01</i><span><b>CITY BLOCK</b><small>URBAN WARFARE · ENTERABLE BUILDINGS · DEBRIS</small></span><em>{hasVoted ? "VOTE LOCKED" : "VOTE"}</em>
+          <button className={selectedMapVote === "CITY BLOCK" ? "voted selected-vote" : hasVoted ? "voted" : ""} disabled={hasVoted || multiplayerStatus !== "ONLINE"} onClick={() => { multiplayerSendRef.current({ type: "vote", category: "map", map: "CITY BLOCK" }); setSelectedMapVote("CITY BLOCK"); setHasVoted(true); }}>
+            <i>01</i><span><b>CITY BLOCK</b><small>URBAN WARFARE · ENTERABLE BUILDINGS · DEBRIS</small></span><em>{selectedMapVote === "CITY BLOCK" ? "YOUR VOTE" : hasVoted ? "LOCKED" : multiplayerStatus !== "ONLINE" ? "CONNECTING" : "VOTE"}</em>
           </button>
           <div className="vote-total"><i style={{ width: mapVotes ? `${cityMapVotes / mapVotes * 100}%` : "0%" }} /><span>{cityMapVotes} VOTE{cityMapVotes === 1 ? "" : "S"}</span></div>
-          <button className={hasVoted ? "voted" : ""} disabled={hasVoted} onClick={() => { multiplayerSendRef.current({ type: "vote", category: "map", map: "BLACKWOOD FOREST" }); setHasVoted(true); }}>
-            <i>02</i><span><b>BLACKWOOD FOREST</b><small>WOODLAND COMBAT · CREEK CROSSING · RANGER OUTPOST</small></span><em>{hasVoted ? "VOTE LOCKED" : "VOTE"}</em>
+          <button className={selectedMapVote === "BLACKWOOD FOREST" ? "voted selected-vote" : hasVoted ? "voted" : ""} disabled={hasVoted || multiplayerStatus !== "ONLINE"} onClick={() => { multiplayerSendRef.current({ type: "vote", category: "map", map: "BLACKWOOD FOREST" }); setSelectedMapVote("BLACKWOOD FOREST"); setHasVoted(true); }}>
+            <i>02</i><span><b>BLACKWOOD FOREST</b><small>WOODLAND COMBAT · CREEK CROSSING · RANGER OUTPOST</small></span><em>{selectedMapVote === "BLACKWOOD FOREST" ? "YOUR VOTE" : hasVoted ? "LOCKED" : multiplayerStatus !== "ONLINE" ? "CONNECTING" : "VOTE"}</em>
           </button>
           <div className="vote-total"><i style={{ width: mapVotes ? `${forestMapVotes / mapVotes * 100}%` : "0%" }} /><span>{forestMapVotes} VOTE{forestMapVotes === 1 ? "" : "S"}</span></div>
           <h3>GAMEMODE</h3>
