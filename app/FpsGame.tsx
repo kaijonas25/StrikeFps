@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
+import { onAuthStateChanged } from "firebase/auth";
+import { auth } from "./firebase";
 
 type Box = { minX: number; maxX: number; minY: number; maxY: number; minZ: number; maxZ: number; active?: boolean };
 type PlayerStance = "standing" | "crouching" | "prone";
@@ -19,6 +21,8 @@ type MagazineAttachment = "STANDARD MAG" | "EXTENDED MAG" | "DRUM MAG";
 type FireControlAttachment = "STANDARD TRIGGER" | "BURST TRIGGER";
 type WeaponAttachments = { sight: SightAttachment; muzzle: MuzzleAttachment; tactical: TacticalAttachment; magazine: MagazineAttachment; fireControl: FireControlAttachment };
 type PlayerAppearance = { skin: string; uniform: string; armor: string; helmet: string; faceGear: string; headAccessory: string; chestRig: string; backpack: string; pants: string; gloves: string; boots: string };
+type SavedLoadout = { primary: string; secondary: string; medical: string; utility: string; weaponSight: SightAttachment; muzzleAttachment: MuzzleAttachment; tacticalAttachment: TacticalAttachment; magazineAttachment: MagazineAttachment; fireControlAttachment: FireControlAttachment; secondarySight: SightAttachment; secondaryMuzzle: MuzzleAttachment; secondaryTactical: TacticalAttachment; secondaryMagazine: MagazineAttachment; secondaryFireControl: FireControlAttachment };
+type SavedOperator = { characterSkin: string; characterUniform: string; characterArmor: string; characterHelmet: "TACTICAL" | "LIGHT" | "HEAVY"; faceGear: "NONE" | "GOGGLES" | "MASK"; headAccessory: "NONE" | "HEADSET" | "NVG"; chestRig: "LIGHT" | "PLATE CARRIER" | "HEAVY"; backpack: "NONE" | "ASSAULT PACK" | "RADIO PACK"; pantsColor: string; gloveColor: string; bootColor: string };
 
 const attachmentMobilityPenalty = (attachments: WeaponAttachments) =>
   (attachments.muzzle === "SUPPRESSOR" ? 4 : 0) +
@@ -157,6 +161,50 @@ export function FpsGame() {
   const [secondaryTactical, setSecondaryTactical] = useState<TacticalAttachment>("NONE");
   const [secondaryMagazine, setSecondaryMagazine] = useState<MagazineAttachment>("STANDARD MAG");
   const [secondaryFireControl, setSecondaryFireControl] = useState<FireControlAttachment>("STANDARD TRIGGER");
+  const [accountSaveStatus, setAccountSaveStatus] = useState<"idle" | "loading" | "saving" | "saved" | "error">("loading");
+
+  useEffect(() => onAuthStateChanged(auth, async (user) => {
+    if (!user) { setAccountSaveStatus("idle"); return; }
+    try {
+      const token = await user.getIdToken();
+      const response = await fetch("/api/player", { headers: { Authorization: `Bearer ${token}` } });
+      if (!response.ok) throw new Error("Unable to load preferences");
+      const data = await response.json() as { player?: { loadout?: Partial<SavedLoadout>; operator?: Partial<SavedOperator> } };
+      const loadout = data.player?.loadout;
+      if (loadout) {
+        if (loadout.primary) setPrimary(loadout.primary); if (loadout.secondary) setSecondary(loadout.secondary);
+        if (loadout.medical) setMedical(loadout.medical); if (loadout.utility) setUtility(loadout.utility);
+        if (loadout.weaponSight) setWeaponSight(loadout.weaponSight); if (loadout.muzzleAttachment) setMuzzleAttachment(loadout.muzzleAttachment);
+        if (loadout.tacticalAttachment) setTacticalAttachment(loadout.tacticalAttachment); if (loadout.magazineAttachment) setMagazineAttachment(loadout.magazineAttachment);
+        if (loadout.fireControlAttachment) setFireControlAttachment(loadout.fireControlAttachment); if (loadout.secondarySight) setSecondarySight(loadout.secondarySight);
+        if (loadout.secondaryMuzzle) setSecondaryMuzzle(loadout.secondaryMuzzle); if (loadout.secondaryTactical) setSecondaryTactical(loadout.secondaryTactical);
+        if (loadout.secondaryMagazine) setSecondaryMagazine(loadout.secondaryMagazine); if (loadout.secondaryFireControl) setSecondaryFireControl(loadout.secondaryFireControl);
+      }
+      const operator = data.player?.operator;
+      if (operator) {
+        if (operator.characterSkin) setCharacterSkin(operator.characterSkin); if (operator.characterUniform) setCharacterUniform(operator.characterUniform);
+        if (operator.characterArmor) setCharacterArmor(operator.characterArmor); if (operator.characterHelmet) setCharacterHelmet(operator.characterHelmet);
+        if (operator.faceGear) setFaceGear(operator.faceGear); if (operator.headAccessory) setHeadAccessory(operator.headAccessory);
+        if (operator.chestRig) setChestRig(operator.chestRig); if (operator.backpack) setBackpack(operator.backpack);
+        if (operator.pantsColor) setPantsColor(operator.pantsColor); if (operator.gloveColor) setGloveColor(operator.gloveColor); if (operator.bootColor) setBootColor(operator.bootColor);
+      }
+      setAccountSaveStatus("saved");
+    } catch { setAccountSaveStatus("error"); }
+  }), []);
+
+  const saveAccountPreferences = async (kind: "loadout" | "operator") => {
+    const user = auth.currentUser;
+    if (!user) { setAccountSaveStatus("idle"); return; }
+    setAccountSaveStatus("saving");
+    const loadout: SavedLoadout = { primary, secondary, medical, utility, weaponSight, muzzleAttachment, tacticalAttachment, magazineAttachment, fireControlAttachment, secondarySight, secondaryMuzzle, secondaryTactical, secondaryMagazine, secondaryFireControl };
+    const operator: SavedOperator = { characterSkin, characterUniform, characterArmor, characterHelmet, faceGear, headAccessory, chestRig, backpack, pantsColor, gloveColor, bootColor };
+    try {
+      const token = await user.getIdToken();
+      const response = await fetch("/api/player", { method: "PUT", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify(kind === "loadout" ? { loadout } : { operator }) });
+      if (!response.ok) throw new Error("Save failed");
+      setAccountSaveStatus("saved");
+    } catch { setAccountSaveStatus("error"); }
+  };
 
   useEffect(() => {
     const updateClock = () => setMatchTimeLeft(Math.max(0, matchEndsAt - Date.now()));
@@ -1907,7 +1955,9 @@ export function FpsGame() {
             <button onClick={() => setMenuPage("CHARACTER")}><b>03</b><span>OPERATOR</span><small>CUSTOMIZE CHARACTER</small></button>
             <a href="/login"><b>04</b><span>ACCOUNT</span><small>LOGIN OR CREATE PROFILE</small></a>
             <button disabled><b>05</b><span>SETTINGS</span><small>COMING SOON</small></button>
-          </nav></>}
+          </nav>
+          <div className={`account-sync ${accountSaveStatus}`}>{accountSaveStatus === "saved" ? "● ACCOUNT LOADOUT SYNCED" : accountSaveStatus === "saving" ? "● SAVING ACCOUNT…" : accountSaveStatus === "error" ? "● ACCOUNT SAVE UNAVAILABLE" : accountSaveStatus === "loading" ? "● LOADING ACCOUNT…" : "○ SIGN IN TO SAVE LOADOUT & OPERATOR"}</div>
+          </>}
           {(!started && menuPage === "HOME" && serverBrowserOpen) && <div className="server-browser">
             <button className="back-button" onClick={() => setServerBrowserOpen(false)}>← MAIN MENU</button>
             <div className="server-heading"><div><span>PLAY</span> SECTORS</div><small>SELECT A DESTINATION</small></div>
@@ -1973,7 +2023,7 @@ export function FpsGame() {
                 <AttachmentOption label="FIRE CONTROL" value={secondaryFireControl} options={["STANDARD TRIGGER", "BURST TRIGGER"]} onSelect={(value) => setSecondaryFireControl(value as typeof secondaryFireControl)} />
               </div>
             </div>
-            <button className="confirm-loadout" onClick={() => setMenuPage("HOME")}>CONFIRM LOADOUT</button>
+            <button className="confirm-loadout" onClick={() => { void saveAccountPreferences("loadout"); setMenuPage("HOME"); }}>CONFIRM LOADOUT</button>
           </div>}
           {(!started && menuPage === "CHARACTER") && <div className="character-editor">
             <button className="back-button" onClick={() => setMenuPage("HOME")}>← MAIN MENU</button>
@@ -1999,7 +2049,7 @@ export function FpsGame() {
               <GearOption label="CHEST RIG" value={chestRig} options={["LIGHT", "PLATE CARRIER", "HEAVY"]} onSelect={(value) => setChestRig(value as typeof chestRig)} />
               <GearOption label="BACKPACK" value={backpack} options={["NONE", "ASSAULT PACK", "RADIO PACK"]} onSelect={(value) => setBackpack(value as typeof backpack)} />
             </div>
-            <button className="confirm-loadout" onClick={() => setMenuPage("HOME")}>SAVE OPERATOR</button>
+            <button className="confirm-loadout" onClick={() => { void saveAccountPreferences("operator"); setMenuPage("HOME"); }}>SAVE OPERATOR</button>
           </div>}
           {started && <>
           <h1><span>STRIKE</span>YARD</h1>

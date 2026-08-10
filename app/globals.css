@@ -84,6 +84,7 @@ kbd:first-child { margin-left: 0; }
 .main-nav button b,.main-nav a b { color:#4d5d61; font-size:8px; font-weight:400; }.main-nav button span,.main-nav a span { font-family:var(--font-geist-sans),sans-serif; font-size:13px; font-weight:700; letter-spacing:.13em; }.main-nav button small,.main-nav a small { text-align:right; font-size:7px; letter-spacing:.13em; opacity:.55; }
 .main-nav a:hover { color:#edf5f2; padding-left:21px; border-left:2px solid #ff6336; background:linear-gradient(90deg,rgba(255,99,54,.17),transparent); }
 .main-nav a:hover b { color:#ff754c; }
+.account-sync { margin-top:14px; color:#617276; font-size:6px; letter-spacing:.15em; }.account-sync.saved { color:#5dbf89; }.account-sync.saving,.account-sync.loading { color:#d19a68; }.account-sync.error { color:#d66f62; }
 .main-nav button.nav-active { color:#edf5f2; border-left:2px solid #ff6336; background:linear-gradient(90deg,rgba(255,99,54,.17),transparent); }
 .main-nav button.nav-active b { color:#ff754c; }.main-nav button.nav-active:hover { padding-left:21px; background:linear-gradient(90deg,rgba(255,99,54,.32),transparent); }
 .main-nav button:disabled { cursor:default; opacity:.48; }

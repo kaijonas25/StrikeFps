@@ -11,6 +11,8 @@ export const players = sqliteTable("players", {
   deaths: integer("deaths").notNull().default(0),
   wins: integer("wins").notNull().default(0),
   matchesPlayed: integer("matches_played").notNull().default(0),
+  loadoutJson: text("loadout_json").notNull().default("{}"),
+  operatorJson: text("operator_json").notNull().default("{}"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });
