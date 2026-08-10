@@ -742,6 +742,7 @@ export function FpsGame() {
       avatar.visible = (state.health ?? 100) > 0;
     };
     let multiplayerSocket: WebSocket | undefined;
+    let localNetworkId = "";
     let lastMultiplayerSend = 0;
     if (started && selectedSector !== "TRAINING SECTOR" && MULTIPLAYER_SERVER) {
       setMultiplayerStatus("CONNECTING");
@@ -763,12 +764,14 @@ export function FpsGame() {
             if (match.phase === "voting" || match.phase === "results") document.exitPointerLock();
           };
           if (packet.type === "welcome") {
-            packet.players?.forEach(upsertRemotePlayer);
-            if (packet.id) { setLocalPlayerId(packet.id); setConnectedPlayerIds([packet.id, ...(packet.players ?? []).map((player) => player.id)]); }
+            const otherPlayers = (packet.players ?? []).filter((player) => player.id !== packet.id);
+            otherPlayers.forEach(upsertRemotePlayer);
+            if (packet.id) { localNetworkId = packet.id; setLocalPlayerId(packet.id); setConnectedPlayerIds([...new Set([packet.id, ...otherPlayers.map((player) => player.id)])]); }
             if (packet.player) { playerPosition.set(packet.player.x, packet.player.y, packet.player.z); camera.position.copy(playerPosition); yaw = packet.player.yaw; }
             if (packet.match) applyMatch(packet.match);
           }
           else if ((packet.type === "joined" || packet.type === "state") && packet.player) {
+            if (packet.player.id === localNetworkId) return;
             upsertRemotePlayer(packet.player);
             if (packet.type === "joined") setConnectedPlayerIds((ids) => ids.includes(packet.player!.id) ? ids : [...ids, packet.player!.id]);
           }

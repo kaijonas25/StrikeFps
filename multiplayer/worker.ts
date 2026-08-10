@@ -47,7 +47,9 @@ export class GameRoom extends DurableObject {
     this.ctx.acceptWebSocket(server);
     server.serializeAttachment({ id, state: initial } satisfies SocketAttachment);
 
-    const players = this.ctx.getWebSockets().filter((socket) => socket !== server).map((socket) => (socket.deserializeAttachment() as SocketAttachment).state);
+    const players = this.ctx.getWebSockets()
+      .filter((socket) => socket.readyState === WebSocket.OPEN && (socket.deserializeAttachment() as SocketAttachment).id !== id)
+      .map((socket) => (socket.deserializeAttachment() as SocketAttachment).state);
     server.send(JSON.stringify({ type: "welcome", id, player: initial, players, match: meta }));
     this.broadcast({ type: "joined", player: initial }, server);
     return new Response(null, { status: 101, webSocket: client });
@@ -152,7 +154,12 @@ export class GameRoom extends DurableObject {
 
   private broadcast(packet: unknown, except?: WebSocket) {
     const encoded = JSON.stringify(packet);
-    this.ctx.getWebSockets().forEach((socket) => { if (socket !== except) try { socket.send(encoded); } catch {} });
+    const exceptId = except ? (except.deserializeAttachment() as SocketAttachment | null)?.id : undefined;
+    this.ctx.getWebSockets().forEach((socket) => {
+      const attachment = socket.deserializeAttachment() as SocketAttachment | null;
+      if (socket.readyState !== WebSocket.OPEN || (exceptId && attachment?.id === exceptId)) return;
+      try { socket.send(encoded); } catch {}
+    });
   }
 
   private async resetEmptyRoom() {
