@@ -719,7 +719,7 @@ export function FpsGame() {
       item.scale.setScalar(.78); item.position.set(-.045, 1.56, .03);
       item.traverse((object) => { if (object instanceof THREE.Mesh) object.raycast = () => {}; }); localPlayer.add(item);
     });
-    type RemoteState = { id: string; x: number; y: number; z: number; yaw: number; movement: "static" | "walk" | "sprint"; crouching: boolean; prone: boolean; slot: number };
+    type RemoteState = { id: string; x: number; y: number; z: number; yaw: number; movement: "static" | "walk" | "sprint"; crouching: boolean; prone: boolean; slot: number; health?: number };
     const remotePlayers = new Map<string, THREE.Group>();
     const upsertRemotePlayer = (state: RemoteState) => {
       let avatar = remotePlayers.get(state.id);
@@ -727,11 +727,19 @@ export function FpsGame() {
         avatar = addDummy(state.x, state.z, 0x435e70, "static", false);
         avatar.visible = true; avatar.userData.targetPosition = new THREE.Vector3(state.x, state.y - PLAYER_HEIGHT, state.z);
         const remoteWeapon = worldPrimary.clone(true); remoteWeapon.visible = true; avatar.add(remoteWeapon);
+        avatar.userData.isRemotePlayer = true;
+        avatar.traverse((object) => {
+          if (!(object instanceof THREE.Mesh) || remoteWeapon.getObjectById(object.id)) return;
+          object.raycast = THREE.Mesh.prototype.raycast;
+          object.userData.remotePlayerId = state.id;
+          object.userData.damageMultiplier = object.parent === avatar!.userData.headRig ? 2 : 1;
+        });
         remotePlayers.set(state.id, avatar);
       }
       avatar.userData.targetPosition.set(state.x, state.y - PLAYER_HEIGHT - (state.crouching ? .42 : 0), state.z);
       avatar.userData.targetYaw = state.yaw; avatar.userData.movement = state.prone ? "static" : state.movement;
       avatar.userData.remoteProne = state.prone; avatar.userData.remoteCrouching = state.crouching;
+      avatar.visible = (state.health ?? 100) > 0;
     };
     let multiplayerSocket: WebSocket | undefined;
     let lastMultiplayerSend = 0;
@@ -746,7 +754,7 @@ export function FpsGame() {
       multiplayerSocket.addEventListener("message", (event) => {
         if (typeof event.data !== "string") return;
         try {
-          const packet = JSON.parse(event.data) as { type: string; player?: RemoteState; players?: RemoteState[]; id?: string; match?: { phase: "voting" | "playing" | "results"; phaseEndsAt: number; votes: number; modeVotes: number; endVotes: number; mode: "FFA"; winnerId: string | null; winningKills: number } };
+          const packet = JSON.parse(event.data) as { type: string; player?: RemoteState; players?: RemoteState[]; id?: string; health?: number; attackerId?: string; weapon?: string; headshot?: boolean; match?: { phase: "voting" | "playing" | "results"; phaseEndsAt: number; votes: number; modeVotes: number; endVotes: number; mode: "FFA"; winnerId: string | null; winningKills: number } };
           const applyMatch = (match: NonNullable<typeof packet.match>, resetVotes = false) => {
             setMatchPhase(match.phase); setMapVotes(match.votes); setModeVotes(match.modeVotes ?? 0); setEndGameVotes(match.endVotes ?? 0); setMatchEndsAt(match.phaseEndsAt);
             setMatchWinnerId(match.winnerId ?? null); setWinningKills(match.winningKills ?? 0);
@@ -757,6 +765,7 @@ export function FpsGame() {
           if (packet.type === "welcome") {
             packet.players?.forEach(upsertRemotePlayer);
             if (packet.id) { setLocalPlayerId(packet.id); setConnectedPlayerIds([packet.id, ...(packet.players ?? []).map((player) => player.id)]); }
+            if (packet.player) { playerPosition.set(packet.player.x, packet.player.y, packet.player.z); camera.position.copy(playerPosition); yaw = packet.player.yaw; }
             if (packet.match) applyMatch(packet.match);
           }
           else if ((packet.type === "joined" || packet.type === "state") && packet.player) {
@@ -766,6 +775,16 @@ export function FpsGame() {
           else if (packet.type === "left" && packet.id) {
             const avatar = remotePlayers.get(packet.id); if (avatar) scene.remove(avatar); remotePlayers.delete(packet.id);
             setConnectedPlayerIds((ids) => ids.filter((id) => id !== packet.id));
+          }
+          else if (packet.type === "damage" && typeof packet.health === "number") {
+            playerHealth = packet.health; setHealth(playerHealth);
+            if (playerHealth <= 0) { setDead(true); triggerHeld = false; keys.clear(); if (document.pointerLockElement) document.exitPointerLock(); }
+          }
+          else if (packet.type === "killed" && packet.id) {
+            const avatar = remotePlayers.get(packet.id); if (avatar) avatar.visible = false;
+          }
+          else if (packet.type === "player_health" && packet.id && packet.health === 100) {
+            const avatar = remotePlayers.get(packet.id); if (avatar) avatar.visible = true;
           }
           else if (packet.type === "match" && packet.match) applyMatch(packet.match, packet.match.votes === 0 && packet.match.modeVotes === 0);
         } catch {}
@@ -959,6 +978,11 @@ export function FpsGame() {
     const damageDummy = (hit: THREE.Intersection, damage: number) => {
       const multiplier = hit.object.userData.damageMultiplier ?? 1;
       const weapon = currentSlot === 1 ? primary : secondary;
+      const remotePlayerId = hit.object.userData.remotePlayerId as string | undefined;
+      if (remotePlayerId) {
+        multiplayerSendRef.current({ type: "hit", targetId: remotePlayerId, damage: damage * multiplier, weapon, headshot: multiplier >= 2 });
+        return;
+      }
       damageDummyGroup(hit.object.userData.dummy as THREE.Group | undefined, damage * multiplier, weapon, multiplier >= 2);
     };
     const getThrow = () => {
@@ -1262,7 +1286,7 @@ export function FpsGame() {
           dummy.rotation.y = yaw;
           dummy.rotation.x = THREE.MathUtils.lerp(dummy.rotation.x, -proneAmount * 1.48, Math.min(1, dt * 10));
           dummy.rotation.z = THREE.MathUtils.lerp(dummy.rotation.z, -leanAmount * .14, Math.min(1, dt * 10));
-        } else {
+        } else if (!dummy.userData.isRemotePlayer) {
           dummy.position.z = dummy.userData.laneOrigin + (travel <= 12 ? -6 + travel : 18 - travel);
           dummy.rotation.y = travel <= 12 ? Math.PI : 0;
         }
@@ -1629,6 +1653,7 @@ export function FpsGame() {
         <div className="death-code">KIA</div><h2>OPERATOR DOWN</h2><p>TEST CONDITION: FATAL DAMAGE</p>
         <button onClick={() => {
           respawnRef.current(); setHealth(100); setDead(false);
+          multiplayerSendRef.current({ type: "respawn", x: 0, z: selectedMap === "CITY BLOCK" ? 38 : 15 });
           mountRef.current?.querySelector("canvas")?.requestPointerLock();
         }}>RESPAWN AT TEST YARD</button>
       </div>}

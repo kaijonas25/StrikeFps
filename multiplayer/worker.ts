@@ -14,6 +14,7 @@ type PlayerState = {
   secondary: string;
   kills: number;
   deaths: number;
+  health: number;
 };
 
 type SocketAttachment = { id: string; state: PlayerState; votedMapPhase?: number; votedModePhase?: number; endGamePhase?: number };
@@ -39,21 +40,51 @@ export class GameRoom extends DurableObject {
     const pair = new WebSocketPair();
     const client = pair[0], server = pair[1];
     const id = crypto.randomUUID();
-    const initial: PlayerState = { id, x: 0, y: 1.7, z: 38, yaw: 0, movement: "static", crouching: false, prone: false, slot: 1, primary: "VXR-4 CARBINE", secondary: "P9 SIDEARM", kills: 0, deaths: 0 };
+    const playerNumber = this.ctx.getWebSockets().filter((socket) => socket.readyState === WebSocket.OPEN).length;
+    const spawnX = [-6, 6, -6, 6][playerNumber % 4];
+    const spawnZ = [38, -38, -38, 38][playerNumber % 4];
+    const initial: PlayerState = { id, x: spawnX, y: 1.7, z: spawnZ, yaw: spawnZ > 0 ? 0 : Math.PI, movement: "static", crouching: false, prone: false, slot: 1, primary: "VXR-4 CARBINE", secondary: "P9 SIDEARM", kills: 0, deaths: 0, health: 100 };
     this.ctx.acceptWebSocket(server);
     server.serializeAttachment({ id, state: initial } satisfies SocketAttachment);
 
     const players = this.ctx.getWebSockets().filter((socket) => socket !== server).map((socket) => (socket.deserializeAttachment() as SocketAttachment).state);
-    server.send(JSON.stringify({ type: "welcome", id, players, match: meta }));
+    server.send(JSON.stringify({ type: "welcome", id, player: initial, players, match: meta }));
     this.broadcast({ type: "joined", player: initial }, server);
     return new Response(null, { status: 101, webSocket: client });
   }
 
   async webSocketMessage(socket: WebSocket, message: string | ArrayBuffer) {
     if (typeof message !== "string" || message.length > 4096) return;
-    let packet: Partial<PlayerState> & { type?: string; category?: "map" | "mode" };
+    let packet: Partial<PlayerState> & { type?: string; category?: "map" | "mode"; targetId?: string; damage?: number; weapon?: string; headshot?: boolean };
     try { packet = JSON.parse(message); } catch { return; }
     const attachment = socket.deserializeAttachment() as SocketAttachment;
+    if (packet.type === "hit") {
+      const meta = await this.currentMatch();
+      if (meta.phase !== "playing" || !packet.targetId || packet.targetId === attachment.id) return;
+      const targetSocket = this.ctx.getWebSockets().find((candidate) => (candidate.deserializeAttachment() as SocketAttachment).id === packet.targetId);
+      if (!targetSocket) return;
+      const target = targetSocket.deserializeAttachment() as SocketAttachment;
+      if (target.state.health <= 0) return;
+      const damage = Math.min(100, Math.max(0, typeof packet.damage === "number" && Number.isFinite(packet.damage) ? packet.damage : 0));
+      if (damage === 0) return;
+      target.state.health = Math.max(0, target.state.health - damage);
+      const killed = target.state.health === 0;
+      if (killed) { attachment.state.kills += 1; target.state.deaths += 1; }
+      socket.serializeAttachment(attachment); targetSocket.serializeAttachment(target);
+      targetSocket.send(JSON.stringify({ type: "damage", health: target.state.health, attackerId: attachment.id }));
+      this.broadcast({ type: killed ? "killed" : "player_health", id: target.state.id, health: target.state.health, attackerId: attachment.id, weapon: typeof packet.weapon === "string" ? packet.weapon.slice(0, 40) : "WEAPON", headshot: Boolean(packet.headshot) });
+      if (killed) this.broadcast({ type: "state", player: attachment.state });
+      return;
+    }
+    if (packet.type === "respawn") {
+      attachment.state.health = 100;
+      attachment.state.x = typeof packet.x === "number" && Number.isFinite(packet.x) ? packet.x : attachment.state.x;
+      attachment.state.y = 1.7;
+      attachment.state.z = typeof packet.z === "number" && Number.isFinite(packet.z) ? packet.z : attachment.state.z;
+      socket.serializeAttachment(attachment);
+      this.broadcast({ type: "state", player: attachment.state });
+      return;
+    }
     if (packet.type === "end_game") {
       const meta = await this.currentMatch();
       if (meta.phase !== "playing" || attachment.endGamePhase === meta.phaseEndsAt) return;
@@ -152,7 +183,7 @@ export class GameRoom extends DurableObject {
       phase = "playing"; duration = MATCH_DURATION;
       this.ctx.getWebSockets().forEach((socket) => {
         const attachment = socket.deserializeAttachment() as SocketAttachment;
-        attachment.state.kills = 0; attachment.state.deaths = 0; socket.serializeAttachment(attachment);
+        attachment.state.kills = 0; attachment.state.deaths = 0; attachment.state.health = 100; socket.serializeAttachment(attachment);
       });
     }
     else if (meta.phase === "playing") {
