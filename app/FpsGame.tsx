@@ -23,6 +23,7 @@ type WeaponAttachments = { sight: SightAttachment; muzzle: MuzzleAttachment; tac
 type PlayerAppearance = { skin: string; uniform: string; armor: string; helmet: string; faceGear: string; headAccessory: string; chestRig: string; backpack: string; pants: string; gloves: string; boots: string };
 type SavedLoadout = { primary: string; secondary: string; medical: string; utility: string; weaponSight: SightAttachment; muzzleAttachment: MuzzleAttachment; tacticalAttachment: TacticalAttachment; magazineAttachment: MagazineAttachment; fireControlAttachment: FireControlAttachment; secondarySight: SightAttachment; secondaryMuzzle: MuzzleAttachment; secondaryTactical: TacticalAttachment; secondaryMagazine: MagazineAttachment; secondaryFireControl: FireControlAttachment };
 type SavedOperator = { characterSkin: string; characterUniform: string; characterArmor: string; characterHelmet: "TACTICAL" | "LIGHT" | "HEAVY"; faceGear: "NONE" | "GOGGLES" | "MASK"; headAccessory: "NONE" | "HEADSET" | "NVG"; chestRig: "LIGHT" | "PLATE CARRIER" | "HEAVY"; backpack: "NONE" | "ASSAULT PACK" | "RADIO PACK"; pantsColor: string; gloveColor: string; bootColor: string };
+type AdminCommand = "refill_ammo" | "refill_medical" | "refill_utility" | "restore_health" | "kill_targets";
 
 const attachmentMobilityPenalty = (attachments: WeaponAttachments) =>
   (attachments.muzzle === "SUPPRESSOR" ? 4 : 0) +
@@ -84,6 +85,10 @@ export function FpsGame() {
   const mountRef = useRef<HTMLDivElement>(null);
   const respawnRef = useRef<() => void>(() => {});
   const multiplayerSendRef = useRef<(packet: unknown) => void>(() => {});
+  const adminAuthorizedRef = useRef(false);
+  const adminPanelOpenRef = useRef(false);
+  const adminControlsRef = useRef({ flying: false, noclip: false, damageMultiplier: 1 });
+  const adminCommandRef = useRef<(command: AdminCommand) => void>(() => {});
   const [locked, setLocked] = useState(false);
   const [started, setStarted] = useState(false);
   const [ammo, setAmmo] = useState(30);
@@ -162,14 +167,28 @@ export function FpsGame() {
   const [secondaryMagazine, setSecondaryMagazine] = useState<MagazineAttachment>("STANDARD MAG");
   const [secondaryFireControl, setSecondaryFireControl] = useState<FireControlAttachment>("STANDARD TRIGGER");
   const [accountSaveStatus, setAccountSaveStatus] = useState<"idle" | "loading" | "saving" | "saved" | "error">("loading");
+  const [adminAuthorized, setAdminAuthorized] = useState(false);
+  const [adminPanelOpen, setAdminPanelOpen] = useState(false);
+  const [adminFlying, setAdminFlying] = useState(false);
+  const [adminNoclip, setAdminNoclip] = useState(false);
+  const [adminDamageMultiplier, setAdminDamageMultiplier] = useState(1);
+
+  const updateAdminControls = (next: Partial<{ flying: boolean; noclip: boolean; damageMultiplier: number }>) => {
+    adminControlsRef.current = { ...adminControlsRef.current, ...next };
+    if (typeof next.flying === "boolean") setAdminFlying(next.flying);
+    if (typeof next.noclip === "boolean") setAdminNoclip(next.noclip);
+    if (typeof next.damageMultiplier === "number") setAdminDamageMultiplier(next.damageMultiplier);
+  };
 
   useEffect(() => onAuthStateChanged(auth, async (user) => {
-    if (!user) { setAccountSaveStatus("idle"); return; }
+    if (!user) { adminAuthorizedRef.current = false; setAdminAuthorized(false); setAdminPanelOpen(false); setAccountSaveStatus("idle"); return; }
     try {
       const token = await user.getIdToken();
       const response = await fetch("/api/player", { headers: { Authorization: `Bearer ${token}` } });
       if (!response.ok) throw new Error("Unable to load preferences");
-      const data = await response.json() as { player?: { loadout?: Partial<SavedLoadout>; operator?: Partial<SavedOperator> } };
+      const data = await response.json() as { isAdmin?: boolean; player?: { loadout?: Partial<SavedLoadout>; operator?: Partial<SavedOperator> } };
+      adminAuthorizedRef.current = Boolean(data.isAdmin);
+      setAdminAuthorized(Boolean(data.isAdmin));
       const loadout = data.player?.loadout;
       if (loadout) {
         if (loadout.primary) setPrimary(loadout.primary); if (loadout.secondary) setSecondary(loadout.secondary);
@@ -189,8 +208,12 @@ export function FpsGame() {
         if (operator.pantsColor) setPantsColor(operator.pantsColor); if (operator.gloveColor) setGloveColor(operator.gloveColor); if (operator.bootColor) setBootColor(operator.bootColor);
       }
       setAccountSaveStatus("saved");
-    } catch { setAccountSaveStatus("error"); }
+    } catch { adminAuthorizedRef.current = false; setAdminAuthorized(false); setAccountSaveStatus("error"); }
   }), []);
+
+  useEffect(() => {
+    adminPanelOpenRef.current = adminPanelOpen;
+  }, [adminPanelOpen]);
 
   const saveAccountPreferences = async (kind: "loadout" | "operator") => {
     const user = auth.currentUser;
@@ -1102,6 +1125,17 @@ export function FpsGame() {
     };
 
     const onKeyDown = (e: KeyboardEvent) => {
+      if (e.code === "Equal" && !e.repeat && adminAuthorizedRef.current && started) {
+        e.preventDefault();
+        setAdminPanelOpen((open) => {
+          const next = !open; adminPanelOpenRef.current = next;
+          if (next && document.pointerLockElement) document.exitPointerLock();
+          return next;
+        });
+        keys.clear();
+        return;
+      }
+      if (adminPanelOpenRef.current) return;
       keys.add(e.code);
       if (e.code === "Tab" && !e.repeat) {
         e.preventDefault(); isThirdPerson = !isThirdPerson; setThirdPerson(isThirdPerson);
@@ -1110,7 +1144,7 @@ export function FpsGame() {
         else { yaw = cameraYaw; pitch = 0; }
         localPlayer.visible = isThirdPerson;
       }
-      if (e.code === "Space" && grounded) {
+      if (e.code === "Space" && grounded && !adminControlsRef.current.flying) {
         if ((isProne || isCrouching) && !fitStanceOutsideWalls("standing")) return;
         isProne = false; isCrouching = false; setProne(false); setCrouching(false); verticalVelocity = 5.7; grounded = false;
       }
@@ -1224,13 +1258,29 @@ export function FpsGame() {
     };
     const damageDummy = (hit: THREE.Intersection, damage: number) => {
       const multiplier = hit.object.userData.damageMultiplier ?? 1;
+      const adminDamage = adminAuthorizedRef.current ? adminControlsRef.current.damageMultiplier : 1;
       const weapon = currentSlot === 1 ? primary : secondary;
       const remotePlayerId = hit.object.userData.remotePlayerId as string | undefined;
       if (remotePlayerId) {
-        multiplayerSendRef.current({ type: "hit", targetId: remotePlayerId, damage: damage * multiplier, weapon, headshot: multiplier >= 2 });
+        multiplayerSendRef.current({ type: "hit", targetId: remotePlayerId, damage: damage * multiplier * adminDamage, weapon, headshot: multiplier >= 2 });
         return;
       }
-      damageDummyGroup(hit.object.userData.dummy as THREE.Group | undefined, damage * multiplier, weapon, multiplier >= 2);
+      damageDummyGroup(hit.object.userData.dummy as THREE.Group | undefined, damage * multiplier * adminDamage, weapon, multiplier >= 2);
+    };
+    adminCommandRef.current = (command) => {
+      if (!adminAuthorizedRef.current) return;
+      if (command === "refill_ammo") {
+        ammoCounts[0] = primaryStats.capacity; ammoCounts[1] = secondaryStats.capacity;
+        ammoCount = ammoCounts[currentSlot - 1] ?? ammoCount; setAmmo(ammoCount);
+      } else if (command === "refill_medical") {
+        medicalCharges = 9; setMedicalCount(medicalCharges);
+      } else if (command === "refill_utility") {
+        grenadesLeft = 9; setUtilityCount(grenadesLeft);
+      } else if (command === "restore_health") {
+        playerHealth = 100; setHealth(100); setDead(false);
+      } else if (command === "kill_targets") {
+        dummies.filter((dummy) => dummy.visible).forEach((dummy) => damageDummyGroup(dummy, dummy.userData.health, "ADMIN", false));
+      }
     };
     const getThrow = () => {
       const direction = new THREE.Vector3(); camera.getWorldDirection(direction);
@@ -1481,14 +1531,15 @@ export function FpsGame() {
       // Sweep movement in short steps so sprinting, sliding, or a slow frame
       // cannot tunnel the player through thin walls. Axis separation preserves
       // natural sliding along a wall when only one direction is blocked.
+      const adminNoclipActive = adminAuthorizedRef.current && adminControlsRef.current.noclip;
       const movementSteps = Math.max(1, Math.ceil(Math.max(Math.abs(dx), Math.abs(dz)) / .1));
       const stepX = dx / movementSteps, stepZ = dz / movementSteps;
       for (let step = 0; step < movementSteps; step++) {
-        if (!collides(playerPosition.x + stepX, playerPosition.z)) playerPosition.x += stepX;
-        if (!collides(playerPosition.x, playerPosition.z + stepZ)) playerPosition.z += stepZ;
+        if (adminNoclipActive || !collides(playerPosition.x + stepX, playerPosition.z)) playerPosition.x += stepX;
+        if (adminNoclipActive || !collides(playerPosition.x, playerPosition.z + stepZ)) playerPosition.z += stepZ;
       }
       if (isThirdPerson && input.lengthSq() > 0) yaw = Math.atan2(-dx, -dz);
-      if (!fitStanceOutsideWalls(currentStance())) {
+      if (!adminNoclipActive && !fitStanceOutsideWalls(currentStance())) {
         // A pathological fully enclosed position keeps its last valid location
         // instead of being pushed through geometry to the opposite side.
         playerPosition.x = lastClearPosition.x; playerPosition.z = lastClearPosition.z;
@@ -1517,9 +1568,16 @@ export function FpsGame() {
 
       const standingInCreek = forestMap && Math.abs((playerPosition.x + 10) + playerPosition.z * .08) < 3.5 && Math.abs(playerPosition.z) < 42;
       const groundHeight = standingInCreek ? PLAYER_HEIGHT - .7 : PLAYER_HEIGHT;
-      verticalVelocity -= 14.5 * dt;
-      playerPosition.y += verticalVelocity * dt;
-      if (playerPosition.y <= groundHeight) { playerPosition.y = groundHeight; verticalVelocity = 0; grounded = true; }
+      const adminFlyingActive = adminAuthorizedRef.current && adminControlsRef.current.flying;
+      if (adminFlyingActive) {
+        verticalVelocity = 0; grounded = false;
+        const verticalInput = Number(keys.has("Space")) - Number(keys.has("ControlLeft") || keys.has("ControlRight"));
+        playerPosition.y = Math.max(.35, playerPosition.y + verticalInput * 7.5 * dt);
+      } else {
+        verticalVelocity -= 14.5 * dt;
+        playerPosition.y += verticalVelocity * dt;
+        if (playerPosition.y <= groundHeight) { playerPosition.y = groundHeight; verticalVelocity = 0; grounded = true; }
+      }
 
       const moving = input.lengthSq() > 0 && grounded;
       movementSpread = input.lengthSq() > 0 ? 1.55 : 1;
@@ -1833,6 +1891,7 @@ export function FpsGame() {
       renderer.domElement.removeEventListener("contextmenu", onContextMenu);
       [...suppressedShotPool, ...unsuppressedShotPool].forEach((audio) => { audio.pause(); audio.src = ""; });
       multiplayerSocket?.close(1000, "leaving sector");
+      adminCommandRef.current = () => {};
       multiplayerSendRef.current = () => {};
       setMultiplayerStatus("OFFLINE");
       setConnectedPlayerIds([]); setLocalPlayerId("");
@@ -1861,6 +1920,35 @@ export function FpsGame() {
       <div className="kill-feed" aria-live="polite">
         {killFeed.map((entry) => <div key={entry.id}><b>YOU</b><span>{entry.weapon}</span>{entry.headshot && <i>HEADSHOT</i>}<strong>{entry.victim}</strong></div>)}
       </div>
+      {started && adminAuthorized && <div className="admin-game-badge"><kbd>=</kbd> ADMIN PANEL</div>}
+      {started && adminAuthorized && adminPanelOpen && <div className="game-admin-overlay" role="dialog" aria-modal="true" aria-label="In-game admin panel">
+        <section className="game-admin-panel">
+          <header><div><small>AUTHORIZED OPERATOR</small><h2>ADMIN <span>COMMAND</span></h2></div><button aria-label="Close admin panel" onClick={() => { adminPanelOpenRef.current = false; setAdminPanelOpen(false); mountRef.current?.querySelector("canvas")?.requestPointerLock(); }}>×</button></header>
+          <div className="admin-game-grid">
+            <article><h3>MOVEMENT</h3>
+              <button className={adminFlying ? "active" : ""} onClick={() => updateAdminControls({ flying: !adminFlying })}><span>FLY MODE</span><b>{adminFlying ? "ON" : "OFF"}</b></button>
+              <button className={adminNoclip ? "active" : ""} onClick={() => updateAdminControls({ noclip: !adminNoclip })}><span>NOCLIP</span><b>{adminNoclip ? "ON" : "OFF"}</b></button>
+              <p>Fly with WASD · Space up · Ctrl down</p>
+            </article>
+            <article><h3>COMBAT</h3>
+              <label><span>DAMAGE MULTIPLIER</span><select value={adminDamageMultiplier} onChange={(event) => updateAdminControls({ damageMultiplier: Number(event.target.value) })}><option value={1}>1× NORMAL</option><option value={2}>2× DAMAGE</option><option value={5}>5× DAMAGE</option><option value={10}>10× DAMAGE</option><option value={100}>100× INSTANT</option></select></label>
+              <button onClick={() => adminCommandRef.current("restore_health")}><span>RESTORE HEALTH</span><b>100 HP</b></button>
+              <button onClick={() => adminCommandRef.current("refill_ammo")}><span>SPAWN AMMO</span><b>FULL</b></button>
+            </article>
+            <article><h3>ITEM SPAWNER</h3>
+              <button onClick={() => adminCommandRef.current("refill_medical")}><span>{medical}</span><b>×9</b></button>
+              <button onClick={() => adminCommandRef.current("refill_utility")}><span>{utility}</span><b>×9</b></button>
+              <p>Items are added directly to your active loadout.</p>
+            </article>
+            <article className="admin-kill-panel"><h3>KILL PANEL</h3>
+              <button className="danger" onClick={() => adminCommandRef.current("kill_targets")}><span>ALL TRAINING TARGETS</span><b>ELIMINATE</b></button>
+              {connectedPlayerIds.filter((id) => id !== localPlayerId).map((id, index) => <button className="danger" key={id} onClick={() => multiplayerSendRef.current({ type: "hit", targetId: id, damage: 100, weapon: "ADMIN", headshot: false })}><span>OPERATOR {String(index + 1).padStart(2, "0")}</span><b>KILL</b></button>)}
+              {!connectedPlayerIds.some((id) => id !== localPlayerId) && <p>NO REMOTE OPERATORS CONNECTED</p>}
+            </article>
+          </div>
+          <footer><span>ADMIN SESSION · {auth.currentUser?.email}</span><button onClick={() => { adminPanelOpenRef.current = false; setAdminPanelOpen(false); mountRef.current?.querySelector("canvas")?.requestPointerLock(); }}>RETURN TO GAME <kbd>=</kbd></button></footer>
+        </section>
+      </div>}
       {started && selectedSector !== "TRAINING SECTOR" && matchPhase === "playing" && matchMode === "TDM" && <aside className="tdm-scoreboard">
         <div className={`tdm-team alpha${localTeam === "ALPHA" ? " local-team" : ""}`}><small>TEAM</small><span>ALPHA</span><strong>{teamScores.ALPHA}</strong></div>
         <div className="tdm-clock"><small>TEAM DEATHMATCH</small><strong>{formatMatchTime(matchTimeLeft)}</strong><span>{selectedMap}</span></div>
@@ -1891,7 +1979,7 @@ export function FpsGame() {
       <div className={`flash-effect${flashed ? " active" : ""}`} />
       <div className={`heal-effect${healingEffect ? " active" : ""}`} />
       {selectedMap === "TEST YARD" && <div className="test-legend"><span className="damage-dot" /> DAMAGE PAD <span className="kill-dot" /> KILL PAD <span className="heal-dot" /> HEAL PAD <span className="medical-dot" /> MEDICAL DROP <span className="utility-dot" /> UTILITY DROP</div>}
-      <div className="controls"><kbd>WASD</kbd> MOVE <kbd>SHIFT</kbd> SPRINT <kbd>C</kbd> CROUCH / SLIDE <kbd>X</kbd> PRONE <kbd>Q/E</kbd> LEAN <kbd>RMB</kbd> {thirdPerson ? "ORBIT CAMERA" : "AIM"} <kbd>LMB</kbd> FIRE <kbd>TAB</kbd> {thirdPerson ? "1ST PERSON" : "3RD PERSON"}</div>
+      <div className="controls"><kbd>WASD</kbd> MOVE <kbd>SHIFT</kbd> SPRINT <kbd>C</kbd> CROUCH / SLIDE <kbd>X</kbd> PRONE <kbd>Q/E</kbd> LEAN <kbd>RMB</kbd> {thirdPerson ? "ORBIT CAMERA" : "AIM"} <kbd>LMB</kbd> FIRE <kbd>TAB</kbd> {thirdPerson ? "1ST PERSON" : "3RD PERSON"}{adminAuthorized && <><kbd>=</kbd> ADMIN</>}</div>
       {started && matchPhase === "voting" && <div className="match-vote-overlay">
         <div className="match-vote-panel">
           <small>{selectedSector} · NEXT MATCH STARTS IN <b>{formatMatchTime(matchTimeLeft)}</b></small>
