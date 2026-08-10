@@ -1017,7 +1017,7 @@ export function FpsGame() {
       multiplayerSocket.addEventListener("message", (event) => {
         if (typeof event.data !== "string") return;
         try {
-          const packet = JSON.parse(event.data) as { type: string; player?: RemoteState; players?: RemoteState[]; id?: string; health?: number; score?: number; attackerId?: string; weapon?: string; headshot?: boolean; tracerEnds?: number[][]; yourMapVote?: Exclude<GameMap, "TEST YARD"> | null; yourModeVote?: GameMode | null; map?: Exclude<GameMap, "TEST YARD">; match?: { phase: "voting" | "playing" | "results"; phaseEndsAt: number; votes: number; mapVotes?: { "CITY BLOCK"?: number; "BLACKWOOD FOREST"?: number }; map: Exclude<GameMap, "TEST YARD">; modeVotes: number; modeVoteCounts?: { FFA?: number; TDM?: number; KOTH?: number; CTP?: number }; endVotes: number; mode: GameMode; teamScores?: { ALPHA: number; BRAVO: number }; objectiveZones?: ObjectiveZone[]; winnerId: string | null; winningTeam?: "ALPHA" | "BRAVO" | null; winningKills: number } };
+          const packet = JSON.parse(event.data) as { type: string; player?: RemoteState; players?: RemoteState[]; id?: string; health?: number; score?: number; attackerId?: string; weapon?: string; headshot?: boolean; tracerEnds?: number[][]; effect?: string; duration?: number; yourMapVote?: Exclude<GameMap, "TEST YARD"> | null; yourModeVote?: GameMode | null; map?: Exclude<GameMap, "TEST YARD">; match?: { phase: "voting" | "playing" | "results"; phaseEndsAt: number; votes: number; mapVotes?: { "CITY BLOCK"?: number; "BLACKWOOD FOREST"?: number }; map: Exclude<GameMap, "TEST YARD">; modeVotes: number; modeVoteCounts?: { FFA?: number; TDM?: number; KOTH?: number; CTP?: number }; endVotes: number; mode: GameMode; teamScores?: { ALPHA: number; BRAVO: number }; objectiveZones?: ObjectiveZone[]; winnerId: string | null; winningTeam?: "ALPHA" | "BRAVO" | null; winningKills: number } };
           const applyMatch = (match: NonNullable<typeof packet.match>, resetVotes = false) => {
             setMatchPhase(match.phase); setMapVotes(match.votes); setCityMapVotes(match.mapVotes?.["CITY BLOCK"] ?? match.votes); setForestMapVotes(match.mapVotes?.["BLACKWOOD FOREST"] ?? 0); setModeVotes(match.modeVotes ?? 0); setFfaModeVotes(match.modeVoteCounts?.FFA ?? match.modeVotes); setTdmModeVotes(match.modeVoteCounts?.TDM ?? 0); setKothModeVotes(match.modeVoteCounts?.KOTH ?? 0); setCtpModeVotes(match.modeVoteCounts?.CTP ?? 0); setEndGameVotes(match.endVotes ?? 0); setMatchEndsAt(match.phaseEndsAt);
             setMatchMode(match.mode ?? "FFA"); setTeamScores(match.teamScores ?? { ALPHA: 0, BRAVO: 0 }); setObjectiveZones(match.objectiveZones ?? []); updateObjectiveMarkers(match.objectiveZones ?? [], match.mode ?? "FFA"); setMatchWinnerId(match.winnerId ?? null); setWinningTeam(match.winningTeam ?? null); setWinningKills(match.winningKills ?? 0);
@@ -1055,6 +1055,9 @@ export function FpsGame() {
           }
           else if (packet.type === "objective_score" && typeof packet.score === "number") setLocalObjectiveScore(packet.score);
           else if (packet.type === "shot" && packet.id && packet.tracerEnds) showRemoteTracers(packet.id, packet.tracerEnds);
+          else if (packet.type === "utility_effect" && packet.effect === "flash") {
+            setFlashed(true); window.setTimeout(() => setFlashed(false), Math.min(1700, Math.max(250, packet.duration ?? 1000)));
+          }
           else if (packet.type === "killed" && packet.id) {
             const avatar = remotePlayers.get(packet.id); if (avatar) avatar.visible = false;
           }
@@ -1397,8 +1400,17 @@ export function FpsGame() {
     const detonate = (projectile: { mesh: THREE.Object3D; type: string }) => {
       const position = projectile.mesh.position.clone();
       scene.remove(projectile.mesh);
+      const damageRemotePlayers = (radius: number, maxDamage: number, weapon: string, falloff = true) => {
+        remotePlayers.forEach((avatar, targetId) => {
+          if (!avatar.visible) return;
+          const distance = avatar.position.distanceTo(position);
+          if (distance >= radius) return;
+          multiplayerSendRef.current({ type: "hit", targetId, damage: falloff ? Math.round(maxDamage * (1 - distance / radius)) : maxDamage, weapon, headshot: false });
+        });
+      };
       const applyExplosion = (radius: number, maxDamage: number, weapon: string) => {
         dummies.forEach((dummy) => { const distance = dummy.position.distanceTo(position); if (distance < radius) damageDummyGroup(dummy, Math.round(maxDamage * (1 - distance / radius)), weapon); });
+        damageRemotePlayers(radius, maxDamage, weapon);
         const distance = playerPosition.distanceTo(position);
         if (distance < radius) { playerHealth = Math.max(0, playerHealth - Math.round(maxDamage * (1 - distance / radius))); setHealth(playerHealth); if (playerHealth <= 0) { setDead(true); document.exitPointerLock(); } }
       };
@@ -1412,6 +1424,7 @@ export function FpsGame() {
         if (gas) {
           const gasTick = window.setInterval(() => {
             dummies.forEach((dummy) => { if (dummy.position.distanceTo(position) < 5) damageDummyGroup(dummy, 5, "GAS BOMB"); });
+            damageRemotePlayers(5, 5, "GAS BOMB", false);
             if (playerPosition.distanceTo(position) < 5) { playerHealth = Math.max(0, playerHealth - 4); setHealth(playerHealth); if (playerHealth <= 0) { setDead(true); document.exitPointerLock(); } }
           }, 500);
           window.setTimeout(() => window.clearInterval(gasTick), 9000);
@@ -1426,6 +1439,13 @@ export function FpsGame() {
         window.setTimeout(() => { window.clearInterval(expand); scene.remove(blast); }, 260);
         if (projectile.type === "FLASHBANG" && playerPosition.distanceTo(position) < 13) {
           setFlashed(true); window.setTimeout(() => setFlashed(false), 1700);
+        }
+        if (projectile.type === "FLASHBANG") {
+          remotePlayers.forEach((avatar, targetId) => {
+            if (!avatar.visible) return;
+            const distance = avatar.position.distanceTo(position);
+            if (distance < 13) multiplayerSendRef.current({ type: "utility_effect", targetId, effect: "flash", duration: Math.round(1700 * (1 - distance / 13)) });
+          });
         }
         if (projectile.type === "FRAG GRENADE") {
           applyExplosion(7, 110, "FRAG GRENADE");

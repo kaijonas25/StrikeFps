@@ -108,7 +108,7 @@ export class GameRoom extends DurableObject {
 
   async webSocketMessage(socket: WebSocket, message: string | ArrayBuffer) {
     if (typeof message !== "string" || message.length > 4096) return;
-    let packet: Partial<PlayerState> & { type?: string; category?: "map" | "mode"; map?: MultiplayerMap; mode?: GameMode; targetId?: string; damage?: number; weapon?: string; headshot?: boolean; tracerEnds?: unknown };
+    let packet: Partial<PlayerState> & { type?: string; category?: "map" | "mode"; map?: MultiplayerMap; mode?: GameMode; targetId?: string; damage?: number; weapon?: string; headshot?: boolean; tracerEnds?: unknown; effect?: string; duration?: number };
     try { packet = JSON.parse(message); } catch { return; }
     const attachment = socket.deserializeAttachment() as SocketAttachment;
     if (packet.type === "shot") {
@@ -118,6 +118,15 @@ export class GameRoom extends DurableObject {
         Array.isArray(point) && point.length === 3 && point.every((coordinate) => typeof coordinate === "number" && Number.isFinite(coordinate) && Math.abs(coordinate) <= 200)
       );
       if (tracerEnds.length) this.broadcast({ type: "shot", id: attachment.id, tracerEnds }, socket);
+      return;
+    }
+    if (packet.type === "utility_effect") {
+      const meta = await this.currentMatch();
+      if (meta.phase !== "playing" || packet.effect !== "flash" || !packet.targetId || packet.targetId === attachment.id) return;
+      const targetSocket = this.ctx.getWebSockets().find((candidate) => (candidate.deserializeAttachment() as SocketAttachment).id === packet.targetId);
+      if (!targetSocket) return;
+      const duration = Math.min(1700, Math.max(250, typeof packet.duration === "number" && Number.isFinite(packet.duration) ? packet.duration : 1000));
+      targetSocket.send(JSON.stringify({ type: "utility_effect", effect: "flash", duration, attackerId: attachment.id }));
       return;
     }
     if (packet.type === "hit") {
