@@ -1905,7 +1905,8 @@ export function FpsGame() {
             }}><b>01</b><span>PLAY</span><small>SELECT MULTIPLAYER SERVER</small></button>
             <button onClick={() => setMenuPage("LOADOUT")}><b>02</b><span>LOADOUT</span><small>EDIT EQUIPMENT</small></button>
             <button onClick={() => setMenuPage("CHARACTER")}><b>03</b><span>OPERATOR</span><small>CUSTOMIZE CHARACTER</small></button>
-            <button disabled><b>04</b><span>SETTINGS</span><small>COMING SOON</small></button>
+            <a href="/login"><b>04</b><span>ACCOUNT</span><small>LOGIN OR CREATE PROFILE</small></a>
+            <button disabled><b>05</b><span>SETTINGS</span><small>COMING SOON</small></button>
           </nav></>}
           {(!started && menuPage === "HOME" && serverBrowserOpen) && <div className="server-browser">
             <button className="back-button" onClick={() => setServerBrowserOpen(false)}>← MAIN MENU</button>
