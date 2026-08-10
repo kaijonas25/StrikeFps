@@ -1,6 +1,6 @@
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { getDb } from "../../../db";
-import { players } from "../../../db/schema";
+import { playerMatchResults, players } from "../../../db/schema";
 
 const FIREBASE_API_KEY = "AIzaSyBblKzSnl4XD7afgjqXETtVEhZyADn4-3s";
 const ADMIN_EMAIL = "kaigarcia2510@gmail.com";
@@ -69,4 +69,31 @@ export async function PATCH(request: Request) {
   if (!existing.length) await db.insert(players).values({ id: account.localId, email: account.email, callsign });
   else await db.update(players).set({ callsign, updatedAt: new Date().toISOString() }).where(eq(players.id, account.localId));
   return Response.json({ callsign });
+}
+
+export async function POST(request: Request) {
+  const account = await verifiedAccount(request);
+  if (!account) return Response.json({ error: "Unauthorized" }, { status: 401 });
+  const payload = await request.json() as { matchId?: string; kills?: number; deaths?: number; won?: boolean };
+  const matchId = payload.matchId?.trim() ?? "";
+  const kills = payload.kills, deaths = payload.deaths;
+  if (!/^[A-Z0-9 _:-]{8,80}$/i.test(matchId) || !Number.isInteger(kills) || !Number.isInteger(deaths) || kills! < 0 || deaths! < 0 || kills! > 500 || deaths! > 500 || typeof payload.won !== "boolean") {
+    return Response.json({ error: "Invalid match result" }, { status: 400 });
+  }
+  const db = getDb();
+  const fallbackCallsign = account.email.split("@")[0].replace(/[^a-z0-9_-]/gi, "").slice(0, 18).toUpperCase() || "OPERATOR";
+  await db.insert(players).values({ id: account.localId, email: account.email, callsign: account.displayName?.trim().slice(0, 18).toUpperCase() || fallbackCallsign }).onConflictDoNothing();
+  const resultId = `${account.localId}:${matchId}`;
+  const inserted = await db.insert(playerMatchResults).values({ id: resultId, playerId: account.localId, matchId, kills: kills!, deaths: deaths!, won: payload.won }).onConflictDoNothing().returning({ id: playerMatchResults.id });
+  if (inserted.length) {
+    await db.update(players).set({
+      matchesPlayed: sql`${players.matchesPlayed} + 1`,
+      wins: sql`${players.wins} + ${payload.won ? 1 : 0}`,
+      kills: sql`${players.kills} + ${kills!}`,
+      deaths: sql`${players.deaths} + ${deaths!}`,
+      updatedAt: new Date().toISOString(),
+    }).where(eq(players.id, account.localId));
+  }
+  const [player] = await db.select().from(players).where(eq(players.id, account.localId)).limit(1);
+  return Response.json({ saved: true, duplicate: !inserted.length, player });
 }

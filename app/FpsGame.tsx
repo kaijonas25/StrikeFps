@@ -95,6 +95,7 @@ export function FpsGame() {
   const multiplayerSendRef = useRef<(packet: unknown) => void>(() => {});
   const playerCallsignRef = useRef("OPERATOR");
   const playerSummariesRef = useRef<Record<string, NetworkPlayerSummary>>({});
+  const recordedMatchesRef = useRef(new Set<string>());
   const mobileLookRef = useRef<{ id: number; x: number; y: number } | null>(null);
   const mobileMoveRef = useRef<{ id: number; centerX: number; centerY: number } | null>(null);
   const previousHealthRef = useRef(100);
@@ -1126,6 +1127,12 @@ export function FpsGame() {
             const entryId = Date.now() + Math.random();
             setKillFeed((entries) => [...entries.slice(-4), { id: entryId, killer, victim, weapon: packet.weapon ?? "WEAPON", headshot: Boolean(packet.headshot) }]);
             window.setTimeout(() => setKillFeed((entries) => entries.filter((entry) => entry.id !== entryId)), 5000);
+            const victimSummary = playerSummariesRef.current[packet.id];
+            if (victimSummary) {
+              const next = { ...victimSummary, deaths: victimSummary.deaths + 1 };
+              playerSummariesRef.current = { ...playerSummariesRef.current, [packet.id]: next };
+              setPlayerSummaries(playerSummariesRef.current);
+            }
             const avatar = remotePlayers.get(packet.id); if (avatar) avatar.visible = false;
           }
           else if (packet.type === "player_health" && packet.id && packet.health === 100) {
@@ -1137,7 +1144,22 @@ export function FpsGame() {
             if (packet.player.team) { localNetworkTeam = packet.player.team; setLocalTeam(packet.player.team); refreshTeammateMarkers(); }
             if (packet.map && packet.map !== selectedMap) setSelectedMap(packet.map);
           }
-          else if (packet.type === "match" && packet.match) applyMatch(packet.match, packet.match.votes === 0 && packet.match.modeVotes === 0);
+          else if (packet.type === "match" && packet.match) {
+            applyMatch(packet.match, packet.match.votes === 0 && packet.match.modeVotes === 0);
+            if (packet.match.phase === "results" && localNetworkId && auth.currentUser) {
+              const matchId = `${selectedSector}:${packet.match.phaseEndsAt}`;
+              if (!recordedMatchesRef.current.has(matchId)) {
+                recordedMatchesRef.current.add(matchId);
+                const summary = playerSummariesRef.current[localNetworkId] ?? { kills: 0, deaths: 0 };
+                const won = packet.match.mode === "TDM" || packet.match.mode === "CTP" ? packet.match.winningTeam === localNetworkTeam : packet.match.winnerId === localNetworkId;
+                void auth.currentUser.getIdToken().then((token) => fetch("/api/player", {
+                  method: "POST",
+                  headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+                  body: JSON.stringify({ matchId, kills: summary.kills, deaths: summary.deaths, won }),
+                })).then((response) => { if (!response.ok) recordedMatchesRef.current.delete(matchId); }).catch(() => recordedMatchesRef.current.delete(matchId));
+              }
+            }
+          }
         } catch {}
       });
     } else setMultiplayerStatus("OFFLINE");

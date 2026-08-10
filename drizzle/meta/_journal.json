@@ -15,6 +15,13 @@
       "when": 1786385667394,
       "tag": "0001_sturdy_the_hood",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1786403558313,
+      "tag": "0002_absent_wolverine",
+      "breakpoints": true
     }
   ]
 }

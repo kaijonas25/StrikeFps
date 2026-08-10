@@ -16,3 +16,13 @@ export const players = sqliteTable("players", {
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });
+
+export const playerMatchResults = sqliteTable("player_match_results", {
+  id: text("id").primaryKey(),
+  playerId: text("player_id").notNull().references(() => players.id, { onDelete: "cascade" }),
+  matchId: text("match_id").notNull(),
+  kills: integer("kills").notNull(),
+  deaths: integer("deaths").notNull(),
+  won: integer("won", { mode: "boolean" }).notNull(),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+});
