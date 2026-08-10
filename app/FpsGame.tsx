@@ -552,6 +552,8 @@ export function FpsGame() {
       const pineMat = material(0x24452c, .98, 0);
       const pineDarkMat = material(0x193721, .98, 0);
       const addPine = (x: number, z: number, scale = 1) => {
+        // Keep every tree source—including perimeter planting—clear of the creek and its banks.
+        if (Math.abs((x + 10) + z * .08) < 4.65 && Math.abs(z) < 43) return;
         const trunk = new THREE.Mesh(new THREE.CylinderGeometry(.34 * scale, .48 * scale, 5.6 * scale, 9), trunkMat);
         trunk.position.set(x, 2.8 * scale, z); trunk.castShadow = trunk.receiveShadow = true; scene.add(trunk);
         boxes.push({ minX: x - .45 * scale, maxX: x + .45 * scale, minY: 0, maxY: 5.6 * scale, minZ: z - .45 * scale, maxZ: z + .45 * scale });
@@ -561,14 +563,16 @@ export function FpsGame() {
         }
       };
       const treePositions: [number, number, number][] = [];
-      for (let i = 0; i < 68; i++) {
-        const x = -40 + ((i * 17.31) % 80), z = -40 + ((i * 29.73) % 80);
+      for (let i = 0; i < 124; i++) {
+        const x = -40 + ((i * 17.31 + (i % 7) * 2.13) % 80), z = -40 + ((i * 29.73 + (i % 5) * 3.41) % 80);
         // Preserve a winding central trail, creek crossing, spawn, and outpost clearing.
-        if (Math.abs(x - Math.sin(z * .1) * 5) < 4.2 || (x > 19 && z > 17) || (Math.abs(x) < 5 && z > 31)) continue;
-        treePositions.push([x, z, .78 + (i % 6) * .07]);
+        if (Math.abs(x - Math.sin(z * .1) * 5) < 3.25 || (x > 19 && z > 17) || (Math.abs(x) < 5 && z > 31)) continue;
+        // Broad size variation creates sapling clusters beneath mature canopy trees.
+        const scale = i % 11 === 0 ? 1.32 : i % 5 === 0 ? .62 : .76 + (i % 8) * .07;
+        treePositions.push([x, z, scale]);
       }
       treePositions.forEach(([x, z, scale]) => addPine(x, z, scale));
-      [-41, 41].forEach((edge) => { for (let p = -38; p <= 38; p += 7) { addPine(edge, p, .9); addPine(p, edge, .86); } });
+      [-41, 41].forEach((edge) => { for (let p = -38; p <= 38; p += 5.5) { addPine(edge, p, .72 + (Math.abs(p) % 5) * .1); addPine(p, edge, .68 + (Math.abs(p + 2) % 6) * .09); } });
 
       // A shallow creek and stepping-stone crossing cut across the combat lanes.
       const creek = new THREE.Mesh(new THREE.PlaneGeometry(7, 84), new THREE.MeshStandardMaterial({ color: 0x294d55, emissive: 0x0b2025, emissiveIntensity: .45, roughness: .25, metalness: .1, transparent: true, opacity: .86 }));
