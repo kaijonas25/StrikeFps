@@ -14,7 +14,8 @@ type MenuPage = "HOME" | "LOADOUT" | "CHARACTER";
 type GameMap = "TEST YARD" | "CITY BLOCK" | "BLACKWOOD FOREST";
 type GameSector = "TRAINING SECTOR" | "SECTOR 1" | "SECTOR 2" | "SECTOR 3" | "SECTOR 4";
 type MultiplayerSector = Exclude<GameSector, "TRAINING SECTOR">;
-type KillFeedEntry = { id: number; victim: string; weapon: string; headshot: boolean };
+type KillFeedEntry = { id: number; killer: string; victim: string; weapon: string; headshot: boolean };
+type NetworkPlayerSummary = { callsign: string; kills: number; deaths: number };
 type ChatMessage = { id: string; senderId: string; text: string; sentAt: number };
 type SightAttachment = "IRON SIGHTS" | "RED DOT" | "HOLOGRAPHIC" | "4X SCOPE";
 type MuzzleAttachment = "STANDARD BARREL" | "SUPPRESSOR";
@@ -92,6 +93,7 @@ export function FpsGame() {
   const respawnRef = useRef<() => void>(() => {});
   const multiplayerSendRef = useRef<(packet: unknown) => void>(() => {});
   const playerCallsignRef = useRef("OPERATOR");
+  const playerSummariesRef = useRef<Record<string, NetworkPlayerSummary>>({});
   const mobileLookRef = useRef<{ id: number; x: number; y: number } | null>(null);
   const mobileMoveRef = useRef<{ id: number; centerX: number; centerY: number } | null>(null);
   const previousHealthRef = useRef(100);
@@ -133,6 +135,7 @@ export function FpsGame() {
   const [matchTimeLeft, setMatchTimeLeft] = useState(0);
   const [localPlayerId, setLocalPlayerId] = useState("");
   const [connectedPlayerIds, setConnectedPlayerIds] = useState<string[]>([]);
+  const [playerSummaries, setPlayerSummaries] = useState<Record<string, NetworkPlayerSummary>>({});
   const [matchWinnerId, setMatchWinnerId] = useState<string | null>(null);
   const [winningKills, setWinningKills] = useState(0);
   const [winningTeam, setWinningTeam] = useState<"ALPHA" | "BRAVO" | null>(null);
@@ -950,7 +953,14 @@ export function FpsGame() {
       item.scale.setScalar(.78); item.position.set(-.045, 1.56, .03);
       item.traverse((object) => { if (object instanceof THREE.Mesh) object.raycast = () => {}; }); localPlayer.add(item);
     });
-    type RemoteState = { id: string; x: number; y: number; z: number; yaw: number; movement: "static" | "walk" | "sprint"; crouching: boolean; prone: boolean; slot: number; primary?: string; secondary?: string; health?: number; team?: "ALPHA" | "BRAVO"; callsign?: string } & Partial<PlayerAppearance>;
+    type RemoteState = { id: string; x: number; y: number; z: number; yaw: number; movement: "static" | "walk" | "sprint"; crouching: boolean; prone: boolean; slot: number; primary?: string; secondary?: string; health?: number; kills?: number; deaths?: number; team?: "ALPHA" | "BRAVO"; callsign?: string } & Partial<PlayerAppearance>;
+    const rememberPlayer = (player: RemoteState) => {
+      const previous = playerSummariesRef.current[player.id];
+      const callsign = (player.callsign || previous?.callsign || (player.id === localNetworkId ? playerCallsignRef.current : "OPERATOR")).slice(0, 18);
+      const next = { callsign, kills: player.kills ?? previous?.kills ?? 0, deaths: player.deaths ?? previous?.deaths ?? 0 };
+      playerSummariesRef.current = { ...playerSummariesRef.current, [player.id]: next };
+      setPlayerSummaries(playerSummariesRef.current);
+    };
     const objectiveMarkers: THREE.Group[] = [];
     const updateObjectiveMarkers = (zones: ObjectiveZone[], mode: GameMode) => {
       objectiveMarkers.splice(0).forEach((marker) => { scene.remove(marker); marker.traverse((object) => { if (object instanceof THREE.Mesh) { object.geometry.dispose(); if (Array.isArray(object.material)) object.material.forEach((entry) => entry.dispose()); else object.material.dispose(); } }); });
@@ -1063,15 +1073,16 @@ export function FpsGame() {
           if (packet.type === "welcome") {
             const otherPlayers = (packet.players ?? []).filter((player) => player.id !== packet.id);
             if (packet.id) { localNetworkId = packet.id; setLocalPlayerId(packet.id); setConnectedPlayerIds([...new Set([packet.id, ...otherPlayers.map((player) => player.id)])]); }
-            if (packet.player) { playerPosition.set(packet.player.x, packet.player.y, packet.player.z); camera.position.copy(playerPosition); yaw = packet.player.yaw; if (packet.player.team) { localNetworkTeam = packet.player.team; setLocalTeam(packet.player.team); } }
+            if (packet.player) { rememberPlayer(packet.player); playerPosition.set(packet.player.x, packet.player.y, packet.player.z); camera.position.copy(playerPosition); yaw = packet.player.yaw; if (packet.player.team) { localNetworkTeam = packet.player.team; setLocalTeam(packet.player.team); } }
             if (packet.match) {
               applyMatch(packet.match);
               if (packet.yourMapVote) { setSelectedMapVote(packet.yourMapVote); setHasVoted(true); }
               if (packet.yourModeVote) { setSelectedModeVote(packet.yourModeVote); setHasModeVoted(true); }
             }
-            otherPlayers.forEach(upsertRemotePlayer); refreshTeammateMarkers();
+            otherPlayers.forEach((player) => { rememberPlayer(player); upsertRemotePlayer(player); }); refreshTeammateMarkers();
           }
           else if ((packet.type === "joined" || packet.type === "state") && packet.player) {
+            rememberPlayer(packet.player);
             if (packet.player.id === localNetworkId) return;
             upsertRemotePlayer(packet.player);
             if (packet.type === "joined") setConnectedPlayerIds((ids) => ids.includes(packet.player!.id) ? ids : [...ids, packet.player!.id]);
@@ -1079,6 +1090,7 @@ export function FpsGame() {
           else if (packet.type === "left" && packet.id) {
             const avatar = remotePlayers.get(packet.id); if (avatar) scene.remove(avatar); remotePlayers.delete(packet.id);
             setConnectedPlayerIds((ids) => ids.filter((id) => id !== packet.id));
+            const next = { ...playerSummariesRef.current }; delete next[packet.id]; playerSummariesRef.current = next; setPlayerSummaries(next);
           }
           else if (packet.type === "damage" && typeof packet.health === "number") {
             playerHealth = packet.health; setHealth(playerHealth);
@@ -1097,6 +1109,12 @@ export function FpsGame() {
             setFlashed(true); window.setTimeout(() => setFlashed(false), Math.min(1700, Math.max(250, packet.duration ?? 1000)));
           }
           else if (packet.type === "killed" && packet.id) {
+            const killerId = packet.attackerId ?? localNetworkId;
+            const killer = playerSummariesRef.current[killerId]?.callsign ?? (killerId === localNetworkId ? playerCallsignRef.current : "OPERATOR");
+            const victim = playerSummariesRef.current[packet.id]?.callsign ?? "OPERATOR";
+            const entryId = Date.now() + Math.random();
+            setKillFeed((entries) => [...entries.slice(-4), { id: entryId, killer, victim, weapon: packet.weapon ?? "WEAPON", headshot: Boolean(packet.headshot) }]);
+            window.setTimeout(() => setKillFeed((entries) => entries.filter((entry) => entry.id !== entryId)), 5000);
             const avatar = remotePlayers.get(packet.id); if (avatar) avatar.visible = false;
           }
           else if (packet.type === "player_health" && packet.id && packet.health === 100) {
@@ -1356,7 +1374,7 @@ export function FpsGame() {
     const impactGeometry = new THREE.SphereGeometry(0.045, 6, 6);
     const impactMaterial = new THREE.MeshBasicMaterial({ color: 0xff9a55 });
     const addKill = (dummy: THREE.Group, weapon: string, headshot: boolean) => {
-      const entry = { id: Date.now() + Math.random(), victim: dummy.userData.callsign ?? "TRAINING TARGET", weapon, headshot };
+      const entry = { id: Date.now() + Math.random(), killer: playerCallsignRef.current, victim: dummy.userData.callsign ?? "TRAINING TARGET", weapon, headshot };
       setKillFeed((current) => [...current.slice(-3), entry]);
       window.setTimeout(() => setKillFeed((current) => current.filter((item) => item.id !== entry.id)), 5000);
     };
@@ -2110,7 +2128,8 @@ export function FpsGame() {
     closeChat();
   };
   const chatSenderName = (senderId: string) => {
-    if (senderId === localPlayerId) return "YOU";
+    if (senderId === localPlayerId) return playerSummaries[senderId]?.callsign || playerCallsignRef.current;
+    if (playerSummaries[senderId]?.callsign) return playerSummaries[senderId].callsign;
     const index = connectedPlayerIds.indexOf(senderId);
     return index >= 0 ? `OPERATOR ${String(index + 1).padStart(2, "0")}` : "OPERATOR";
   };
@@ -2126,7 +2145,7 @@ export function FpsGame() {
         <div className="status"><i /> {started ? selectedSector === "TRAINING SECTOR" ? "TRAINING SECTOR · SINGLE PLAYER" : `${selectedSector} · ${multiplayerStatus}` : "SYSTEMS ONLINE"}</div>
       </header>
       <div className="kill-feed" aria-live="polite">
-        {killFeed.map((entry) => <div key={entry.id}><b>YOU</b><span>{entry.weapon}</span>{entry.headshot && <i>HEADSHOT</i>}<strong>{entry.victim}</strong></div>)}
+        {killFeed.map((entry) => <div key={entry.id}><b>{entry.killer}</b><span>{entry.weapon}</span>{entry.headshot && <i>HEADSHOT</i>}<strong>{entry.victim}</strong></div>)}
       </div>
       {started && selectedSector !== "TRAINING SECTOR" && <section className={`game-chat${chatOpen ? " open" : ""}`} aria-label="Match chat">
         <div className="chat-log" aria-live="polite">
@@ -2163,7 +2182,7 @@ export function FpsGame() {
             </article>
             <article className="admin-kill-panel"><h3>KILL PANEL</h3>
               <button className="danger" onClick={() => adminCommandRef.current("kill_targets")}><span>ALL TRAINING TARGETS</span><b>ELIMINATE</b></button>
-              {connectedPlayerIds.filter((id) => id !== localPlayerId).map((id, index) => <button className="danger" key={id} onClick={() => multiplayerSendRef.current({ type: "hit", targetId: id, damage: 100, weapon: "ADMIN", headshot: false })}><span>OPERATOR {String(index + 1).padStart(2, "0")}</span><b>KILL</b></button>)}
+              {connectedPlayerIds.filter((id) => id !== localPlayerId).map((id, index) => <button className="danger" key={id} onClick={() => multiplayerSendRef.current({ type: "hit", targetId: id, damage: 100, weapon: "ADMIN", headshot: false })}><span>{playerSummaries[id]?.callsign || `OPERATOR ${String(index + 1).padStart(2, "0")}`}</span><b>KILL</b></button>)}
               {!connectedPlayerIds.some((id) => id !== localPlayerId) && <p>NO REMOTE OPERATORS CONNECTED</p>}
             </article>
           </div>
@@ -2180,7 +2199,7 @@ export function FpsGame() {
       {started && selectedSector !== "TRAINING SECTOR" && matchPhase === "playing" && matchMode === "FFA" && <aside className="leaderboard">
         <header><span>FREE FOR ALL</span><strong>{formatMatchTime(matchTimeLeft)}</strong></header>
         <div className="leaderboard-columns"><span>OPERATOR</span><i>K</i><i>D</i></div>
-        {connectedPlayerIds.map((id, index) => <div className={id === localPlayerId ? "local" : ""} key={id}><span>{id === localPlayerId ? "YOU" : `OPERATOR ${String(index + 1).padStart(2, "0")}`}</span><i>0</i><i>0</i></div>)}
+        {connectedPlayerIds.map((id, index) => <div className={id === localPlayerId ? "local" : ""} key={id}><span>{playerSummaries[id]?.callsign || (id === localPlayerId ? playerCallsignRef.current : `OPERATOR ${String(index + 1).padStart(2, "0")}`)}</span><i>{playerSummaries[id]?.kills ?? 0}</i><i>{playerSummaries[id]?.deaths ?? 0}</i></div>)}
         {!connectedPlayerIds.length && <div><span>CONNECTING…</span><i>—</i><i>—</i></div>}
         <button disabled={endGameRequested} onClick={() => { multiplayerSendRef.current({ type: "end_game" }); setEndGameRequested(true); }}>{endGameRequested ? `END VOTE SENT · ${endGameVotes}/${Math.max(1, connectedPlayerIds.length)}` : "VOTE TO END GAME"}</button>
       </aside>}
@@ -2251,7 +2270,7 @@ export function FpsGame() {
         <div className="match-results-panel">
           <small>{selectedSector} · {matchMode === "TDM" ? "TEAM DEATHMATCH" : matchMode === "CTP" ? "CAPTURE POINTS" : matchMode === "KOTH" ? "KING OF THE HILL" : "FREE FOR ALL"} COMPLETE</small>
           <h2>{matchMode === "TDM" || matchMode === "CTP" ? winningTeam ? "VICTORY TEAM" : "MATCH DRAW" : matchWinnerId ? "MATCH WINNER" : "MATCH DRAW"}</h2>
-          <strong>{matchMode === "TDM" || matchMode === "CTP" ? winningTeam ? `TEAM ${winningTeam}` : "TEAMS TIED" : matchWinnerId === localPlayerId ? "YOU" : matchWinnerId ? `OPERATOR ${matchWinnerId.slice(0, 4).toUpperCase()}` : "NO SOLE WINNER"}</strong>
+          <strong>{matchMode === "TDM" || matchMode === "CTP" ? winningTeam ? `TEAM ${winningTeam}` : "TEAMS TIED" : matchWinnerId ? playerSummaries[matchWinnerId]?.callsign || (matchWinnerId === localPlayerId ? playerCallsignRef.current : `OPERATOR ${matchWinnerId.slice(0, 4).toUpperCase()}`) : "NO SOLE WINNER"}</strong>
           <p>{winningKills} {matchMode === "KOTH" || matchMode === "CTP" ? "POINTS" : `KILL${winningKills === 1 ? "" : "S"}`}</p>
           <footer>VOTING OPENS IN <b>{formatMatchTime(matchTimeLeft)}</b></footer>
         </div>
