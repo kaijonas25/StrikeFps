@@ -130,9 +130,13 @@ export class GameRoom extends DurableObject {
       }
       socket.serializeAttachment(attachment);
       await this.ctx.storage.put("match", meta);
-      // Keep voting open for the full advertised window. Advancing as soon as all
-      // currently-connected players voted made the UI jump when players joined or left.
-      this.broadcast({ type: "match", match: meta });
+      const players = this.ctx.getWebSockets().filter((candidate) => candidate.readyState === WebSocket.OPEN);
+      const everyoneFinished = players.length > 0 && players.every((candidate) => {
+        const vote = candidate.deserializeAttachment() as SocketAttachment;
+        return vote.votedMapPhase === meta.phaseEndsAt && vote.votedModePhase === meta.phaseEndsAt;
+      });
+      if (everyoneFinished) await this.advanceMatch(meta);
+      else this.broadcast({ type: "match", match: meta });
       return;
     }
     if (packet.type !== "state") return;
@@ -168,7 +172,14 @@ export class GameRoom extends DurableObject {
     const attachment = socket.deserializeAttachment() as SocketAttachment | null;
     if (attachment) this.broadcast({ type: "left", id: attachment.id }, socket);
     const remainingPlayers = this.ctx.getWebSockets().filter((candidate) => candidate !== socket && candidate.readyState === WebSocket.OPEN);
-    if (remainingPlayers.length === 0) await this.resetEmptyRoom();
+    // Clients briefly reconnect when the winning map changes. Deleting match
+    // state here restarted voting before those clients could load the winner.
+    if (remainingPlayers.length === 0) return;
+    const meta = await this.currentMatch();
+    if (meta.phase === "voting" && remainingPlayers.every((candidate) => {
+      const vote = candidate.deserializeAttachment() as SocketAttachment;
+      return vote.votedMapPhase === meta.phaseEndsAt && vote.votedModePhase === meta.phaseEndsAt;
+    })) await this.advanceMatch(meta);
   }
 
   private broadcast(packet: unknown, except?: WebSocket) {
