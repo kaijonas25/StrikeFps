@@ -91,12 +91,15 @@ export function FpsGame() {
   const respawnRef = useRef<() => void>(() => {});
   const multiplayerSendRef = useRef<(packet: unknown) => void>(() => {});
   const mobileLookRef = useRef<{ id: number; x: number; y: number } | null>(null);
+  const mobileMoveRef = useRef<{ id: number; centerX: number; centerY: number } | null>(null);
+  const previousHealthRef = useRef(100);
   const adminAuthorizedRef = useRef(false);
   const adminPanelOpenRef = useRef(false);
   const adminControlsRef = useRef({ flying: false, noclip: false, damageMultiplier: 1 });
   const adminCommandRef = useRef<(command: AdminCommand) => void>(() => {});
   const [locked, setLocked] = useState(false);
   const [touchControls, setTouchControls] = useState(false);
+  const [damageFlash, setDamageFlash] = useState(false);
   const [started, setStarted] = useState(false);
   const [ammo, setAmmo] = useState(30);
   const [fireMode, setFireMode] = useState<FireMode>("AUTO");
@@ -226,6 +229,17 @@ export function FpsGame() {
     adminPanelOpenRef.current = adminPanelOpen;
   }, [adminPanelOpen]);
 
+  useEffect(() => {
+    if (health < previousHealthRef.current) {
+      setDamageFlash(false);
+      const start = window.setTimeout(() => setDamageFlash(true), 0);
+      const stop = window.setTimeout(() => setDamageFlash(false), 480);
+      previousHealthRef.current = health;
+      return () => { window.clearTimeout(start); window.clearTimeout(stop); };
+    }
+    previousHealthRef.current = health;
+  }, [health]);
+
   const saveAccountPreferences = async (kind: "loadout" | "operator") => {
     const user = auth.currentUser;
     if (!user) { setAccountSaveStatus("idle"); return; }
@@ -273,6 +287,7 @@ export function FpsGame() {
     if (!mount) return;
 
     const isTouchInput = window.matchMedia("(pointer: coarse)").matches || navigator.maxTouchPoints > 0;
+    const mobileMove = new THREE.Vector2();
     setTouchControls(isTouchInput);
     if (isTouchInput && started) setLocked(true);
 
@@ -1532,7 +1547,11 @@ export function FpsGame() {
     const onContextMenu = (e: MouseEvent) => e.preventDefault();
     const onMobileLook = (event: Event) => {
       const { x, y } = (event as CustomEvent<{ x: number; y: number }>).detail;
-      applyLook(x, y);
+      applyLook(x * 1.7, y * 1.7);
+    };
+    const onMobileMove = (event: Event) => {
+      const { x, y } = (event as CustomEvent<{ x: number; y: number }>).detail;
+      mobileMove.set(x, y);
     };
     const onMobileFireStart = () => onMouseDown({ button: 0 } as MouseEvent);
     const onMobileFireEnd = () => onMouseUp({ button: 0 } as MouseEvent);
@@ -1559,6 +1578,7 @@ export function FpsGame() {
     renderer.domElement.addEventListener("mousedown", onMouseDown);
     renderer.domElement.addEventListener("contextmenu", onContextMenu);
     window.addEventListener("mobile-look", onMobileLook);
+    window.addEventListener("mobile-move", onMobileMove);
     window.addEventListener("mobile-fire-start", onMobileFireStart);
     window.addEventListener("mobile-fire-end", onMobileFireEnd);
     window.addEventListener("mobile-aim", onMobileAim);
@@ -1573,13 +1593,13 @@ export function FpsGame() {
       camera.rotation.order = "YXZ";
       camera.rotation.set(pitch, yaw, 0);
 
-      const input = new THREE.Vector2(
+      const input = isTouchInput ? mobileMove.clone() : new THREE.Vector2(
         Number(keys.has("KeyD")) - Number(keys.has("KeyA")),
         Number(keys.has("KeyW")) - Number(keys.has("KeyS"))
       );
       if (input.lengthSq() > 0) input.normalize();
       if (sliding && now >= slideEnd) { sliding = false; slideEnd = 0; }
-      sprinting = !isCrouching && !isProne && !sliding && (keys.has("ShiftLeft") || keys.has("ShiftRight")) && input.y > 0 && input.lengthSq() > 0;
+      sprinting = !isCrouching && !isProne && !sliding && ((isTouchInput && input.length() > .82 && input.y > .25) || keys.has("ShiftLeft") || keys.has("ShiftRight")) && input.y > 0 && input.lengthSq() > 0;
       if (sprinting || sliding) { aiming = false; setAdsActive(false); }
       // The creek follows a slightly diagonal north/south channel through the forest.
       const inForestCreek = forestMap && Math.abs((playerPosition.x + 10) + playerPosition.z * .08) < 3.5 && Math.abs(playerPosition.z) < 42;
@@ -1965,6 +1985,7 @@ export function FpsGame() {
       renderer.domElement.removeEventListener("mousedown", onMouseDown);
       renderer.domElement.removeEventListener("contextmenu", onContextMenu);
       window.removeEventListener("mobile-look", onMobileLook);
+      window.removeEventListener("mobile-move", onMobileMove);
       window.removeEventListener("mobile-fire-start", onMobileFireStart);
       window.removeEventListener("mobile-fire-end", onMobileFireEnd);
       window.removeEventListener("mobile-aim", onMobileAim);
@@ -1991,9 +2012,24 @@ export function FpsGame() {
     mobileKey(code, true);
     window.setTimeout(() => mobileKey(code, false), 40);
   };
-  const stopMobileButton = (event: React.PointerEvent, code: string) => {
-    event.preventDefault();
-    mobileKey(code, false);
+  const updateMobileStick = (event: React.PointerEvent<HTMLDivElement>) => {
+    const stick = mobileMoveRef.current;
+    if (!stick || stick.id !== event.pointerId) return;
+    const radius = Math.max(42, event.currentTarget.clientWidth * .34);
+    let x = (event.clientX - stick.centerX) / radius;
+    let y = (event.clientY - stick.centerY) / radius;
+    const length = Math.hypot(x, y);
+    if (length > 1) { x /= length; y /= length; }
+    event.currentTarget.style.setProperty("--stick-x", `${x * radius}px`);
+    event.currentTarget.style.setProperty("--stick-y", `${y * radius}px`);
+    window.dispatchEvent(new CustomEvent("mobile-move", { detail: { x, y: -y } }));
+  };
+  const releaseMobileStick = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (mobileMoveRef.current?.id !== event.pointerId) return;
+    mobileMoveRef.current = null;
+    event.currentTarget.style.setProperty("--stick-x", "0px");
+    event.currentTarget.style.setProperty("--stick-y", "0px");
+    window.dispatchEvent(new CustomEvent("mobile-move", { detail: { x: 0, y: 0 } }));
   };
 
   return (
@@ -2068,18 +2104,15 @@ export function FpsGame() {
       </div>
       <div className={`flash-effect${flashed ? " active" : ""}`} />
       <div className={`heal-effect${healingEffect ? " active" : ""}`} />
+      <div className={`damage-effect${damageFlash ? " active" : ""}`} aria-hidden="true" />
       {selectedMap === "TEST YARD" && <div className="test-legend"><span className="damage-dot" /> DAMAGE PAD <span className="kill-dot" /> KILL PAD <span className="heal-dot" /> HEAL PAD <span className="medical-dot" /> MEDICAL DROP <span className="utility-dot" /> UTILITY DROP</div>}
       <div className="controls"><kbd>WASD</kbd> MOVE <kbd>SHIFT</kbd> SPRINT <kbd>C</kbd> CROUCH / SLIDE <kbd>X</kbd> PRONE <kbd>Q/E</kbd> LEAN <kbd>RMB</kbd> {thirdPerson ? "ORBIT CAMERA" : "AIM"} <kbd>LMB</kbd> FIRE <kbd>TAB</kbd> {thirdPerson ? "1ST PERSON" : "3RD PERSON"}{adminAuthorized && <><kbd>=</kbd> ADMIN</>}</div>
       {started && touchControls && locked && !dead && matchPhase === "playing" && <div className="mobile-controls" aria-label="Mobile game controls">
-        <div className="mobile-move-pad">
-          {[["KeyW", "▲", "move-up"], ["KeyA", "◀", "move-left"], ["KeyS", "▼", "move-down"], ["KeyD", "▶", "move-right"]].map(([code, label, className]) =>
-            <button key={code} className={className} aria-label={code} onPointerDown={(event) => { event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); mobileKey(code); }} onPointerUp={(event) => stopMobileButton(event, code)} onPointerCancel={(event) => stopMobileButton(event, code)}>{label}</button>)}
-          <button className="move-sprint" aria-label="Sprint" onPointerDown={(event) => { event.preventDefault(); mobileKey("ShiftLeft"); }} onPointerUp={(event) => stopMobileButton(event, "ShiftLeft")} onPointerCancel={(event) => stopMobileButton(event, "ShiftLeft")}>RUN</button>
-        </div>
+        <div className="mobile-move-pad" aria-label="Movement joystick. Push farther to sprint." onPointerDown={(event) => { event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); const rect = event.currentTarget.getBoundingClientRect(); mobileMoveRef.current = { id: event.pointerId, centerX: rect.left + rect.width / 2, centerY: rect.top + rect.height / 2 }; updateMobileStick(event); }} onPointerMove={updateMobileStick} onPointerUp={releaseMobileStick} onPointerCancel={releaseMobileStick}><div className="mobile-stick"><span>RUN</span></div></div>
         <div className="mobile-look-pad" aria-label="Drag to look" onPointerDown={(event) => { event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); mobileLookRef.current = { id: event.pointerId, x: event.clientX, y: event.clientY }; }} onPointerMove={(event) => { const last = mobileLookRef.current; if (!last || last.id !== event.pointerId) return; window.dispatchEvent(new CustomEvent("mobile-look", { detail: { x: event.clientX - last.x, y: event.clientY - last.y } })); last.x = event.clientX; last.y = event.clientY; }} onPointerUp={() => { mobileLookRef.current = null; }} onPointerCancel={() => { mobileLookRef.current = null; }}><span>DRAG TO AIM</span></div>
         <div className="mobile-actions">
           <button onClick={() => mobileTap("Space")}>JUMP</button><button onClick={() => mobileTap("KeyC")}>CROUCH</button><button onClick={() => mobileTap("KeyR")}>RELOAD</button><button onClick={() => mobileTap("KeyF")}>USE</button>
-          <button className="mobile-aim" onPointerDown={(event) => { event.preventDefault(); window.dispatchEvent(new CustomEvent("mobile-aim", { detail: true })); }} onPointerUp={() => window.dispatchEvent(new CustomEvent("mobile-aim", { detail: false }))}>ADS</button>
+          <button className="mobile-aim" onPointerDown={(event) => { event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); window.dispatchEvent(new CustomEvent("mobile-aim", { detail: true })); }} onPointerUp={() => window.dispatchEvent(new CustomEvent("mobile-aim", { detail: false }))} onPointerCancel={() => window.dispatchEvent(new CustomEvent("mobile-aim", { detail: false }))}>ADS</button>
           <button className="mobile-fire" onPointerDown={(event) => { event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); window.dispatchEvent(new Event("mobile-fire-start")); }} onPointerUp={() => window.dispatchEvent(new Event("mobile-fire-end"))} onPointerCancel={() => window.dispatchEvent(new Event("mobile-fire-end"))}>FIRE</button>
         </div>
         <div className="mobile-slots">{[1, 2, 3, 4].map((slot) => <button key={slot} className={activeSlot === slot ? "active" : ""} onClick={() => mobileTap(`Digit${slot}`)}>{slot}</button>)}</div>

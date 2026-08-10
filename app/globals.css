@@ -51,6 +51,7 @@ button { font: inherit; }
 .heal-status { position:fixed; left:50%; bottom:105px; width:240px; transform:translateX(-50%); color:#dff8e8; text-align:center; font-size:8px; letter-spacing:.16em; pointer-events:none; }.heal-status span,.heal-status small { display:block; }.heal-status small { margin-top:5px; color:#71877a; font-size:6px; }.heal-status::after { content:""; display:block; height:2px; margin-top:8px; background:rgba(255,255,255,.13); }.heal-status i { position:absolute; left:0; bottom:0; height:2px; background:#37dc80; box-shadow:0 0 8px rgba(55,220,128,.7); animation:reload-fill linear forwards; }
 .flash-effect { position:fixed; inset:0; z-index:15; pointer-events:none; opacity:0; background:#f4ffff; transition:opacity 1.5s ease-out; }.flash-effect.active { opacity:1; transition-duration:.04s; }
 .heal-effect { position:fixed; inset:0; z-index:14; pointer-events:none; opacity:0; box-shadow:inset 0 0 120px 28px rgba(55,220,128,.7); transition:opacity .6s ease-out; }.heal-effect.active { opacity:1; transition-duration:.05s; }
+.damage-effect { position:fixed; inset:0; z-index:14; pointer-events:none; opacity:0; background:radial-gradient(circle at center,transparent 32%,rgba(205,12,25,.22) 66%,rgba(150,0,14,.82) 115%); box-shadow:inset 0 0 85px 18px rgba(255,20,34,.68); transition:opacity .42s ease-out; }.damage-effect.active { opacity:1; animation:damage-pulse .48s ease-out; } @keyframes damage-pulse { 0%{opacity:.15} 18%{opacity:1} 100%{opacity:0} }
 .test-legend { position:fixed; left:30px; top:92px; color:rgba(202,218,215,.48); font-size:7px; letter-spacing:.12em; pointer-events:none; }.test-legend span { display:inline-block; width:7px; height:7px; margin:0 5px 0 12px; border-radius:1px; box-shadow:0 0 7px currentColor; }.test-legend span:first-child { margin-left:0; }.damage-dot { color:#ff8a24; background:#ff8a24; }.kill-dot { color:#ff263f; background:#ff263f; }.heal-dot { color:#37dc80; background:#37dc80; }.medical-dot { color:#2c9b67; background:#2c9b67; }.utility-dot { color:#397f9e; background:#397f9e; }
 .death-screen { position:fixed; inset:0; z-index:40; display:flex; flex-direction:column; align-items:center; justify-content:center; background:radial-gradient(circle,rgba(48,8,12,.72),rgba(3,7,9,.97) 65%); text-align:center; }.death-code { color:#ff324d; font-family:var(--font-geist-sans),sans-serif; font-size:90px; font-weight:900; letter-spacing:-.07em; line-height:.8; text-shadow:0 0 34px rgba(255,38,63,.35); }.death-screen h2 { margin:22px 0 8px; font-size:18px; letter-spacing:.25em; }.death-screen p { color:#7f8c8e; font-size:8px; letter-spacing:.18em; }.death-screen button { width:270px; height:54px; margin-top:30px; border:1px solid #ff324d; color:#fff; background:rgba(255,38,63,.12); cursor:pointer; font-size:9px; letter-spacing:.15em; }.death-screen button:hover { background:#ff324d; }
 @keyframes reload-fill { from { width:0; } to { width:100%; } }
@@ -227,26 +228,27 @@ kbd:first-child { margin-left: 0; }
 @media (pointer:coarse) {
   html,body,.game-shell { overscroll-behavior:none; touch-action:none; user-select:none; -webkit-user-select:none; }
   .mobile-controls { position:fixed; inset:0; z-index:12; display:block; pointer-events:none; }
-  .mobile-controls button,.mobile-look-pad { pointer-events:auto; touch-action:none; -webkit-tap-highlight-color:transparent; }
+  .mobile-controls button,.mobile-look-pad,.mobile-move-pad { pointer-events:auto; touch-action:none; -webkit-tap-highlight-color:transparent; }
   .mobile-controls button { border:1px solid rgba(218,237,235,.28); border-radius:50%; color:#eaf4f1; background:rgba(8,18,21,.55); box-shadow:inset 0 0 18px rgba(255,255,255,.035); font-size:9px; font-weight:750; }
   .mobile-controls button:active { border-color:#ff754c; background:rgba(255,99,54,.3); transform:scale(.94); }
-  .mobile-move-pad { position:absolute; left:max(18px,env(safe-area-inset-left)); bottom:max(22px,env(safe-area-inset-bottom)); width:154px; height:154px; pointer-events:none; }
-  .mobile-move-pad button { position:absolute; width:52px; height:52px; }
-  .move-up { left:51px; top:0; }.move-left { left:0; top:51px; }.move-down { left:51px; top:102px; }.move-right { left:102px; top:51px; }
-  .mobile-move-pad .move-sprint { left:51px; top:51px; border-color:rgba(255,117,76,.48); color:#ff9b7f; font-size:7px; }
+  .mobile-move-pad { --stick-x:0px; --stick-y:0px; position:absolute; left:max(24px,env(safe-area-inset-left)); bottom:max(28px,env(safe-area-inset-bottom)); width:180px; height:180px; border:2px solid rgba(218,237,235,.22); border-radius:50%; background:radial-gradient(circle,rgba(218,237,235,.08),rgba(8,18,21,.42)); box-shadow:inset 0 0 35px rgba(0,0,0,.28); }
+  .mobile-move-pad::after { content:"PUSH FORWARD TO RUN"; position:absolute; left:50%; bottom:-17px; width:170px; color:rgba(218,237,235,.45); font-size:6px; letter-spacing:.13em; text-align:center; transform:translateX(-50%); }
+  .mobile-stick { position:absolute; left:50%; top:50%; display:grid; place-items:center; width:82px; height:82px; border:2px solid rgba(255,117,76,.65); border-radius:50%; color:#ffb09a; background:rgba(28,39,42,.82); box-shadow:0 4px 20px rgba(0,0,0,.38),inset 0 0 20px rgba(255,99,54,.13); transform:translate(calc(-50% + var(--stick-x)),calc(-50% + var(--stick-y))); }
+  .mobile-stick span { font-size:7px; letter-spacing:.12em; pointer-events:none; }
   .mobile-look-pad { position:absolute; right:0; top:70px; width:52vw; height:calc(100% - 220px); border:1px dashed rgba(218,237,235,.08); background:rgba(255,255,255,.006); }
   .mobile-look-pad span { position:absolute; top:50%; left:50%; color:rgba(218,237,235,.18); font-size:7px; letter-spacing:.18em; transform:translate(-50%,-50%); }
-  .mobile-actions { position:absolute; right:max(18px,env(safe-area-inset-right)); bottom:max(22px,env(safe-area-inset-bottom)); display:grid; grid-template-columns:repeat(4,42px); gap:8px; align-items:end; pointer-events:none; }
-  .mobile-actions button { width:42px; height:42px; border-radius:12px; font-size:6px; }
-  .mobile-actions .mobile-aim { grid-column:3; width:52px; height:52px; margin-left:-10px; border-radius:50%; }
-  .mobile-actions .mobile-fire { grid-column:4; width:70px; height:70px; margin-left:-18px; border:2px solid rgba(255,99,54,.8); color:#fff; background:rgba(174,48,22,.48); font-size:10px; }
+  .mobile-actions { position:absolute; right:max(20px,env(safe-area-inset-right)); bottom:max(22px,env(safe-area-inset-bottom)); display:grid; grid-template-columns:repeat(2,64px); gap:10px; width:245px; height:150px; align-content:end; pointer-events:none; }
+  .mobile-actions button { width:64px; height:64px; border-radius:18px; font-size:8px; }
+  .mobile-actions .mobile-aim { position:fixed; left:max(225px,calc(env(safe-area-inset-left) + 205px)); bottom:max(160px,calc(env(safe-area-inset-bottom) + 150px)); width:82px; height:82px; border:2px solid rgba(107,203,255,.72); border-radius:50%; color:#bfeaff; background:rgba(18,74,100,.5); font-size:11px; }
+  .mobile-actions .mobile-fire { position:absolute; right:0; bottom:12px; width:98px; height:98px; border:3px solid rgba(255,99,54,.9); border-radius:50%; color:#fff; background:rgba(174,48,22,.58); box-shadow:0 0 24px rgba(255,73,37,.2),inset 0 0 25px rgba(255,99,54,.18); font-size:13px; }
   .mobile-slots { position:absolute; right:max(20px,env(safe-area-inset-right)); top:max(76px,calc(env(safe-area-inset-top) + 60px)); display:flex; gap:7px; pointer-events:none; }
-  .mobile-slots button { width:34px; height:34px; border-radius:8px; }.mobile-slots button.active { border-color:#ff6336; color:#ff8c68; background:rgba(255,99,54,.22); }
+  .mobile-slots button { width:50px; height:50px; border-radius:12px; font-size:11px; }.mobile-slots button.active { border-color:#ff6336; color:#ff8c68; background:rgba(255,99,54,.22); }
   .quick-slots,.test-legend,.stance-status { display:none; }
   .hud-left { bottom:188px; }.hud-right { bottom:188px; }
 }
 @media (pointer:coarse) and (orientation:portrait) {
   .mobile-look-pad { width:55vw; height:48vh; }
-  .mobile-move-pad { transform:scale(.88); transform-origin:left bottom; }
-  .mobile-actions { transform:scale(.88); transform-origin:right bottom; }
+  .mobile-move-pad { transform:scale(.82); transform-origin:left bottom; }
+  .mobile-actions { transform:scale(.78); transform-origin:right bottom; }
+  .mobile-actions .mobile-aim { left:155px; bottom:175px; transform:scale(.82); }
 }
