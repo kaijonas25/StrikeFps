@@ -32,6 +32,12 @@ const attachmentItemPenalty = (attachment: string) =>
 const magazineCapacity = (capacity: number, magazine: MagazineAttachment) =>
   magazine === "DRUM MAG" ? capacity * 2 : magazine === "EXTENDED MAG" ? Math.ceil(capacity * 1.35) : capacity;
 
+const magazineReloadMultiplier = (magazine: MagazineAttachment) =>
+  magazine === "DRUM MAG" ? 1.35 : magazine === "EXTENDED MAG" ? 1.15 : 1;
+
+const reloadTimeWithMagazine = (seconds: number, magazine: MagazineAttachment) =>
+  seconds * magazineReloadMultiplier(magazine);
+
 const WEAPON_STATS: Record<string, { damage: number; fireRate: number; capacity: number; reload: number; range: number; mobility: number; spread: number; pellets?: number }> = {
   "VXR-4 CARBINE": { damage: 16, fireRate: 72, capacity: 30, reload: 2.35, range: 74, mobility: 68, spread: 1.25 },
   "M12 SMG": { damage: 12, fireRate: 91, capacity: 36, reload: 1.85, range: 48, mobility: 90, spread: 2.1 },
@@ -952,10 +958,10 @@ export function FpsGame() {
 
     const keys = new Set<string>();
     let yaw = 0, pitch = 0, cameraYaw = 0, cameraPitch = 0.2, verticalVelocity = 0, grounded = true;
-    const primaryStats = { ...WEAPON_STATS[primary], capacity: magazineCapacity(WEAPON_STATS[primary].capacity, magazineAttachment) };
+    const primaryStats = { ...WEAPON_STATS[primary], capacity: magazineCapacity(WEAPON_STATS[primary].capacity, magazineAttachment), reload: reloadTimeWithMagazine(WEAPON_STATS[primary].reload, magazineAttachment) };
     const secondaryIsMelee = secondary === "COMBAT KNIFE";
     const baseSecondaryStats = WEAPON_STATS[secondary] ?? { damage: 50, fireRate: 100, capacity: 1, reload: 0.6, range: 5, mobility: 100, spread: 0 };
-    const secondaryStats = { ...baseSecondaryStats, capacity: magazineCapacity(baseSecondaryStats.capacity, secondaryMagazine) };
+    const secondaryStats = { ...baseSecondaryStats, capacity: magazineCapacity(baseSecondaryStats.capacity, secondaryMagazine), reload: reloadTimeWithMagazine(baseSecondaryStats.reload, secondaryMagazine) };
     const ammoCounts = [primaryStats.capacity, secondaryStats.capacity];
     setAmmo(primaryStats.capacity);
     let ammoCount = ammoCounts[0], recoil = 0, muzzleTimer = 0, aiming = false, sprinting = false, sliding = false, reloadEnd = 0, meleeSwing = 0, lastMelee = 0;
@@ -969,7 +975,8 @@ export function FpsGame() {
     placementPreview.raycast = () => {}; placementPreview.visible = false; scene.add(placementPreview);
     let placementAiming = false;
     let placementPoint: { point: THREE.Vector3; normal: THREE.Vector3 } | null = null;
-    let currentFireMode: FireMode = "AUTO", triggerHeld = false, lastShot = 0, currentSlot = 1, movementSpread = 1;
+    let currentFireMode: FireMode = "AUTO", triggerHeld = false, currentSlot = 1, movementSpread = 1;
+    const lastShotAt = [Number.NEGATIVE_INFINITY, Number.NEGATIVE_INFINITY];
     let nearbyDoor: typeof doors[number] | undefined;
     const activeAttachments = (): WeaponAttachments => currentSlot > 2 || (currentSlot === 2 && secondaryIsMelee)
       ? { sight: "IRON SIGHTS", muzzle: "STANDARD BARREL", tactical: "NONE", magazine: "STANDARD MAG", fireControl: "STANDARD TRIGGER" }
@@ -1274,7 +1281,12 @@ export function FpsGame() {
         }
         return;
       }
+      const shotStats = currentSlot === 1 ? primaryStats : secondaryStats;
+      const shotInterval = 60000 / (shotStats.fireRate * 10);
+      const shotTime = performance.now();
+      if (shotTime - lastShotAt[currentSlot - 1] < shotInterval) return;
       if (ammoCount <= 0) return;
+      lastShotAt[currentSlot - 1] = shotTime;
       ammoCount -= 1;
       ammoCounts[currentSlot - 1] = ammoCount;
       setAmmo(ammoCount);
@@ -1282,7 +1294,6 @@ export function FpsGame() {
       recoil = Math.min(recoil + 0.055, 0.11);
       muzzle.intensity = activeAttachments().muzzle === "SUPPRESSOR" ? 5 : 35;
       muzzleTimer = 0.045;
-      const shotStats = currentSlot === 1 ? primaryStats : secondaryStats;
       const tracerStart = new THREE.Vector3();
       const worldMuzzle = (currentSlot === 1 ? worldPrimary : worldSecondary).getObjectByName("muzzleAnchor");
       (isThirdPerson && worldMuzzle ? worldMuzzle : currentSlot === 1 ? primaryWeapon.muzzleAnchor : secondaryWeapon.muzzleAnchor).getWorldPosition(tracerStart);
@@ -1341,10 +1352,15 @@ export function FpsGame() {
       }
       triggerHeld = true;
       if (currentFireMode === "SEMI") fireRound();
-      if (currentFireMode === "BURST") [0, 85, 170].forEach((delay) => window.setTimeout(() => {
-        if (!sprinting && !sliding) fireRound();
-      }, delay));
-      if (currentFireMode === "AUTO") { fireRound(); lastShot = performance.now(); }
+      if (currentFireMode === "BURST") {
+        const burstSlot = currentSlot;
+        const burstStats = burstSlot === 1 ? primaryStats : secondaryStats;
+        const burstInterval = 60000 / (burstStats.fireRate * 10);
+        [0, burstInterval, burstInterval * 2].forEach((delay) => window.setTimeout(() => {
+          if (currentSlot === burstSlot && !sprinting && !sliding) fireRound();
+        }, delay));
+      }
+      if (currentFireMode === "AUTO") fireRound();
     };
     const onMouseUp = (e: MouseEvent) => {
       if (e.button === 0) {
@@ -1661,12 +1677,7 @@ export function FpsGame() {
         setAmmo(ammoCount);
         setReloading(false);
       }
-      const activeStats = currentSlot === 1 ? primaryStats : secondaryStats;
-      const shotInterval = 60000 / (activeStats.fireRate * 10);
-      if (triggerHeld && currentFireMode === "AUTO" && !sprinting && !sliding && now - lastShot >= shotInterval) {
-        fireRound();
-        lastShot = now;
-      }
+      if (triggerHeld && currentFireMode === "AUTO" && !sprinting && !sliding) fireRound();
       recoil = THREE.MathUtils.lerp(recoil, 0, Math.min(1, dt * 14));
       muzzleTimer -= dt;
       if (muzzleTimer <= 0) muzzle.intensity = 0;
@@ -1932,10 +1943,10 @@ export function FpsGame() {
                 ["VXR-4 CARBINE", "BALANCED · AUTO"], ["M12 SMG", "MOBILE · CLOSE RANGE"], ["BR-7 RIFLE", "PRECISION · SEMI"],
                 ["SNR-90 SNIPER", "EXTREME RANGE · BOLT ACTION"], ["KSG-12 SHOTGUN", "8 PELLETS · CLOSE RANGE"], ["HMG-6 LMG", "60 ROUNDS · SUPPRESSION"],
                 ["AKR-47 ASSAULT", "HEAVY DAMAGE · HARD RECOIL"], ["M8 TACTICAL RIFLE", "CONTROLLED · 27 ROUNDS"], ["DMR-11 MARKSMAN", "SEMI AUTO · LONG RANGE"], ["VX-9 PDW", "EXTREME RATE · MOBILE"]
-              ]} onSelect={setPrimary} />
+              ]} onSelect={setPrimary} magazine={magazineAttachment} />
               <LoadoutSlot label="SECONDARY" selected={secondary} options={[
                 ["P9 SIDEARM", "RELIABLE · 15 ROUNDS"], ["R45 REVOLVER", "HEAVY · 6 ROUNDS"], ["G18 AUTO PISTOL", "24 ROUNDS · FULL AUTO"], ["DB-2 SAWED-OFF", "TWO SHELLS · 6 PELLETS"], ["M1911 SIDEARM", ".45 ACP · 8 ROUNDS"], ["USP-45 TACTICAL", "ACCURATE · 12 ROUNDS"], ["MP5K COMPACT", "FULL AUTO · 20 ROUNDS"], ["COMBAT KNIFE", "FAST · SILENT"]
-              ]} onSelect={setSecondary} />
+              ]} onSelect={setSecondary} magazine={secondaryMagazine} />
               <LoadoutSlot label="MEDICAL" selected={medical} options={[
                 ["FIELD MEDKIT", "RESTORE 60 HEALTH"], ["STIM INJECTOR", "FAST HEAL + SPEED"], ["TRAUMA KIT", "FULL HEAL · SLOW"]
               ]} onSelect={setMedical} />
@@ -2121,19 +2132,23 @@ function GearOption({ label, value, options, onSelect }: { label: string; value:
 
 function AttachmentOption({ label, value, options, onSelect }: { label: string; value: string; options: string[]; onSelect: (value: string) => void }) {
   return <section className="attachment-option"><h2>{label}</h2><div>
-    {options.map((option) => { const penalty = attachmentItemPenalty(option); return <button key={option} className={value === option ? "selected" : ""} onClick={() => onSelect(option)}>
-      <i /> <span>{option}</span><small>{value === option ? "EQUIPPED" : "SELECT"}{penalty > 0 && ` · −${penalty}% MOBILITY${option === "BURST TRIGGER" ? " · −25% ACCURACY" : ""}`}</small>
+    {options.map((option) => { const penalty = attachmentItemPenalty(option); const reloadPenalty = option === "DRUM MAG" ? 35 : option === "EXTENDED MAG" ? 15 : 0; return <button key={option} className={value === option ? "selected" : ""} onClick={() => onSelect(option)}>
+      <i /> <span>{option}</span><small>{value === option ? "EQUIPPED" : "SELECT"}{penalty > 0 && ` · −${penalty}% MOBILITY${option === "BURST TRIGGER" ? " · −25% ACCURACY" : ""}`}{reloadPenalty > 0 && ` · +${reloadPenalty}% RELOAD TIME`}</small>
     </button>; })}
   </div></section>;
 }
 
-function LoadoutSlot({ label, selected, options, onSelect }: {
+function LoadoutSlot({ label, selected, options, onSelect, magazine }: {
   label: string;
   selected: string;
   options: [string, string][];
   onSelect: (value: string) => void;
+  magazine?: MagazineAttachment;
 }) {
-  const stats = WEAPON_STATS[selected];
+  const baseStats = WEAPON_STATS[selected];
+  const stats = baseStats && magazine
+    ? { ...baseStats, capacity: magazineCapacity(baseStats.capacity, magazine), reload: reloadTimeWithMagazine(baseStats.reload, magazine) }
+    : baseStats;
   return <section className="loadout-slot">
     <h2>{label}</h2>
     {options.map(([name, detail]) => <button key={name} className={selected === name ? "selected" : ""} onClick={() => onSelect(name)}>
