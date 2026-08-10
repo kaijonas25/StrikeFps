@@ -1,7 +1,6 @@
 "use client";
 
 import { onAuthStateChanged, signOut, updateProfile, User } from "firebase/auth";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { auth } from "../firebase";
@@ -77,7 +76,7 @@ export default function AccountPage() {
   if (!user || !player) return <main className="account-shell account-loading"><div>LOADING OPERATOR RECORD…</div></main>;
 
   return <main className="account-shell">
-    <header className="account-topbar"><div className="account-brand"><span>STRIKE</span>YARD</div><Link className="account-back" href="/">← MAIN MENU</Link></header>
+    <header className="account-topbar"><div className="account-brand"><span>STRIKE</span>YARD</div><button type="button" className="account-back" onClick={() => window.location.assign("/")}>← MAIN MENU</button></header>
     <section className="profile-header"><div><small>ACTIVE OPERATOR PROFILE</small><h1><span>ACCOUNT</span> RECORD</h1></div><button className="signout" onClick={async () => { await signOut(auth); router.replace("/"); }}>SIGN OUT</button></section>
     <section className="profile-grid">
       <article className="profile-card identity-card"><small>IDENTIFICATION</small><strong>{player.callsign}</strong><p>{user.email}</p><div className="nickname-editor"><label htmlFor="nickname">CUSTOM NICKNAME</label><div><input id="nickname" value={nickname} maxLength={18} onChange={(event) => { setNickname(event.target.value); setNicknameStatus("idle"); }} /><button disabled={nicknameStatus === "saving" || nickname.trim().toUpperCase() === player.callsign} onClick={() => void saveNickname()}>{nicknameStatus === "saving" ? "SAVING…" : "SAVE"}</button></div><span className={nicknameStatus}>{nicknameStatus === "saved" ? "NICKNAME UPDATED" : nicknameStatus === "error" ? nicknameError : "3–18 CHARACTERS"}</span></div><div className="level-badge"><b>{player.level}</b><span>OPERATOR LEVEL</span></div></article>
