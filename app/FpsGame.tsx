@@ -10,13 +10,14 @@ type PlayerStance = "standing" | "crouching" | "prone";
 type FireMode = "SEMI" | "BURST" | "AUTO";
 type GameMode = "FFA" | "TDM" | "KOTH" | "CTP";
 type ObjectiveZone = { id: string; x: number; z: number; radius: number; owner: "ALPHA" | "BRAVO" | null; progress: number };
-type MenuPage = "HOME" | "LOADOUT" | "CHARACTER";
+type MenuPage = "HOME" | "LOADOUT" | "CHARACTER" | "SETTINGS";
 type GameMap = "TEST YARD" | "CITY BLOCK" | "BLACKWOOD FOREST";
 type GameSector = "TRAINING SECTOR" | "SECTOR 1" | "SECTOR 2" | "SECTOR 3" | "SECTOR 4";
 type MultiplayerSector = Exclude<GameSector, "TRAINING SECTOR">;
 type KillFeedEntry = { id: number; killer: string; victim: string; weapon: string; headshot: boolean };
 type NetworkPlayerSummary = { callsign: string; kills: number; deaths: number };
 type ChatMessage = { id: string; senderId: string; text: string; sentAt: number };
+type DamageNumber = { id: number; damage: number; x: number; y: number; headshot: boolean };
 type SightAttachment = "IRON SIGHTS" | "RED DOT" | "HOLOGRAPHIC" | "4X SCOPE";
 type MuzzleAttachment = "STANDARD BARREL" | "SUPPRESSOR";
 type TacticalAttachment = "NONE" | "RED LASER" | "WHITE LIGHT";
@@ -101,6 +102,7 @@ export function FpsGame() {
   const adminPanelOpenRef = useRef(false);
   const chatOpenRef = useRef(false);
   const chatInputRef = useRef<HTMLInputElement>(null);
+  const damageNumbersEnabledRef = useRef(true);
   const adminControlsRef = useRef({ flying: false, noclip: false, damageMultiplier: 1 });
   const adminCommandRef = useRef<(command: AdminCommand) => void>(() => {});
   const [locked, setLocked] = useState(false);
@@ -167,6 +169,8 @@ export function FpsGame() {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatDraft, setChatDraft] = useState("");
   const [chatOpen, setChatOpen] = useState(false);
+  const [damageNumbersEnabled, setDamageNumbersEnabled] = useState(() => typeof window === "undefined" || window.localStorage.getItem("strikeyard.damageNumbers") !== "false");
+  const [damageNumbers, setDamageNumbers] = useState<DamageNumber[]>([]);
   const [leanSide, setLeanSide] = useState<-1 | 0 | 1>(0);
   const [prone, setProne] = useState(false);
   const [characterSkin, setCharacterSkin] = useState("#a9795e");
@@ -244,6 +248,11 @@ export function FpsGame() {
     chatOpenRef.current = chatOpen;
     if (chatOpen) window.setTimeout(() => chatInputRef.current?.focus(), 0);
   }, [chatOpen]);
+
+  useEffect(() => {
+    damageNumbersEnabledRef.current = damageNumbersEnabled;
+    window.localStorage.setItem("strikeyard.damageNumbers", String(damageNumbersEnabled));
+  }, [damageNumbersEnabled]);
 
   useEffect(() => {
     if (health < previousHealthRef.current) {
@@ -1376,6 +1385,21 @@ export function FpsGame() {
     flashlight.castShadow = true; flashlight.shadow.mapSize.set(512, 512); flashlight.target.raycast = () => {}; scene.add(flashlight, flashlight.target);
     const impactGeometry = new THREE.SphereGeometry(0.045, 6, 6);
     const impactMaterial = new THREE.MeshBasicMaterial({ color: 0xff9a55 });
+    const showDamageNumber = (point: THREE.Vector3, damage: number, headshot: boolean) => {
+      if (!damageNumbersEnabledRef.current) return;
+      const projected = point.clone().project(camera);
+      if (projected.z < -1 || projected.z > 1) return;
+      const rect = renderer.domElement.getBoundingClientRect();
+      const entry: DamageNumber = {
+        id: Date.now() + Math.random(),
+        damage: Math.round(damage),
+        x: rect.left + (projected.x + 1) * rect.width / 2,
+        y: rect.top + (1 - projected.y) * rect.height / 2,
+        headshot,
+      };
+      setDamageNumbers((numbers) => [...numbers.slice(-11), entry]);
+      window.setTimeout(() => setDamageNumbers((numbers) => numbers.filter((number) => number.id !== entry.id)), 850);
+    };
     const addKill = (dummy: THREE.Group, weapon: string, headshot: boolean) => {
       const entry = { id: Date.now() + Math.random(), killer: playerCallsignRef.current, victim: dummy.userData.callsign ?? "TRAINING TARGET", weapon, headshot };
       setKillFeed((current) => [...current.slice(-3), entry]);
@@ -1405,10 +1429,14 @@ export function FpsGame() {
       const weapon = currentSlot === 1 ? primary : secondary;
       const remotePlayerId = hit.object.userData.remotePlayerId as string | undefined;
       if (remotePlayerId) {
-        multiplayerSendRef.current({ type: "hit", targetId: remotePlayerId, damage: damage * multiplier * adminDamage, weapon, headshot: multiplier >= 2 });
+        const dealtDamage = damage * multiplier * adminDamage;
+        multiplayerSendRef.current({ type: "hit", targetId: remotePlayerId, damage: dealtDamage, weapon, headshot: multiplier >= 2 });
+        showDamageNumber(hit.point, dealtDamage, multiplier >= 2);
         return;
       }
-      damageDummyGroup(hit.object.userData.dummy as THREE.Group | undefined, damage * multiplier * adminDamage, weapon, multiplier >= 2);
+      const dummy = hit.object.userData.dummy as THREE.Group | undefined;
+      if (dummy?.visible) showDamageNumber(hit.point, damage * multiplier * adminDamage, multiplier >= 2);
+      damageDummyGroup(dummy, damage * multiplier * adminDamage, weapon, multiplier >= 2);
     };
     adminCommandRef.current = (command) => {
       if (!adminAuthorizedRef.current) return;
@@ -2179,6 +2207,11 @@ export function FpsGame() {
     const index = connectedPlayerIds.indexOf(senderId);
     return index >= 0 ? `OPERATOR ${String(index + 1).padStart(2, "0")}` : "OPERATOR";
   };
+  const toggleDamageNumbers = () => {
+    const enabled = !damageNumbersEnabled;
+    setDamageNumbersEnabled(enabled);
+    if (!enabled) setDamageNumbers([]);
+  };
 
   return (
     <main className={`game-shell${!started ? " game-menu" : ""}`}>
@@ -2249,6 +2282,9 @@ export function FpsGame() {
         {!connectedPlayerIds.length && <div><span>CONNECTING…</span><i>—</i><i>—</i></div>}
         <button disabled={endGameRequested} onClick={() => { multiplayerSendRef.current({ type: "end_game" }); setEndGameRequested(true); }}>{endGameRequested ? `END VOTE SENT · ${endGameVotes}/${Math.max(1, connectedPlayerIds.length)}` : "VOTE TO END GAME"}</button>
       </aside>}
+      <div className="damage-numbers" aria-live="off" aria-hidden="true">
+        {damageNumbers.map((number) => <span key={number.id} className={number.headshot ? "headshot" : ""} style={{ left: number.x, top: number.y }}>-{number.damage}</span>)}
+      </div>
       <div className="crosshair" style={{ left: thirdPerson ? leanSide < 0 ? "46%" : "54%" : "50%" }}><span /><span /></div>
       <div className="hud-left"><small>VITALS</small><strong>{health}</strong><div className="health"><i style={{ width: `${health}%` }} /></div></div>
       {(crouching || prone) && <div className="stance-status">{prone ? "PRONE" : "CROUCHED"} · <kbd>{prone ? "X" : "C"}</kbd> STAND</div>}
@@ -2331,7 +2367,7 @@ export function FpsGame() {
       </div>}
       {!locked && !chatOpen && !dead && matchPhase !== "voting" && matchPhase !== "results" && <div className={`menu-screen${!started ? " main-menu-screen" : " pause-screen"}`}>
         <div className="menu-rule" />
-        {!started && menuPage !== "LOADOUT" && <button className="character-preview" onClick={() => setMenuPage("CHARACTER")} aria-label="Customize character">
+        {!started && (menuPage === "HOME" || menuPage === "CHARACTER") && <button className="character-preview" onClick={() => setMenuPage("CHARACTER")} aria-label="Customize character">
           <div className="preview-glow" />
           <OperatorPreview3D skin={characterSkin} uniform={characterUniform} armor={characterArmor} helmet={characterHelmet} faceGear={faceGear} headAccessory={headAccessory} chestRig={chestRig} backpack={backpack} pants={pantsColor} gloves={gloveColor} boots={bootColor} />
           <span>{menuPage === "CHARACTER" ? "OPERATOR PREVIEW" : "CLICK OPERATOR TO CUSTOMIZE"}</span>
@@ -2348,7 +2384,7 @@ export function FpsGame() {
             <button onClick={() => setMenuPage("LOADOUT")}><b>02</b><span>LOADOUT</span><small>EDIT EQUIPMENT</small></button>
             <button onClick={() => setMenuPage("CHARACTER")}><b>03</b><span>OPERATOR</span><small>CUSTOMIZE CHARACTER</small></button>
             <a href="/login"><b>04</b><span>ACCOUNT</span><small>LOGIN OR CREATE PROFILE</small></a>
-            <button disabled><b>05</b><span>SETTINGS</span><small>COMING SOON</small></button>
+            <button onClick={() => setMenuPage("SETTINGS")}><b>05</b><span>SETTINGS</span><small>GAMEPLAY & HUD</small></button>
           </nav>
           <div className={`account-sync ${accountSaveStatus}`}>{accountSaveStatus === "saved" ? "● ACCOUNT LOADOUT SYNCED" : accountSaveStatus === "saving" ? "● SAVING ACCOUNT…" : accountSaveStatus === "error" ? "● ACCOUNT SAVE UNAVAILABLE" : accountSaveStatus === "loading" ? "● LOADING ACCOUNT…" : "○ SIGN IN TO SAVE LOADOUT & OPERATOR"}</div>
           </>}
@@ -2379,6 +2415,19 @@ export function FpsGame() {
                 <i>{String(index + 1).padStart(2, "0")}</i><span><b>{sector}</b><small>{sectorPlayerCounts[sector] === null ? "CHECKING PLAYERS…" : `${sectorPlayerCounts[sector]} PLAYER${sectorPlayerCounts[sector] === 1 ? "" : "S"} ONLINE`} · MAP VOTE INSIDE</small></span><em>JOIN</em>
               </button>)}
             </div>
+          </div>}
+          {(!started && menuPage === "SETTINGS") && <div className="settings-panel">
+            <button className="back-button" onClick={() => setMenuPage("HOME")}>← MAIN MENU</button>
+            <div className="loadout-heading"><div><span>GAME</span> SETTINGS</div><small>GAMEPLAY & HUD PREFERENCES</small></div>
+            <section className="settings-group">
+              <header><small>HUD</small><h2>COMBAT FEEDBACK</h2></header>
+              <button className={`settings-toggle${damageNumbersEnabled ? " enabled" : ""}`} role="switch" aria-checked={damageNumbersEnabled} onClick={toggleDamageNumbers}>
+                <span><b>DAMAGE NUMBERS</b><small>SHOW DAMAGE VALUES AT THE POINT OF IMPACT</small></span>
+                <i><em /></i><strong>{damageNumbersEnabled ? "ON" : "OFF"}</strong>
+              </button>
+              <div className="settings-preview" aria-hidden="true"><span>TARGET HIT</span><b className={damageNumbersEnabled ? "visible" : ""}>-32</b><small>{damageNumbersEnabled ? "DAMAGE NUMBERS ENABLED" : "DAMAGE NUMBERS HIDDEN"}</small></div>
+            </section>
+            <p className="settings-note">PREFERENCES ARE SAVED ON THIS DEVICE.</p>
           </div>}
           {(!started && menuPage === "LOADOUT") && <div className="loadout-panel">
             <button className="back-button" onClick={() => setMenuPage("HOME")}>← MAIN MENU</button>
