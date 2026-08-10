@@ -63,8 +63,12 @@ const WEAPON_STATS: Record<string, { damage: number; fireRate: number; capacity:
   "MP5K COMPACT": { damage: 10.5, fireRate: 88, capacity: 20, reload: 2.05, range: 34, mobility: 84, spread: 2.25 },
 };
 const MEDICAL_STATS: Record<string, { healing: number; duration: number }> = {
+  "COMBAT BANDAGE": { healing: 25, duration: 0.8 },
+  "EMERGENCY INJECTOR": { healing: 20, duration: 0.55 },
+  "FIRST AID POUCH": { healing: 45, duration: 1.8 },
   "FIELD MEDKIT": { healing: 60, duration: 2.5 },
   "STIM INJECTOR": { healing: 35, duration: 1.15 },
+  "BLOOD BAG": { healing: 80, duration: 3.2 },
   "TRAUMA KIT": { healing: 100, duration: 4.0 },
 };
 
@@ -851,16 +855,27 @@ export function FpsGame() {
       const visualOnly = (mesh: THREE.Mesh) => { mesh.castShadow = true; mesh.raycast = () => {}; model.add(mesh); return mesh; };
       const equipmentMat = (color: number, metalness = .12) => material(color, .66, metalness);
       const x = .3, y = -.35, z = -.58;
-      if (name === "FIELD MEDKIT" || name === "TRAUMA KIT") {
+      if (name === "FIELD MEDKIT" || name === "TRAUMA KIT" || name === "FIRST AID POUCH") {
         const trauma = name === "TRAUMA KIT";
-        visualOnly(new THREE.Mesh(new THREE.BoxGeometry(trauma ? .52 : .4, trauma ? .42 : .32, .24), equipmentMat(trauma ? 0x5a4435 : 0x334c3e))).position.set(x, y, z);
-        visualOnly(new THREE.Mesh(new THREE.BoxGeometry(.16, .055, .012), equipmentMat(0xe5e8df))).position.set(x, y, z - .126);
-        visualOnly(new THREE.Mesh(new THREE.BoxGeometry(.055, .16, .012), equipmentMat(0xe5e8df))).position.set(x, y, z - .127);
+        const pouch = name === "FIRST AID POUCH";
+        visualOnly(new THREE.Mesh(new THREE.BoxGeometry(trauma ? .52 : pouch ? .34 : .4, trauma ? .42 : pouch ? .27 : .32, pouch ? .18 : .24), equipmentMat(trauma ? 0x5a4435 : pouch ? 0x6d5b3d : 0x334c3e))).position.set(x, y, z);
+        const crossZ = z - (pouch ? .096 : .126);
+        visualOnly(new THREE.Mesh(new THREE.BoxGeometry(.16, .055, .012), equipmentMat(0xe5e8df))).position.set(x, y, crossZ);
+        visualOnly(new THREE.Mesh(new THREE.BoxGeometry(.055, .16, .012), equipmentMat(0xe5e8df))).position.set(x, y, crossZ - .001);
         const handle = visualOnly(new THREE.Mesh(new THREE.TorusGeometry(.12, .025, 8, 16, Math.PI), equipmentMat(0x171d1e))); handle.position.set(x, y + (trauma ? .27 : .22), z); handle.rotation.z = Math.PI;
-      } else if (name === "STIM INJECTOR") {
-        const syringe = visualOnly(new THREE.Mesh(new THREE.CylinderGeometry(.055, .055, .48, 12), equipmentMat(0x9fe7dc, .3))); syringe.rotation.x = Math.PI / 2; syringe.position.set(x, y, z);
+      } else if (name === "STIM INJECTOR" || name === "EMERGENCY INJECTOR") {
+        const emergency = name === "EMERGENCY INJECTOR";
+        const syringe = visualOnly(new THREE.Mesh(new THREE.CylinderGeometry(.055, .055, .48, 12), equipmentMat(emergency ? 0xf0a34b : 0x9fe7dc, .3))); syringe.rotation.x = Math.PI / 2; syringe.position.set(x, y, z);
         const plunger = visualOnly(new THREE.Mesh(new THREE.CylinderGeometry(.085, .085, .04, 12), equipmentMat(0x252f31))); plunger.rotation.x = Math.PI / 2; plunger.position.set(x, y, z + .26);
         const needle = visualOnly(new THREE.Mesh(new THREE.CylinderGeometry(.008, .008, .2, 8), equipmentMat(0xc8d1d0, .8))); needle.rotation.x = Math.PI / 2; needle.position.set(x, y, z - .33);
+      } else if (name === "COMBAT BANDAGE") {
+        const roll = visualOnly(new THREE.Mesh(new THREE.CylinderGeometry(.14, .14, .2, 18), equipmentMat(0xd9d2bd))); roll.rotation.z = Math.PI / 2; roll.position.set(x, y, z);
+        const center = visualOnly(new THREE.Mesh(new THREE.CylinderGeometry(.055, .055, .205, 14), equipmentMat(0x8c7b61))); center.rotation.z = Math.PI / 2; center.position.set(x, y, z);
+        visualOnly(new THREE.Mesh(new THREE.BoxGeometry(.08, .22, .22), equipmentMat(0xb14d43))).position.set(x, y, z);
+      } else if (name === "BLOOD BAG") {
+        visualOnly(new THREE.Mesh(new THREE.BoxGeometry(.34, .43, .075), equipmentMat(0x8f2932, .18))).position.set(x, y, z);
+        visualOnly(new THREE.Mesh(new THREE.BoxGeometry(.17, .08, .012), equipmentMat(0xe7e2d5))).position.set(x, y + .04, z - .044);
+        const tube = visualOnly(new THREE.Mesh(new THREE.TorusGeometry(.16, .012, 7, 20, Math.PI * 1.45), equipmentMat(0x6f2028, .15))); tube.position.set(x + .08, y - .23, z); tube.rotation.z = -.35;
       } else if (name === "C4 CHARGE") {
         visualOnly(new THREE.Mesh(new THREE.BoxGeometry(.42, .3, .12), equipmentMat(0x5b6652))).position.set(x, y, z);
         visualOnly(new THREE.Mesh(new THREE.BoxGeometry(.2, .13, .03), equipmentMat(0x20282a, .4))).position.set(x, y, z - .075);
@@ -2087,7 +2102,9 @@ export function FpsGame() {
                 ["P9 SIDEARM", "RELIABLE · 15 ROUNDS"], ["R45 REVOLVER", "HEAVY · 6 ROUNDS"], ["G18 AUTO PISTOL", "24 ROUNDS · FULL AUTO"], ["DB-2 SAWED-OFF", "TWO SHELLS · 6 PELLETS"], ["M1911 SIDEARM", ".45 ACP · 8 ROUNDS"], ["USP-45 TACTICAL", "ACCURATE · 12 ROUNDS"], ["MP5K COMPACT", "FULL AUTO · 20 ROUNDS"], ["COMBAT KNIFE", "FAST · SILENT"]
               ]} onSelect={setSecondary} magazine={secondaryMagazine} />
               <LoadoutSlot label="MEDICAL" selected={medical} options={[
-                ["FIELD MEDKIT", "RESTORE 60 HEALTH"], ["STIM INJECTOR", "FAST HEAL + SPEED"], ["TRAUMA KIT", "FULL HEAL · SLOW"]
+                ["COMBAT BANDAGE", "25 HEALTH · 0.80 SEC"], ["EMERGENCY INJECTOR", "20 HEALTH · 0.55 SEC"],
+                ["FIRST AID POUCH", "45 HEALTH · 1.80 SEC"], ["STIM INJECTOR", "35 HEALTH · 1.15 SEC"],
+                ["FIELD MEDKIT", "60 HEALTH · 2.50 SEC"], ["BLOOD BAG", "80 HEALTH · 3.20 SEC"], ["TRAUMA KIT", "100 HEALTH · 4.00 SEC"]
               ]} onSelect={setMedical} />
               <LoadoutSlot label="UTILITY" selected={utility} options={[
                 ["FRAG GRENADE", "LETHAL EXPLOSIVE"], ["SMOKE GRENADE", "VISION COVER"], ["FLASHBANG", "DISORIENT TARGETS"], ["C4 CHARGE", "PLACE · FIRE AGAIN TO DETONATE"], ["LANDMINE", "PROXIMITY EXPLOSIVE"], ["GAS BOMB", "AREA DENIAL · DAMAGE OVER TIME"]
