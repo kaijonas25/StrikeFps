@@ -85,6 +85,8 @@ export function FpsGame() {
   const [sectorPlayerCounts, setSectorPlayerCounts] = useState<Record<MultiplayerSector, number | null>>({ "SECTOR 1": null, "SECTOR 2": null, "SECTOR 3": null, "SECTOR 4": null });
   const [matchPhase, setMatchPhase] = useState<"connecting" | "voting" | "playing" | "results">("connecting");
   const [mapVotes, setMapVotes] = useState(0);
+  const [cityMapVotes, setCityMapVotes] = useState(0);
+  const [forestMapVotes, setForestMapVotes] = useState(0);
   const [modeVotes, setModeVotes] = useState(0);
   const [endGameVotes, setEndGameVotes] = useState(0);
   const [endGameRequested, setEndGameRequested] = useState(false);
@@ -835,10 +837,11 @@ export function FpsGame() {
       multiplayerSocket.addEventListener("message", (event) => {
         if (typeof event.data !== "string") return;
         try {
-          const packet = JSON.parse(event.data) as { type: string; player?: RemoteState; players?: RemoteState[]; id?: string; health?: number; attackerId?: string; weapon?: string; headshot?: boolean; match?: { phase: "voting" | "playing" | "results"; phaseEndsAt: number; votes: number; modeVotes: number; endVotes: number; mode: "FFA"; winnerId: string | null; winningKills: number } };
+          const packet = JSON.parse(event.data) as { type: string; player?: RemoteState; players?: RemoteState[]; id?: string; health?: number; attackerId?: string; weapon?: string; headshot?: boolean; match?: { phase: "voting" | "playing" | "results"; phaseEndsAt: number; votes: number; mapVotes?: { "CITY BLOCK"?: number; "BLACKWOOD FOREST"?: number }; map: Exclude<GameMap, "TEST YARD">; modeVotes: number; endVotes: number; mode: "FFA"; winnerId: string | null; winningKills: number } };
           const applyMatch = (match: NonNullable<typeof packet.match>, resetVotes = false) => {
-            setMatchPhase(match.phase); setMapVotes(match.votes); setModeVotes(match.modeVotes ?? 0); setEndGameVotes(match.endVotes ?? 0); setMatchEndsAt(match.phaseEndsAt);
+            setMatchPhase(match.phase); setMapVotes(match.votes); setCityMapVotes(match.mapVotes?.["CITY BLOCK"] ?? match.votes); setForestMapVotes(match.mapVotes?.["BLACKWOOD FOREST"] ?? 0); setModeVotes(match.modeVotes ?? 0); setEndGameVotes(match.endVotes ?? 0); setMatchEndsAt(match.phaseEndsAt);
             setMatchWinnerId(match.winnerId ?? null); setWinningKills(match.winningKills ?? 0);
+            if (match.phase === "playing" && match.map !== selectedMap) setSelectedMap(match.map);
             if ((match.endVotes ?? 0) === 0) setEndGameRequested(false);
             if (resetVotes) { setHasVoted(false); setHasModeVoted(false); }
             if (match.phase === "voting" || match.phase === "results") document.exitPointerLock();
@@ -1780,7 +1783,11 @@ export function FpsGame() {
           <button className={hasVoted ? "voted" : ""} disabled={hasVoted} onClick={() => { multiplayerSendRef.current({ type: "vote", category: "map", map: "CITY BLOCK" }); setHasVoted(true); }}>
             <i>01</i><span><b>CITY BLOCK</b><small>URBAN WARFARE · ENTERABLE BUILDINGS · DEBRIS</small></span><em>{hasVoted ? "VOTE LOCKED" : "VOTE"}</em>
           </button>
-          <div className="vote-total"><i style={{ width: mapVotes ? "100%" : "0%" }} /><span>{mapVotes} VOTE{mapVotes === 1 ? "" : "S"}</span></div>
+          <div className="vote-total"><i style={{ width: mapVotes ? `${cityMapVotes / mapVotes * 100}%` : "0%" }} /><span>{cityMapVotes} VOTE{cityMapVotes === 1 ? "" : "S"}</span></div>
+          <button className={hasVoted ? "voted" : ""} disabled={hasVoted} onClick={() => { multiplayerSendRef.current({ type: "vote", category: "map", map: "BLACKWOOD FOREST" }); setHasVoted(true); }}>
+            <i>02</i><span><b>BLACKWOOD FOREST</b><small>WOODLAND COMBAT · CREEK CROSSING · RANGER OUTPOST</small></span><em>{hasVoted ? "VOTE LOCKED" : "VOTE"}</em>
+          </button>
+          <div className="vote-total"><i style={{ width: mapVotes ? `${forestMapVotes / mapVotes * 100}%` : "0%" }} /><span>{forestMapVotes} VOTE{forestMapVotes === 1 ? "" : "S"}</span></div>
           <h3>GAMEMODE</h3>
           <button className={hasModeVoted ? "voted" : ""} disabled={hasModeVoted} onClick={() => { multiplayerSendRef.current({ type: "vote", category: "mode", mode: "FFA" }); setHasModeVoted(true); }}>
             <i>01</i><span><b>FREE FOR ALL</b><small>5 MINUTES · EVERY OPERATOR FOR THEMSELVES</small></span><em>{hasModeVoted ? "VOTE LOCKED" : "VOTE"}</em>
@@ -1840,17 +1847,6 @@ export function FpsGame() {
                 setSessionId((id) => id + 1);
               }}>
                 <i>TR</i><span><b>TRAINING SECTOR</b><small>SINGLE PLAYER · TEST YARD · NO MAP VOTING</small></span><em>TRAIN</em>
-              </button>
-              <button onClick={() => {
-                setSelectedSector("TRAINING SECTOR");
-                setServerBrowserOpen(false);
-                setSelectedMap("BLACKWOOD FOREST");
-                setMatchPhase("playing");
-                setMapVotes(0); setModeVotes(0); setHasVoted(false); setHasModeVoted(false); setMatchEndsAt(0);
-                setStarted(true);
-                setSessionId((id) => id + 1);
-              }}>
-                <i>BF</i><span><b>BLACKWOOD FOREST</b><small>SINGLE PLAYER · WOODLAND COMBAT · RANGER OUTPOST</small></span><em>DEPLOY</em>
               </button>
               {(["SECTOR 1", "SECTOR 2", "SECTOR 3", "SECTOR 4"] as MultiplayerSector[]).map((sector, index) => <button key={sector} onClick={() => {
                 setSelectedSector(sector);
