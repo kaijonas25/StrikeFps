@@ -28,6 +28,7 @@ type PlayerState = {
   health: number;
   team: "ALPHA" | "BRAVO";
   objectiveScore: number;
+  spawnProtectedUntil: number;
 };
 
 type MultiplayerMap = "CITY BLOCK" | "BLACKWOOD FOREST";
@@ -47,6 +48,33 @@ const json = (value: unknown, status = 200) => new Response(JSON.stringify(value
   headers: { "content-type": "application/json", "access-control-allow-origin": "*" },
 });
 
+const SPAWNS: Record<MultiplayerMap, { free: [number,number][]; ALPHA: [number,number][]; BRAVO: [number,number][] }> = {
+  "CITY BLOCK": {
+    free: [[-38,-6],[-38,18],[38,-18],[38,8],[-24,-5],[24,5],[-5,-30],[5,30],[-18,36],[18,-36]],
+    ALPHA: [[-32,38],[-20,38],[-7,38],[7,38],[20,38],[32,38]],
+    BRAVO: [[-32,-38],[-20,-38],[-7,-38],[7,-38],[20,-38],[32,-38]],
+  },
+  "BLACKWOOD FOREST": {
+    free: [[-35,-22],[-34,14],[34,-18],[34,12],[-25,-32],[22,32],[-2,-34],[4,34],[-28,28],[28,-30]],
+    ALPHA: [[-34,35],[-23,36],[-4,36],[10,35],[20,36],[34,35]],
+    BRAVO: [[-34,-35],[-22,-36],[-4,-36],[10,-35],[22,-36],[34,-35]],
+  },
+};
+
+const chooseSpawn = (meta: MatchMeta, team: PlayerState["team"], players: PlayerState[]) => {
+  const teamMode = meta.mode === "TDM" || meta.mode === "CTP";
+  const base = SPAWNS[meta.map][teamMode ? team : "free"];
+  const clearOfObjectives = base.filter(([x,z]) => meta.objectiveZones.every((zone) => Math.hypot(x-zone.x,z-zone.z) > zone.radius + 3));
+  const candidates = clearOfObjectives.length ? clearOfObjectives : base;
+  const living = players.filter((player) => player.health > 0);
+  return candidates.map(([x,z]) => {
+    const allDistance = living.length ? Math.min(...living.map((player) => Math.hypot(x-player.x,z-player.z))) : 30;
+    const enemies = teamMode ? living.filter((player) => player.team !== team) : living;
+    const enemyDistance = enemies.length ? Math.min(...enemies.map((player) => Math.hypot(x-player.x,z-player.z))) : 35;
+    return { x, z, score:allDistance + enemyDistance * 1.8 + Math.random() * 7 };
+  }).sort((a,b) => b.score-a.score)[0];
+};
+
 export class GameRoom extends DurableObject {
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
@@ -62,18 +90,16 @@ export class GameRoom extends DurableObject {
     const pair = new WebSocketPair();
     const client = pair[0], server = pair[1];
     const id = crypto.randomUUID();
-    const playerNumber = this.ctx.getWebSockets().filter((socket) => socket.readyState === WebSocket.OPEN).length;
+    const existingPlayers = this.ctx.getWebSockets().filter((socket) => socket.readyState === WebSocket.OPEN).map((socket) => (socket.deserializeAttachment() as SocketAttachment).state);
+    const playerNumber = existingPlayers.length;
     const team: PlayerState["team"] = playerNumber % 2 === 0 ? "ALPHA" : "BRAVO";
-    const forest = meta.map === "BLACKWOOD FOREST";
-    const spawnX = [-6, 6][Math.floor(playerNumber / 2) % 2];
-    const spawnZ = team === "ALPHA" ? forest ? 36 : 38 : forest ? -36 : -38;
-    const initial: PlayerState = { id, x: spawnX, y: 1.7, z: spawnZ, yaw: spawnZ > 0 ? 0 : Math.PI, movement: "static", crouching: false, prone: false, slot: 1, primary: "VXR-4 CARBINE", secondary: "P9 SIDEARM", skin: "#a9795e", uniform: "#303a3b", armor: "#20292b", helmet: "TACTICAL", faceGear: "GOGGLES", headAccessory: "HEADSET", chestRig: "PLATE CARRIER", backpack: "ASSAULT PACK", pants: "#303a3b", gloves: "#20292b", boots: "#151b1d", kills: 0, deaths: 0, health: 100, team, objectiveScore: 0 };
+    const spawn = chooseSpawn(meta, team, existingPlayers);
+    const spawnX = spawn.x, spawnZ = spawn.z;
+    const initial: PlayerState = { id, x: spawnX, y: 1.7, z: spawnZ, yaw: spawnZ > 0 ? 0 : Math.PI, movement: "static", crouching: false, prone: false, slot: 1, primary: "VXR-4 CARBINE", secondary: "P9 SIDEARM", skin: "#a9795e", uniform: "#303a3b", armor: "#20292b", helmet: "TACTICAL", faceGear: "GOGGLES", headAccessory: "HEADSET", chestRig: "PLATE CARRIER", backpack: "ASSAULT PACK", pants: "#303a3b", gloves: "#20292b", boots: "#151b1d", kills: 0, deaths: 0, health: 100, team, objectiveScore: 0, spawnProtectedUntil: Date.now() + 3000 };
     this.ctx.acceptWebSocket(server);
     server.serializeAttachment({ id, state: initial } satisfies SocketAttachment);
 
-    const players = this.ctx.getWebSockets()
-      .filter((socket) => socket.readyState === WebSocket.OPEN && (socket.deserializeAttachment() as SocketAttachment).id !== id)
-      .map((socket) => (socket.deserializeAttachment() as SocketAttachment).state);
+    const players = existingPlayers;
     const joiningAttachment = server.deserializeAttachment() as SocketAttachment;
     server.send(JSON.stringify({ type: "welcome", id, player: initial, players, match: meta, yourMapVote: joiningAttachment.votedMapPhase === meta.phaseEndsAt ? joiningAttachment.votedMap : null, yourModeVote: joiningAttachment.votedModePhase === meta.phaseEndsAt ? joiningAttachment.votedMode : null }));
     this.broadcast({ type: "joined", player: initial }, server);
@@ -101,6 +127,7 @@ export class GameRoom extends DurableObject {
       if (!targetSocket) return;
       const target = targetSocket.deserializeAttachment() as SocketAttachment;
       if ((meta.mode === "TDM" || meta.mode === "CTP") && target.state.team === attachment.state.team) return;
+      if ((target.state.spawnProtectedUntil ?? 0) > Date.now()) return;
       if (target.state.health <= 0) return;
       const damage = Math.min(100, Math.max(0, typeof packet.damage === "number" && Number.isFinite(packet.damage) ? packet.damage : 0));
       if (damage === 0) return;
@@ -119,10 +146,13 @@ export class GameRoom extends DurableObject {
     }
     if (packet.type === "respawn") {
       const meta = await this.currentMatch();
+      const otherPlayers = this.ctx.getWebSockets().filter((candidate) => candidate !== socket && candidate.readyState === WebSocket.OPEN).map((candidate) => (candidate.deserializeAttachment() as SocketAttachment).state);
+      const spawn = chooseSpawn(meta, attachment.state.team, otherPlayers);
       attachment.state.health = 100;
-      attachment.state.x = meta.mode === "TDM" ? attachment.state.team === "ALPHA" ? -6 : 6 : typeof packet.x === "number" && Number.isFinite(packet.x) ? packet.x : attachment.state.x;
+      attachment.state.spawnProtectedUntil = Date.now() + 3000;
+      attachment.state.x = spawn.x;
       attachment.state.y = 1.7;
-      attachment.state.z = meta.mode === "TDM" ? attachment.state.team === "ALPHA" ? meta.map === "BLACKWOOD FOREST" ? 36 : 38 : meta.map === "BLACKWOOD FOREST" ? -36 : -38 : typeof packet.z === "number" && Number.isFinite(packet.z) ? packet.z : attachment.state.z;
+      attachment.state.z = spawn.z;
       socket.serializeAttachment(attachment);
       socket.send(JSON.stringify({ type: "respawned", player: attachment.state }));
       this.broadcast({ type: "state", player: attachment.state });
@@ -320,15 +350,17 @@ export class GameRoom extends DurableObject {
       const spots = [...(meta.map === "CITY BLOCK" ? citySpots : forestSpots)].sort(() => Math.random() - .5);
       meta.objectiveZones = meta.mode === "KOTH" ? [{ id:"HILL", x:spots[0][0], z:spots[0][1], radius:7.5, owner:null, progress:0 }] : meta.mode === "CTP" ? spots.slice(0,3).map(([x,z], index) => ({ id:String.fromCharCode(65 + index), x, z, radius:4.25, owner:null, progress:0 })) : [];
       meta.lastObjectiveTick = Date.now();
-      this.ctx.getWebSockets().forEach((socket, index) => {
+      const roundSockets = this.ctx.getWebSockets().filter((socket) => socket.readyState === WebSocket.OPEN);
+      const spawnedPlayers: PlayerState[] = [];
+      roundSockets.forEach((socket, index) => {
         const attachment = socket.deserializeAttachment() as SocketAttachment;
         attachment.state.team = index % 2 === 0 ? "ALPHA" : "BRAVO";
-        const forest = meta.map === "BLACKWOOD FOREST";
         attachment.state.kills = 0; attachment.state.deaths = 0; attachment.state.health = 100; attachment.state.objectiveScore = 0;
-        attachment.state.x = [-6, 6][Math.floor(index / 2) % 2];
-        attachment.state.z = attachment.state.team === "ALPHA" ? forest ? 36 : 38 : forest ? -36 : -38;
+        attachment.state.spawnProtectedUntil = Date.now() + 3000;
+        const spawn = chooseSpawn(meta, attachment.state.team, spawnedPlayers);
+        attachment.state.x = spawn.x; attachment.state.z = spawn.z;
         attachment.state.y = 1.7; attachment.state.yaw = attachment.state.z > 0 ? 0 : Math.PI;
-        socket.serializeAttachment(attachment);
+        socket.serializeAttachment(attachment); spawnedPlayers.push(attachment.state);
       });
     }
     else if (meta.phase === "playing") {
