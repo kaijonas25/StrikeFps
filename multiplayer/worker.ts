@@ -182,6 +182,20 @@ export class GameRoom extends DurableObject {
     const attachment = socket.deserializeAttachment() as SocketAttachment | null;
     if (attachment) this.broadcast({ type: "left", id: attachment.id }, socket);
     const remainingPlayers = this.ctx.getWebSockets().filter((candidate) => candidate !== socket && candidate.readyState === WebSocket.OPEN);
+    const meta = await this.currentMatch();
+    if (attachment && meta.phase === "voting") {
+      let revokedVote = false;
+      if (attachment.votedMapPhase === meta.phaseEndsAt && attachment.votedMap) {
+        meta.votes = Math.max(0, meta.votes - 1);
+        meta.mapVotes[attachment.votedMap] = Math.max(0, meta.mapVotes[attachment.votedMap] - 1);
+        revokedVote = true;
+      }
+      if (attachment.votedModePhase === meta.phaseEndsAt) {
+        meta.modeVotes = Math.max(0, meta.modeVotes - 1);
+        revokedVote = true;
+      }
+      if (revokedVote) await this.ctx.storage.put("match", meta);
+    }
     // Clients briefly reconnect when the winning map changes. Deleting match
     // state here restarted voting before those clients could load the winner.
     if (remainingPlayers.length === 0) {
@@ -190,11 +204,11 @@ export class GameRoom extends DurableObject {
       await this.ctx.storage.setAlarm(emptyResetAt);
       return;
     }
-    const meta = await this.currentMatch();
     if (meta.phase === "voting" && remainingPlayers.every((candidate) => {
       const vote = candidate.deserializeAttachment() as SocketAttachment;
       return vote.votedMapPhase === meta.phaseEndsAt && vote.votedModePhase === meta.phaseEndsAt;
     })) await this.advanceMatch(meta);
+    else if (meta.phase === "voting") this.broadcast({ type: "match", match: meta });
   }
 
   private broadcast(packet: unknown, except?: WebSocket) {
