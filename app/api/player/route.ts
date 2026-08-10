@@ -3,6 +3,7 @@ import { getDb } from "../../../db";
 import { players } from "../../../db/schema";
 
 const FIREBASE_API_KEY = "AIzaSyBblKzSnl4XD7afgjqXETtVEhZyADn4-3s";
+const ADMIN_EMAIL = "kaigarcia2510@gmail.com";
 type FirebaseAccount = { localId: string; email: string; displayName?: string };
 
 async function verifiedAccount(request: Request): Promise<FirebaseAccount | null> {
@@ -25,6 +26,7 @@ export async function GET(request: Request) {
   await db.insert(players).values({ id: account.localId, email: account.email, callsign }).onConflictDoUpdate({ target: players.id, set: { email: account.email, callsign } });
   const [player] = await db.select().from(players).where(eq(players.id, account.localId)).limit(1);
   return Response.json({
+    isAdmin: account.email.toLowerCase() === ADMIN_EMAIL,
     player: {
       ...player,
       loadout: JSON.parse(player.loadoutJson),
