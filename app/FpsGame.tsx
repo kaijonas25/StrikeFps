@@ -868,10 +868,12 @@ export function FpsGame() {
       : currentSlot === 1 ? primaryAttachments : secondaryAttachments;
     let playerHealth = 100, nextPadTick = 0, healEnd = 0;
     const playerPosition = new THREE.Vector3(0, PLAYER_HEIGHT, spawnZ);
+    const lastClearPosition = playerPosition.clone();
     let isThirdPerson = false, orbiting = false, isCrouching = false, isProne = false, slideEnd = 0, stanceOffset = 0, crouchPoseAmount = 0, proneAmount = 0, leanDirection: -1 | 0 | 1 = 0, leanAmount = 0;
     const slideVelocity = new THREE.Vector2();
     respawnRef.current = () => {
       playerPosition.set(0, PLAYER_HEIGHT, spawnZ); camera.position.copy(playerPosition);
+      lastClearPosition.copy(playerPosition);
       yaw = 0; pitch = 0; verticalVelocity = 0; playerHealth = 100;
       isCrouching = false; isProne = false; sliding = false; slideEnd = 0; stanceOffset = 0; crouchPoseAmount = 0; proneAmount = 0; leanDirection = 0; leanAmount = 0; setCrouching(false); setProne(false); setLeanSide(0);
       keys.clear();
@@ -881,22 +883,60 @@ export function FpsGame() {
     const clock = new THREE.Clock();
 
     const currentStance = (): PlayerStance => isProne ? "prone" : isCrouching ? "crouching" : "standing";
-    const collides = (x: number, z: number, stance: PlayerStance = currentStance()) => {
+    const boxCollides = (box: Box, x: number, z: number, stance: PlayerStance) => {
       const collider = STANCE_COLLIDERS[stance];
       const feetY = playerPosition.y - PLAYER_HEIGHT;
       const forwardX = -Math.sin(yaw), forwardZ = -Math.cos(yaw);
       const samples = collider.halfLength > 0 ? [-collider.halfLength, 0, collider.halfLength] : [0];
-      return boxes.some((box) => {
-        if (box.active === false || feetY + collider.height <= box.minY || feetY >= box.maxY) return false;
-        return samples.some((offset) => {
-          const centerX = x + forwardX * offset, centerZ = z + forwardZ * offset;
-          const closestX = THREE.MathUtils.clamp(centerX, box.minX, box.maxX);
-          const closestZ = THREE.MathUtils.clamp(centerZ, box.minZ, box.maxZ);
-          return (centerX - closestX) ** 2 + (centerZ - closestZ) ** 2 < collider.radius ** 2;
-        });
+      if (box.active === false || feetY + collider.height <= box.minY || feetY >= box.maxY) return false;
+      return samples.some((offset) => {
+        const centerX = x + forwardX * offset, centerZ = z + forwardZ * offset;
+        const closestX = THREE.MathUtils.clamp(centerX, box.minX, box.maxX);
+        const closestZ = THREE.MathUtils.clamp(centerZ, box.minZ, box.maxZ);
+        return (centerX - closestX) ** 2 + (centerZ - closestZ) ** 2 < collider.radius ** 2;
       });
     };
-    const canUseStance = (stance: PlayerStance) => !collides(playerPosition.x, playerPosition.z, stance);
+    const collides = (x: number, z: number, stance: PlayerStance = currentStance()) =>
+      boxes.some((box) => boxCollides(box, x, z, stance));
+    const fitStanceOutsideWalls = (stance: PlayerStance) => {
+      const originX = playerPosition.x, originZ = playerPosition.z;
+      const blockingBoxes = boxes.filter((box) => boxCollides(box, originX, originZ, stance));
+      if (blockingBoxes.length === 0) { lastClearPosition.copy(playerPosition); return true; }
+
+      // Bias the search toward the last collision-free side of every wall. This
+      // prevents a stance change from choosing the nearer point across a thin wall.
+      let pushX = 0, pushZ = 0;
+      blockingBoxes.forEach((box) => {
+        const closestX = THREE.MathUtils.clamp(lastClearPosition.x, box.minX, box.maxX);
+        const closestZ = THREE.MathUtils.clamp(lastClearPosition.z, box.minZ, box.maxZ);
+        pushX += lastClearPosition.x - closestX;
+        pushZ += lastClearPosition.z - closestZ;
+      });
+      if (Math.hypot(pushX, pushZ) < .001) { pushX = lastClearPosition.x - originX; pushZ = lastClearPosition.z - originZ; }
+      const preferredAngle = Math.atan2(pushZ, pushX);
+      const angleOffsets = Array.from({ length: 32 }, (_, index) => {
+        if (index === 0) return 0;
+        const step = Math.ceil(index / 2) * Math.PI / 16;
+        return index % 2 ? step : -step;
+      });
+
+      for (let distance = .04; distance <= 1.6; distance += .04) {
+        for (const angleOffset of angleOffsets) {
+          const candidateX = originX + Math.cos(preferredAngle + angleOffset) * distance;
+          const candidateZ = originZ + Math.sin(preferredAngle + angleOffset) * distance;
+          const staysOnOriginalSide = blockingBoxes.every((box) =>
+            (lastClearPosition.x < box.minX ? candidateX < box.minX : lastClearPosition.x > box.maxX ? candidateX > box.maxX : true) &&
+            (lastClearPosition.z < box.minZ ? candidateZ < box.minZ : lastClearPosition.z > box.maxZ ? candidateZ > box.maxZ : true)
+          );
+          if (staysOnOriginalSide && !collides(candidateX, candidateZ, stance)) {
+            playerPosition.x = candidateX; playerPosition.z = candidateZ;
+            lastClearPosition.copy(playerPosition);
+            return true;
+          }
+        }
+      }
+      return false;
+    };
 
     const onKeyDown = (e: KeyboardEvent) => {
       keys.add(e.code);
@@ -908,12 +948,12 @@ export function FpsGame() {
         localPlayer.visible = isThirdPerson;
       }
       if (e.code === "Space" && grounded) {
-        if ((isProne || isCrouching) && !canUseStance("standing")) return;
+        if ((isProne || isCrouching) && !fitStanceOutsideWalls("standing")) return;
         isProne = false; isCrouching = false; setProne(false); setCrouching(false); verticalVelocity = 5.7; grounded = false;
       }
       if (e.code === "KeyC" && !e.repeat && grounded) {
         if (isProne) {
-          if (!canUseStance("crouching")) return;
+          if (!fitStanceOutsideWalls("crouching")) return;
           isProne = false; isCrouching = true; setProne(false);
         } else if (sprinting) {
           isCrouching = true; sliding = true; slideEnd = performance.now() + 850;
@@ -921,13 +961,13 @@ export function FpsGame() {
           const slideSpeed = 10.5 * (1 - attachmentMobilityPenalty(activeAttachments()) / 100);
           slideVelocity.set(-Math.sin(movementYaw) * slideSpeed, -Math.cos(movementYaw) * slideSpeed);
         } else {
-          if (isCrouching && !canUseStance("standing")) return;
+          if (isCrouching && !fitStanceOutsideWalls("standing")) return;
           sliding = false; slideEnd = 0; isCrouching = !isCrouching;
         }
         aiming = false; setAdsActive(false); setCrouching(isCrouching);
       }
       if (e.code === "KeyX" && !e.repeat && grounded) {
-        if (isProne && !canUseStance("standing")) return;
+        if (!fitStanceOutsideWalls(isProne ? "standing" : "prone")) return;
         isProne = !isProne; isCrouching = false; sliding = false; slideEnd = 0;
         if (isProne && isThirdPerson) cameraPitch = 0;
         aiming = false; setAdsActive(false); setProne(isProne); setCrouching(false);
@@ -1268,6 +1308,11 @@ export function FpsGame() {
         if (!collides(playerPosition.x, playerPosition.z + stepZ)) playerPosition.z += stepZ;
       }
       if (isThirdPerson && input.lengthSq() > 0) yaw = Math.atan2(-dx, -dz);
+      if (!fitStanceOutsideWalls(currentStance())) {
+        // A pathological fully enclosed position keeps its last valid location
+        // instead of being pushed through geometry to the opposite side.
+        playerPosition.x = lastClearPosition.x; playerPosition.z = lastClearPosition.z;
+      }
 
       if (now >= nextPadTick) {
         nextPadTick = now + 250;
