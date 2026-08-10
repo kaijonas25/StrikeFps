@@ -109,7 +109,7 @@ export class GameRoom extends DurableObject {
 
   async webSocketMessage(socket: WebSocket, message: string | ArrayBuffer) {
     if (typeof message !== "string" || message.length > 4096) return;
-    let packet: Partial<PlayerState> & { type?: string; category?: "map" | "mode"; map?: MultiplayerMap; mode?: GameMode; targetId?: string; damage?: number; weapon?: string; headshot?: boolean; tracerEnds?: unknown; effect?: string; duration?: number; text?: string };
+    let packet: Partial<PlayerState> & { type?: string; category?: "map" | "mode"; map?: MultiplayerMap; mode?: GameMode; targetId?: string; damage?: number; weapon?: string; headshot?: boolean; tracerEnds?: unknown; effect?: string; duration?: number; text?: string; utilityId?: string; utility?: string; position?: unknown; velocity?: unknown };
     try { packet = JSON.parse(message); } catch { return; }
     const attachment = socket.deserializeAttachment() as SocketAttachment;
     if (packet.type === "chat") {
@@ -128,6 +128,15 @@ export class GameRoom extends DurableObject {
         Array.isArray(point) && point.length === 3 && point.every((coordinate) => typeof coordinate === "number" && Number.isFinite(coordinate) && Math.abs(coordinate) <= 200)
       );
       if (tracerEnds.length) this.broadcast({ type: "shot", id: attachment.id, tracerEnds }, socket);
+      return;
+    }
+    if (packet.type === "utility_throw" || packet.type === "utility_detonate") {
+      const meta = await this.currentMatch();
+      const utilities = ["FRAG GRENADE", "FLASHBANG", "SMOKE GRENADE", "GAS BOMB", "C4 CHARGE", "LANDMINE"];
+      const vector = (value: unknown) => Array.isArray(value) && value.length === 3 && value.every((entry) => typeof entry === "number" && Number.isFinite(entry) && Math.abs(entry) <= 200) ? value as number[] : null;
+      const position = vector(packet.position), velocity = packet.type === "utility_throw" ? vector(packet.velocity) : null;
+      if (meta.phase !== "playing" || !packet.utilityId || packet.utilityId.length > 64 || !utilities.includes(packet.utility ?? "") || !position || (packet.type === "utility_throw" && !velocity)) return;
+      this.broadcast({ type: packet.type, id: attachment.id, utilityId: packet.utilityId, utility: packet.utility, position, ...(velocity ? { velocity } : {}) }, socket);
       return;
     }
     if (packet.type === "utility_effect") {

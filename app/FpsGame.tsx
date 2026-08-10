@@ -1056,7 +1056,7 @@ export function FpsGame() {
       multiplayerSocket.addEventListener("message", (event) => {
         if (typeof event.data !== "string") return;
         try {
-          const packet = JSON.parse(event.data) as { type: string; player?: RemoteState; players?: RemoteState[]; id?: string; health?: number; score?: number; attackerId?: string; weapon?: string; headshot?: boolean; tracerEnds?: number[][]; effect?: string; duration?: number; yourMapVote?: Exclude<GameMap, "TEST YARD"> | null; yourModeVote?: GameMode | null; map?: Exclude<GameMap, "TEST YARD">; match?: { phase: "voting" | "playing" | "results"; phaseEndsAt: number; votes: number; mapVotes?: { "CITY BLOCK"?: number; "BLACKWOOD FOREST"?: number }; map: Exclude<GameMap, "TEST YARD">; modeVotes: number; modeVoteCounts?: { FFA?: number; TDM?: number; KOTH?: number; CTP?: number }; endVotes: number; mode: GameMode; teamScores?: { ALPHA: number; BRAVO: number }; objectiveZones?: ObjectiveZone[]; winnerId: string | null; winningTeam?: "ALPHA" | "BRAVO" | null; winningKills: number } };
+          const packet = JSON.parse(event.data) as { type: string; player?: RemoteState; players?: RemoteState[]; id?: string; health?: number; score?: number; attackerId?: string; weapon?: string; headshot?: boolean; tracerEnds?: number[][]; effect?: string; duration?: number; utilityId?: string; utility?: string; position?: number[]; velocity?: number[]; yourMapVote?: Exclude<GameMap, "TEST YARD"> | null; yourModeVote?: GameMode | null; map?: Exclude<GameMap, "TEST YARD">; match?: { phase: "voting" | "playing" | "results"; phaseEndsAt: number; votes: number; mapVotes?: { "CITY BLOCK"?: number; "BLACKWOOD FOREST"?: number }; map: Exclude<GameMap, "TEST YARD">; modeVotes: number; modeVoteCounts?: { FFA?: number; TDM?: number; KOTH?: number; CTP?: number }; endVotes: number; mode: GameMode; teamScores?: { ALPHA: number; BRAVO: number }; objectiveZones?: ObjectiveZone[]; winnerId: string | null; winningTeam?: "ALPHA" | "BRAVO" | null; winningKills: number } };
           const applyMatch = (match: NonNullable<typeof packet.match>, resetVotes = false) => {
             activeNetworkMode = match.mode ?? "FFA";
             setMatchPhase(match.phase); setMapVotes(match.votes); setCityMapVotes(match.mapVotes?.["CITY BLOCK"] ?? match.votes); setForestMapVotes(match.mapVotes?.["BLACKWOOD FOREST"] ?? 0); setModeVotes(match.modeVotes ?? 0); setFfaModeVotes(match.modeVoteCounts?.FFA ?? match.modeVotes); setTdmModeVotes(match.modeVoteCounts?.TDM ?? 0); setKothModeVotes(match.modeVoteCounts?.KOTH ?? 0); setCtpModeVotes(match.modeVoteCounts?.CTP ?? 0); setEndGameVotes(match.endVotes ?? 0); setMatchEndsAt(match.phaseEndsAt);
@@ -1105,6 +1105,8 @@ export function FpsGame() {
             ]);
           }
           else if (packet.type === "shot" && packet.id && packet.tracerEnds) showRemoteTracers(packet.id, packet.tracerEnds);
+          else if (packet.type === "utility_throw" && packet.utilityId && packet.utility && packet.position && packet.velocity) spawnRemoteUtility(packet.utilityId, packet.utility, packet.position, packet.velocity);
+          else if (packet.type === "utility_detonate" && packet.utilityId && packet.utility && packet.position) showRemoteUtilityDetonation(packet.utilityId, packet.utility, packet.position);
           else if (packet.type === "utility_effect" && packet.effect === "flash") {
             setFlashed(true); window.setTimeout(() => setFlashed(false), Math.min(1700, Math.max(250, packet.duration ?? 1000)));
           }
@@ -1167,10 +1169,11 @@ export function FpsGame() {
     setAmmo(primaryStats.capacity);
     let ammoCount = ammoCounts[0], recoil = 0, muzzleTimer = 0, aiming = false, sprinting = false, sliding = false, reloadEnd = 0, meleeSwing = 0, lastMelee = 0;
     let throwableAiming = false, grenadesLeft = 2, medicalCharges = 2;
-    type UtilityProjectile = { mesh: THREE.Object3D; velocity: THREE.Vector3; age: number; type: string };
+    type UtilityProjectile = { mesh: THREE.Object3D; velocity: THREE.Vector3; age: number; type: string; networkId?: string };
     const projectiles: UtilityProjectile[] = [];
     const plantedC4: UtilityProjectile[] = [];
     const plantedMines: UtilityProjectile[] = [];
+    const remoteUtilities = new Map<string, UtilityProjectile>();
     const placementMaterial = new THREE.MeshBasicMaterial({ color: 0x74e6b1, transparent: true, opacity: .48, depthWrite: false });
     const placementPreview = new THREE.Mesh(new THREE.BoxGeometry(.46, .12, .32), placementMaterial);
     placementPreview.raycast = () => {}; placementPreview.visible = false; scene.add(placementPreview);
@@ -1428,14 +1431,12 @@ export function FpsGame() {
       const velocity = direction.multiplyScalar(13).add(new THREE.Vector3(0, 3.8, 0));
       return { start, velocity };
     };
-    const throwUtility = () => {
-      if (grenadesLeft <= 0) return;
-      const { start, velocity } = getThrow();
-      const flash = utility === "FLASHBANG", smoke = utility === "SMOKE GRENADE", gas = utility === "GAS BOMB";
+    const createThrownUtilityMesh = (utilityType: string) => {
+      const flash = utilityType === "FLASHBANG", smoke = utilityType === "SMOKE GRENADE", gas = utilityType === "GAS BOMB";
       const grenade = new THREE.Group();
-      if (utility === "C4 CHARGE") {
+      if (utilityType === "C4 CHARGE") {
         const charge = new THREE.Mesh(new THREE.BoxGeometry(.42, .3, .12), weaponMaterial(0x5b6652, .2)); charge.castShadow = true; grenade.add(charge);
-      } else if (utility === "LANDMINE") {
+      } else if (utilityType === "LANDMINE") {
         const mine = new THREE.Mesh(new THREE.CylinderGeometry(.25, .28, .11, 16), weaponMaterial(0x48513d, .45)); mine.castShadow = true; grenade.add(mine);
       } else {
         const body = new THREE.Mesh(new THREE.CylinderGeometry(flash ? .085 : .11, flash ? .085 : .1, flash ? .38 : .31, 12), weaponMaterial(flash ? 0xb8c1c0 : gas ? 0x718b45 : smoke ? 0x7d8787 : 0x495b43, .35));
@@ -1443,10 +1444,41 @@ export function FpsGame() {
         const cap = new THREE.Mesh(new THREE.BoxGeometry(.16, .07, .11), weaponMaterial(0x202729, .5)); cap.position.y = .19; cap.castShadow = true; grenade.add(cap);
         const pin = new THREE.Mesh(new THREE.TorusGeometry(.065, .012, 7, 14), weaponMaterial(0x9da5a4, .75)); pin.position.set(.11, .2, 0); pin.rotation.x = Math.PI / 2; pin.castShadow = true; grenade.add(pin);
       }
-      grenade.traverse((object) => { if (object instanceof THREE.Mesh) object.raycast = () => {}; }); grenade.position.copy(start); scene.add(grenade);
-      const projectile = { mesh: grenade, velocity, age: 0, type: utility };
+      grenade.traverse((object) => { if (object instanceof THREE.Mesh) object.raycast = () => {}; });
+      return grenade;
+    };
+    const spawnRemoteUtility = (utilityId: string, utilityType: string, position: number[], velocity: number[]) => {
+      const existing = remoteUtilities.get(utilityId); if (existing) scene.remove(existing.mesh);
+      const mesh = createThrownUtilityMesh(utilityType); mesh.position.fromArray(position); scene.add(mesh);
+      remoteUtilities.set(utilityId, { mesh, velocity: new THREE.Vector3().fromArray(velocity), age: 0, type: utilityType, networkId: utilityId });
+    };
+    const showRemoteUtilityDetonation = (utilityId: string, utilityType: string, position: number[]) => {
+      const remote = remoteUtilities.get(utilityId); if (remote) { scene.remove(remote.mesh); remoteUtilities.delete(utilityId); }
+      const worldPosition = new THREE.Vector3().fromArray(position);
+      if (utilityType === "SMOKE GRENADE" || utilityType === "GAS BOMB") {
+        const cloud = new THREE.Group(); cloud.position.copy(worldPosition); scene.add(cloud);
+        for (let i = 0; i < 36; i++) {
+          const gas = utilityType === "GAS BOMB";
+          const puff = new THREE.Mesh(new THREE.SphereGeometry(.9 + Math.random() * .7, 8, 6), new THREE.MeshBasicMaterial({ color: gas ? 0x789447 : 0x7f898b, transparent: true, opacity: gas ? .3 : .38, depthWrite: false }));
+          puff.raycast = () => {}; puff.position.set((Math.random() - .5) * 4.6, Math.random() * 2.8, (Math.random() - .5) * 4.6); cloud.add(puff);
+        }
+        window.setTimeout(() => scene.remove(cloud), 9000);
+      } else {
+        const blast = new THREE.Mesh(new THREE.SphereGeometry(.35, 12, 8), new THREE.MeshBasicMaterial({ color: utilityType === "FLASHBANG" ? 0xeaffff : 0xff6a32, transparent: true, opacity: .85, wireframe: true }));
+        blast.position.copy(worldPosition); scene.add(blast); let scale = 1;
+        const expand = window.setInterval(() => { scale += .8; blast.scale.setScalar(scale); }, 20);
+        window.setTimeout(() => { window.clearInterval(expand); scene.remove(blast); }, 260);
+      }
+    };
+    const throwUtility = () => {
+      if (grenadesLeft <= 0) return;
+      const { start, velocity } = getThrow();
+      const grenade = createThrownUtilityMesh(utility); grenade.position.copy(start); scene.add(grenade);
+      const networkId = crypto.randomUUID();
+      const projectile = { mesh: grenade, velocity, age: 0, type: utility, networkId };
       projectiles.push(projectile);
       if (utility === "C4 CHARGE") plantedC4.push(projectile);
+      multiplayerSendRef.current({ type: "utility_throw", utilityId: networkId, utility, position: start.toArray(), velocity: velocity.toArray() });
       grenadesLeft -= 1; setUtilityCount(grenadesLeft);
     };
     const placeUtility = () => {
@@ -1457,13 +1489,17 @@ export function FpsGame() {
       mesh.position.copy(placementPoint.point).addScaledVector(placementPoint.normal, .065);
       mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), placementPoint.normal);
       mesh.castShadow = true; mesh.raycast = () => {}; scene.add(mesh);
-      const placed = { mesh, velocity: new THREE.Vector3(), age: 0, type: utility };
+      const networkId = crypto.randomUUID();
+      const placed = { mesh, velocity: new THREE.Vector3(), age: 0, type: utility, networkId };
       if (utility === "C4 CHARGE") plantedC4.push(placed); else plantedMines.push(placed);
+      multiplayerSendRef.current({ type: "utility_throw", utilityId: networkId, utility, position: mesh.position.toArray(), velocity: [0, 0, 0] });
       grenadesLeft -= 1; setUtilityCount(grenadesLeft);
     };
     const detonate = (projectile: { mesh: THREE.Object3D; type: string }) => {
       const position = projectile.mesh.position.clone();
       scene.remove(projectile.mesh);
+      const networkId = (projectile as UtilityProjectile).networkId;
+      if (networkId) multiplayerSendRef.current({ type: "utility_detonate", utilityId: networkId, utility: projectile.type, position: position.toArray() });
       const damageRemotePlayers = (radius: number, maxDamage: number, weapon: string, falloff = true) => {
         remotePlayers.forEach((avatar, targetId) => {
           if (!avatar.visible) return;
@@ -1919,6 +1955,16 @@ export function FpsGame() {
           }
         } else { placementPoint = null; placementPreview.visible = false; }
       }
+      remoteUtilities.forEach((projectile) => {
+        projectile.age += dt; projectile.velocity.y -= 14.5 * dt;
+        projectile.mesh.position.addScaledVector(projectile.velocity, dt);
+        projectile.mesh.rotation.x += dt * 8; projectile.mesh.rotation.z += dt * 6;
+        if (projectile.mesh.position.y <= .12) {
+          projectile.mesh.position.y = .12; projectile.velocity.y = Math.abs(projectile.velocity.y) * .42;
+          projectile.velocity.x *= .82; projectile.velocity.z *= .82;
+        }
+        if ((projectile.type === "C4 CHARGE" || projectile.type === "LANDMINE") && projectile.age > .75) projectile.velocity.set(0, 0, 0);
+      });
       for (let i = projectiles.length - 1; i >= 0; i--) {
         const projectile = projectiles[i]; projectile.age += dt;
         projectile.velocity.y -= 14.5 * dt;
