@@ -6,6 +6,7 @@ import * as THREE from "three";
 type Box = { minX: number; maxX: number; minY: number; maxY: number; minZ: number; maxZ: number; active?: boolean };
 type PlayerStance = "standing" | "crouching" | "prone";
 type FireMode = "SEMI" | "BURST" | "AUTO";
+type GameMode = "FFA" | "TDM";
 type MenuPage = "HOME" | "LOADOUT" | "CHARACTER";
 type GameMap = "TEST YARD" | "CITY BLOCK" | "BLACKWOOD FOREST";
 type GameSector = "TRAINING SECTOR" | "SECTOR 1" | "SECTOR 2" | "SECTOR 3" | "SECTOR 4";
@@ -89,6 +90,10 @@ export function FpsGame() {
   const [forestMapVotes, setForestMapVotes] = useState(0);
   const [selectedMapVote, setSelectedMapVote] = useState<Exclude<GameMap, "TEST YARD"> | null>(null);
   const [modeVotes, setModeVotes] = useState(0);
+  const [ffaModeVotes, setFfaModeVotes] = useState(0);
+  const [tdmModeVotes, setTdmModeVotes] = useState(0);
+  const [selectedModeVote, setSelectedModeVote] = useState<GameMode | null>(null);
+  const [matchMode, setMatchMode] = useState<GameMode>("FFA");
   const [endGameVotes, setEndGameVotes] = useState(0);
   const [endGameRequested, setEndGameRequested] = useState(false);
   const [hasVoted, setHasVoted] = useState(false);
@@ -99,6 +104,9 @@ export function FpsGame() {
   const [connectedPlayerIds, setConnectedPlayerIds] = useState<string[]>([]);
   const [matchWinnerId, setMatchWinnerId] = useState<string | null>(null);
   const [winningKills, setWinningKills] = useState(0);
+  const [winningTeam, setWinningTeam] = useState<"ALPHA" | "BRAVO" | null>(null);
+  const [localTeam, setLocalTeam] = useState<"ALPHA" | "BRAVO">("ALPHA");
+  const [teamScores, setTeamScores] = useState({ ALPHA: 0, BRAVO: 0 });
   const [multiplayerStatus, setMultiplayerStatus] = useState<"OFFLINE" | "CONNECTING" | "ONLINE">("OFFLINE");
   const [doorPrompt, setDoorPrompt] = useState(false);
   const [primary, setPrimary] = useState("VXR-4 CARBINE");
@@ -811,7 +819,7 @@ export function FpsGame() {
       item.scale.setScalar(.78); item.position.set(-.045, 1.56, .03);
       item.traverse((object) => { if (object instanceof THREE.Mesh) object.raycast = () => {}; }); localPlayer.add(item);
     });
-    type RemoteState = { id: string; x: number; y: number; z: number; yaw: number; movement: "static" | "walk" | "sprint"; crouching: boolean; prone: boolean; slot: number; primary?: string; secondary?: string; health?: number } & Partial<PlayerAppearance>;
+    type RemoteState = { id: string; x: number; y: number; z: number; yaw: number; movement: "static" | "walk" | "sprint"; crouching: boolean; prone: boolean; slot: number; primary?: string; secondary?: string; health?: number; team?: "ALPHA" | "BRAVO" } & Partial<PlayerAppearance>;
     const remotePlayers = new Map<string, THREE.Group>();
     const upsertRemotePlayer = (state: RemoteState) => {
       const appearance: PlayerAppearance = { ...localAppearance, skin: state.skin ?? localAppearance.skin, uniform: state.uniform ?? localAppearance.uniform, armor: state.armor ?? localAppearance.armor, helmet: state.helmet ?? localAppearance.helmet, faceGear: state.faceGear ?? localAppearance.faceGear, headAccessory: state.headAccessory ?? localAppearance.headAccessory, chestRig: state.chestRig ?? localAppearance.chestRig, backpack: state.backpack ?? localAppearance.backpack, pants: state.pants ?? localAppearance.pants, gloves: state.gloves ?? localAppearance.gloves, boots: state.boots ?? localAppearance.boots };
@@ -864,27 +872,27 @@ export function FpsGame() {
       multiplayerSocket.addEventListener("message", (event) => {
         if (typeof event.data !== "string") return;
         try {
-          const packet = JSON.parse(event.data) as { type: string; player?: RemoteState; players?: RemoteState[]; id?: string; health?: number; attackerId?: string; weapon?: string; headshot?: boolean; yourMapVote?: Exclude<GameMap, "TEST YARD"> | null; yourModeVote?: boolean; map?: Exclude<GameMap, "TEST YARD">; match?: { phase: "voting" | "playing" | "results"; phaseEndsAt: number; votes: number; mapVotes?: { "CITY BLOCK"?: number; "BLACKWOOD FOREST"?: number }; map: Exclude<GameMap, "TEST YARD">; modeVotes: number; endVotes: number; mode: "FFA"; winnerId: string | null; winningKills: number } };
+          const packet = JSON.parse(event.data) as { type: string; player?: RemoteState; players?: RemoteState[]; id?: string; health?: number; attackerId?: string; weapon?: string; headshot?: boolean; yourMapVote?: Exclude<GameMap, "TEST YARD"> | null; yourModeVote?: GameMode | null; map?: Exclude<GameMap, "TEST YARD">; match?: { phase: "voting" | "playing" | "results"; phaseEndsAt: number; votes: number; mapVotes?: { "CITY BLOCK"?: number; "BLACKWOOD FOREST"?: number }; map: Exclude<GameMap, "TEST YARD">; modeVotes: number; modeVoteCounts?: { FFA?: number; TDM?: number }; endVotes: number; mode: GameMode; teamScores?: { ALPHA: number; BRAVO: number }; winnerId: string | null; winningTeam?: "ALPHA" | "BRAVO" | null; winningKills: number } };
           const applyMatch = (match: NonNullable<typeof packet.match>, resetVotes = false) => {
-            setMatchPhase(match.phase); setMapVotes(match.votes); setCityMapVotes(match.mapVotes?.["CITY BLOCK"] ?? match.votes); setForestMapVotes(match.mapVotes?.["BLACKWOOD FOREST"] ?? 0); setModeVotes(match.modeVotes ?? 0); setEndGameVotes(match.endVotes ?? 0); setMatchEndsAt(match.phaseEndsAt);
-            setMatchWinnerId(match.winnerId ?? null); setWinningKills(match.winningKills ?? 0);
+            setMatchPhase(match.phase); setMapVotes(match.votes); setCityMapVotes(match.mapVotes?.["CITY BLOCK"] ?? match.votes); setForestMapVotes(match.mapVotes?.["BLACKWOOD FOREST"] ?? 0); setModeVotes(match.modeVotes ?? 0); setFfaModeVotes(match.modeVoteCounts?.FFA ?? match.modeVotes); setTdmModeVotes(match.modeVoteCounts?.TDM ?? 0); setEndGameVotes(match.endVotes ?? 0); setMatchEndsAt(match.phaseEndsAt);
+            setMatchMode(match.mode ?? "FFA"); setTeamScores(match.teamScores ?? { ALPHA: 0, BRAVO: 0 }); setMatchWinnerId(match.winnerId ?? null); setWinningTeam(match.winningTeam ?? null); setWinningKills(match.winningKills ?? 0);
             if (match.phase === "playing" && match.map !== selectedMap) setSelectedMap(match.map);
             if ((match.endVotes ?? 0) === 0) setEndGameRequested(false);
             if (match.phase === "voting" && match.phaseEndsAt !== lastVotingPhase) {
               lastVotingPhase = match.phaseEndsAt;
-              setHasVoted(false); setHasModeVoted(false); setSelectedMapVote(null);
-            } else if (resetVotes && match.phase !== "voting") { setHasVoted(false); setHasModeVoted(false); setSelectedMapVote(null); }
+              setHasVoted(false); setHasModeVoted(false); setSelectedMapVote(null); setSelectedModeVote(null);
+            } else if (resetVotes && match.phase !== "voting") { setHasVoted(false); setHasModeVoted(false); setSelectedMapVote(null); setSelectedModeVote(null); }
             if (match.phase === "voting" || match.phase === "results") document.exitPointerLock();
           };
           if (packet.type === "welcome") {
             const otherPlayers = (packet.players ?? []).filter((player) => player.id !== packet.id);
             otherPlayers.forEach(upsertRemotePlayer);
             if (packet.id) { localNetworkId = packet.id; setLocalPlayerId(packet.id); setConnectedPlayerIds([...new Set([packet.id, ...otherPlayers.map((player) => player.id)])]); }
-            if (packet.player) { playerPosition.set(packet.player.x, packet.player.y, packet.player.z); camera.position.copy(playerPosition); yaw = packet.player.yaw; }
+            if (packet.player) { playerPosition.set(packet.player.x, packet.player.y, packet.player.z); camera.position.copy(playerPosition); yaw = packet.player.yaw; if (packet.player.team) setLocalTeam(packet.player.team); }
             if (packet.match) {
               applyMatch(packet.match);
               if (packet.yourMapVote) { setSelectedMapVote(packet.yourMapVote); setHasVoted(true); }
-              if (packet.yourModeVote) setHasModeVoted(true);
+              if (packet.yourModeVote) { setSelectedModeVote(packet.yourModeVote); setHasModeVoted(true); }
             }
           }
           else if ((packet.type === "joined" || packet.type === "state") && packet.player) {
@@ -906,7 +914,7 @@ export function FpsGame() {
           else if (packet.type === "player_health" && packet.id && packet.health === 100) {
             const avatar = remotePlayers.get(packet.id); if (avatar) avatar.visible = true;
           }
-          else if (packet.type === "round_start" && packet.player) {
+          else if ((packet.type === "round_start" || packet.type === "respawned") && packet.player) {
             playerPosition.set(packet.player.x, packet.player.y, packet.player.z); camera.position.copy(playerPosition); lastClearPosition.copy(playerPosition);
             yaw = packet.player.yaw; playerHealth = 100; setHealth(100); setDead(false); setHealing(false); keys.clear();
             if (packet.map && packet.map !== selectedMap) setSelectedMap(packet.map);
@@ -1795,7 +1803,8 @@ export function FpsGame() {
         {killFeed.map((entry) => <div key={entry.id}><b>YOU</b><span>{entry.weapon}</span>{entry.headshot && <i>HEADSHOT</i>}<strong>{entry.victim}</strong></div>)}
       </div>
       {started && selectedSector !== "TRAINING SECTOR" && matchPhase === "playing" && <aside className="leaderboard">
-        <header><span>FREE FOR ALL</span><strong>{formatMatchTime(matchTimeLeft)}</strong></header>
+        <header><span>{matchMode === "TDM" ? `TEAM DEATHMATCH · ${localTeam}` : "FREE FOR ALL"}</span><strong>{formatMatchTime(matchTimeLeft)}</strong></header>
+        {matchMode === "TDM" && <><div className={localTeam === "ALPHA" ? "local" : ""}><span>TEAM ALPHA</span><i>{teamScores.ALPHA}</i><i>—</i></div><div className={localTeam === "BRAVO" ? "local" : ""}><span>TEAM BRAVO</span><i>{teamScores.BRAVO}</i><i>—</i></div></>}
         <div className="leaderboard-columns"><span>OPERATOR</span><i>K</i><i>D</i></div>
         {connectedPlayerIds.map((id, index) => <div className={id === localPlayerId ? "local" : ""} key={id}>
           <span>{id === localPlayerId ? "YOU" : `OPERATOR ${String(index + 1).padStart(2, "0")}`}</span><i>0</i><i>0</i>
@@ -1838,18 +1847,22 @@ export function FpsGame() {
           </button>
           <div className="vote-total"><i style={{ width: mapVotes ? `${forestMapVotes / mapVotes * 100}%` : "0%" }} /><span>{forestMapVotes} VOTE{forestMapVotes === 1 ? "" : "S"}</span></div>
           <h3>GAMEMODE</h3>
-          <button className={hasModeVoted ? "voted" : ""} disabled={hasModeVoted} onClick={() => { multiplayerSendRef.current({ type: "vote", category: "mode", mode: "FFA" }); setHasModeVoted(true); }}>
-            <i>01</i><span><b>FREE FOR ALL</b><small>5 MINUTES · EVERY OPERATOR FOR THEMSELVES</small></span><em>{hasModeVoted ? "VOTE LOCKED" : "VOTE"}</em>
+          <button className={selectedModeVote === "FFA" ? "voted selected-vote" : hasModeVoted ? "voted" : ""} disabled={hasModeVoted || multiplayerStatus !== "ONLINE"} onClick={() => { multiplayerSendRef.current({ type: "vote", category: "mode", mode: "FFA" }); setSelectedModeVote("FFA"); setHasModeVoted(true); }}>
+            <i>01</i><span><b>FREE FOR ALL</b><small>10 MINUTES · EVERY OPERATOR FOR THEMSELVES</small></span><em>{selectedModeVote === "FFA" ? "YOUR VOTE" : hasModeVoted ? "LOCKED" : "VOTE"}</em>
           </button>
-          <div className="vote-total"><i style={{ width: modeVotes ? "100%" : "0%" }} /><span>{modeVotes} VOTE{modeVotes === 1 ? "" : "S"}</span></div>
-          <footer>MORE MAPS AND GAMEMODES WILL BE ADDED LATER</footer>
+          <div className="vote-total"><i style={{ width: modeVotes ? `${ffaModeVotes / modeVotes * 100}%` : "0%" }} /><span>{ffaModeVotes} VOTE{ffaModeVotes === 1 ? "" : "S"}</span></div>
+          <button className={selectedModeVote === "TDM" ? "voted selected-vote" : hasModeVoted ? "voted" : ""} disabled={hasModeVoted || multiplayerStatus !== "ONLINE"} onClick={() => { multiplayerSendRef.current({ type: "vote", category: "mode", mode: "TDM" }); setSelectedModeVote("TDM"); setHasModeVoted(true); }}>
+            <i>02</i><span><b>TEAM DEATHMATCH</b><small>10 MINUTES · ALPHA VS BRAVO · NO FRIENDLY FIRE</small></span><em>{selectedModeVote === "TDM" ? "YOUR VOTE" : hasModeVoted ? "LOCKED" : "VOTE"}</em>
+          </button>
+          <div className="vote-total"><i style={{ width: modeVotes ? `${tdmModeVotes / modeVotes * 100}%` : "0%" }} /><span>{tdmModeVotes} VOTE{tdmModeVotes === 1 ? "" : "S"}</span></div>
+          <footer>ALL VOTES LOCK WHEN EVERY CONNECTED PLAYER HAS CHOSEN</footer>
         </div>
       </div>}
       {started && matchPhase === "results" && <div className="match-results-overlay">
         <div className="match-results-panel">
-          <small>{selectedSector} · FREE FOR ALL COMPLETE</small>
-          <h2>{matchWinnerId ? "MATCH WINNER" : "MATCH DRAW"}</h2>
-          <strong>{matchWinnerId === localPlayerId ? "YOU" : matchWinnerId ? `OPERATOR ${matchWinnerId.slice(0, 4).toUpperCase()}` : "NO SOLE WINNER"}</strong>
+          <small>{selectedSector} · {matchMode === "TDM" ? "TEAM DEATHMATCH" : "FREE FOR ALL"} COMPLETE</small>
+          <h2>{matchMode === "TDM" ? winningTeam ? "VICTORY TEAM" : "MATCH DRAW" : matchWinnerId ? "MATCH WINNER" : "MATCH DRAW"}</h2>
+          <strong>{matchMode === "TDM" ? winningTeam ? `TEAM ${winningTeam}` : "TEAMS TIED" : matchWinnerId === localPlayerId ? "YOU" : matchWinnerId ? `OPERATOR ${matchWinnerId.slice(0, 4).toUpperCase()}` : "NO SOLE WINNER"}</strong>
           <p>{winningKills} KILL{winningKills === 1 ? "" : "S"}</p>
           <footer>VOTING OPENS IN <b>{formatMatchTime(matchTimeLeft)}</b></footer>
         </div>
