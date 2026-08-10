@@ -7,7 +7,7 @@ type Box = { minX: number; maxX: number; minY: number; maxY: number; minZ: numbe
 type PlayerStance = "standing" | "crouching" | "prone";
 type FireMode = "SEMI" | "BURST" | "AUTO";
 type MenuPage = "HOME" | "LOADOUT" | "CHARACTER";
-type GameMap = "TEST YARD" | "CITY BLOCK";
+type GameMap = "TEST YARD" | "CITY BLOCK" | "BLACKWOOD FOREST";
 type GameSector = "TRAINING SECTOR" | "SECTOR 1" | "SECTOR 2" | "SECTOR 3" | "SECTOR 4";
 type MultiplayerSector = Exclude<GameSector, "TRAINING SECTOR">;
 type KillFeedEntry = { id: number; victim: string; weapon: string; headshot: boolean };
@@ -174,8 +174,9 @@ export function FpsGame() {
     if (!mount) return;
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x111b21);
-    scene.fog = new THREE.Fog(0x111b21, 25, 72);
+    const forestMap = selectedMap === "BLACKWOOD FOREST";
+    scene.background = new THREE.Color(forestMap ? 0x18271f : 0x111b21);
+    scene.fog = new THREE.Fog(forestMap ? 0x18271f : 0x111b21, forestMap ? 18 : 25, forestMap ? 68 : 72);
 
     const camera = new THREE.PerspectiveCamera(78, mount.clientWidth / mount.clientHeight, 0.05, 120);
     camera.position.set(0, PLAYER_HEIGHT, 15);
@@ -188,7 +189,7 @@ export function FpsGame() {
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     mount.appendChild(renderer.domElement);
 
-    scene.add(new THREE.HemisphereLight(0x9dc6d8, 0x162017, 1.8));
+    scene.add(new THREE.HemisphereLight(forestMap ? 0xa8c5a5 : 0x9dc6d8, forestMap ? 0x10180d : 0x162017, forestMap ? 1.45 : 1.8));
     const sun = new THREE.DirectionalLight(0xffd6a0, 3.5);
     sun.position.set(-18, 28, 12);
     sun.castShadow = true;
@@ -202,14 +203,14 @@ export function FpsGame() {
     const material = (color: THREE.ColorRepresentation, roughness = 0.82, metalness = 0.05) =>
       new THREE.MeshStandardMaterial({ color, roughness, metalness });
 
-    const mapSize = selectedMap === "CITY BLOCK" ? 96 : 64;
-    const floor = new THREE.Mesh(new THREE.PlaneGeometry(mapSize, mapSize), material(selectedMap === "CITY BLOCK" ? 0x252b2d : 0x364044));
+    const mapSize = selectedMap === "CITY BLOCK" ? 96 : forestMap ? 88 : 64;
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(mapSize, mapSize), material(selectedMap === "CITY BLOCK" ? 0x252b2d : forestMap ? 0x263522 : 0x364044));
     floor.rotation.x = -Math.PI / 2;
     floor.receiveShadow = true;
     scene.add(floor);
     placementSurfaces.push(floor);
 
-    const grid = new THREE.GridHelper(mapSize, selectedMap === "CITY BLOCK" ? 48 : 32, 0x516166, 0x465358);
+    const grid = new THREE.GridHelper(mapSize, selectedMap === "CITY BLOCK" ? 48 : 32, forestMap ? 0x33452f : 0x516166, forestMap ? 0x2b3b28 : 0x465358);
     grid.position.y = 0.008;
     scene.add(grid);
 
@@ -246,6 +247,7 @@ export function FpsGame() {
     };
     const supplySpawnLocations: [number, number][] = selectedMap === "CITY BLOCK"
       ? [[-5, -14], [5, 14], [-5, 35], [5, -35], [-23, -14], [23, -14], [-23, 14], [23, 14], [-7, -40], [7, 40], [-40, -7], [40, 7]]
+      : forestMap ? [[-31, -24], [29, -26], [-27, 21], [30, 24], [-8, -12], [12, 17], [2, -31], [-16, 32]]
       : [[-25, 23], [25, 23], [-22, -18], [22, -18], [-14, 14], [14, 14]];
     const clearSupplyDrops = () => {
       supplyDrops.splice(0).forEach(({ drop }) => {
@@ -260,7 +262,7 @@ export function FpsGame() {
     const spawnSupplyWave = () => {
       clearSupplyDrops();
       const locations = [...supplySpawnLocations].sort(() => Math.random() - .5);
-      locations.slice(0, selectedMap === "CITY BLOCK" ? 6 : 2).forEach(([x, z], index) => {
+      locations.slice(0, selectedMap === "CITY BLOCK" ? 6 : forestMap ? 4 : 2).forEach(([x, z], index) => {
         const medicalDrop = index % 2 === 0;
         addSupplyDrop(x, z, medicalDrop ? 0x2c9b67 : 0x397f9e, medicalDrop);
       });
@@ -388,7 +390,7 @@ export function FpsGame() {
       namedDummy(addDummy(-7, -14, 0x4d7182), "TARGET ALPHA"); namedDummy(addDummy(0, -14, 0x706347), "TARGET BRAVO"); namedDummy(addDummy(7, -14, 0x754b4b), "TARGET CHARLIE");
       namedDummy(addDummy(15, -15, 0x38785d, "walk"), "WALKER ONE"); namedDummy(addDummy(26, -15, 0x804f32, "sprint"), "RUNNER ONE");
     }
-    const spawnZ = selectedMap === "CITY BLOCK" ? 38 : 15;
+    const spawnZ = selectedMap === "CITY BLOCK" ? 38 : forestMap ? 36 : 15;
     const localPlayer = addDummy(0, spawnZ, 0x435e70, "static", false);
     localPlayer.rotation.order = "YXZ";
     localPlayer.visible = false;
@@ -534,6 +536,62 @@ export function FpsGame() {
         addBox(x, 2.4, z, .14, 4.8, .14, 0x252b2c, false);
         const lamp = new THREE.PointLight(0xffd49a, 10, 10, 2); lamp.position.set(x, 4.55, z); scene.add(lamp);
       }));
+    }
+
+    if (forestMap) {
+      // Natural perimeter: dense tree lines keep players inside while preserving the woodland silhouette.
+      addBox(0, 2.5, -44, 88, 5, 1, 0x172319);
+      addBox(0, 2.5, 44, 88, 5, 1, 0x172319);
+      addBox(-44, 2.5, 0, 1, 5, 88, 0x172319);
+      addBox(44, 2.5, 0, 1, 5, 88, 0x172319);
+
+      const trunkMat = material(0x493629, .96, .01);
+      const pineMat = material(0x24452c, .98, 0);
+      const pineDarkMat = material(0x193721, .98, 0);
+      const addPine = (x: number, z: number, scale = 1) => {
+        const trunk = new THREE.Mesh(new THREE.CylinderGeometry(.34 * scale, .48 * scale, 5.6 * scale, 9), trunkMat);
+        trunk.position.set(x, 2.8 * scale, z); trunk.castShadow = trunk.receiveShadow = true; scene.add(trunk);
+        boxes.push({ minX: x - .45 * scale, maxX: x + .45 * scale, minY: 0, maxY: 5.6 * scale, minZ: z - .45 * scale, maxZ: z + .45 * scale });
+        for (let tier = 0; tier < 3; tier++) {
+          const crown = new THREE.Mesh(new THREE.ConeGeometry((2.35 - tier * .42) * scale, 3.8 * scale, 9), tier % 2 ? pineDarkMat : pineMat);
+          crown.position.set(x, (5.2 + tier * 1.65) * scale, z); crown.castShadow = true; crown.raycast = () => {}; scene.add(crown);
+        }
+      };
+      const treePositions: [number, number, number][] = [];
+      for (let i = 0; i < 68; i++) {
+        const x = -40 + ((i * 17.31) % 80), z = -40 + ((i * 29.73) % 80);
+        // Preserve a winding central trail, creek crossing, spawn, and outpost clearing.
+        if (Math.abs(x - Math.sin(z * .1) * 5) < 4.2 || (x > 19 && z > 17) || (Math.abs(x) < 5 && z > 31)) continue;
+        treePositions.push([x, z, .78 + (i % 6) * .07]);
+      }
+      treePositions.forEach(([x, z, scale]) => addPine(x, z, scale));
+      [-41, 41].forEach((edge) => { for (let p = -38; p <= 38; p += 7) { addPine(edge, p, .9); addPine(p, edge, .86); } });
+
+      // A shallow creek and stepping-stone crossing cut across the combat lanes.
+      const creek = new THREE.Mesh(new THREE.PlaneGeometry(7, 84), new THREE.MeshStandardMaterial({ color: 0x294d55, emissive: 0x0b2025, emissiveIntensity: .45, roughness: .25, metalness: .1, transparent: true, opacity: .86 }));
+      creek.rotation.x = -Math.PI / 2; creek.rotation.z = -.08; creek.position.set(-10, .025, 0); creek.raycast = () => {}; scene.add(creek);
+      for (let stone = -2; stone <= 2; stone++) addBox(-10 + stone * 1.35, .18, 2 + stone * .11, 1.05, .34, 1.4, stone % 2 ? 0x596057 : 0x687068, false);
+
+      // Fallen logs and granite clusters provide low, readable cover.
+      [[-19,-10,0.25],[13,-18,-0.35],[18,8,0.5],[-27,27,-0.2]].forEach(([x,z,r]) => {
+        const log = new THREE.Mesh(new THREE.CylinderGeometry(.48, .56, 6.2, 10), trunkMat); log.rotation.z = Math.PI / 2; log.rotation.y = r; log.position.set(x, .58, z); log.castShadow = true; scene.add(log);
+        addBox(x, .55, z, Math.abs(Math.cos(r)) * 6 + 1, 1.1, Math.abs(Math.sin(r)) * 6 + 1, 0x493629);
+      });
+      [[-28,-2],[7,-26],[24,-6],[-19,17],[9,24]].forEach(([x,z], i) => {
+        addBox(x, .75, z, 2.3 + (i % 2), 1.5, 2, i % 2 ? 0x596058 : 0x666b63);
+        addBox(x + 1.1, .38, z + 1.2, 1.4, .76, 1.3, 0x4f554e);
+      });
+
+      // Ranger outpost landmark with an open front and a raised watch platform.
+      addBox(27, 1.5, 28, 9, .3, 8, 0x553e2b, false);
+      addBox(22.7, 2.2, 28, .4, 4.4, 8, 0x60442e); addBox(31.3, 2.2, 28, .4, 4.4, 8, 0x60442e);
+      addBox(27, 2.2, 31.8, 9, 4.4, .4, 0x60442e);
+      addBox(27, 4.55, 28, 9.8, .42, 8.8, 0x30271f, false);
+      addBox(27, .65, 26.3, 3.2, 1.3, .9, 0x3d4a33);
+      addBox(35, 2.5, 33, 3.8, .3, 3.8, 0x58422f, false);
+      addBox(33.35, 1.25, 31.35, .28, 2.5, .28, 0x463326); addBox(36.65, 1.25, 31.35, .28, 2.5, .28, 0x463326);
+      addBox(33.35, 1.25, 34.65, .28, 2.5, .28, 0x463326); addBox(36.65, 1.25, 34.65, .28, 2.5, .28, 0x463326);
+      const campLight = new THREE.PointLight(0xffb45c, 18, 13, 2); campLight.position.set(27, 3.2, 28); scene.add(campLight);
     }
 
     if (selectedMap === "TEST YARD") {
@@ -1744,7 +1802,7 @@ export function FpsGame() {
         <div className="death-code">KIA</div><h2>OPERATOR DOWN</h2><p>TEST CONDITION: FATAL DAMAGE</p>
         <button onClick={() => {
           respawnRef.current(); setHealth(100); setDead(false);
-          multiplayerSendRef.current({ type: "respawn", x: 0, z: selectedMap === "CITY BLOCK" ? 38 : 15 });
+          multiplayerSendRef.current({ type: "respawn", x: 0, z: selectedMap === "CITY BLOCK" ? 38 : selectedMap === "BLACKWOOD FOREST" ? 36 : 15 });
           mountRef.current?.querySelector("canvas")?.requestPointerLock();
         }}>RESPAWN AT TEST YARD</button>
       </div>}
@@ -1782,6 +1840,17 @@ export function FpsGame() {
                 setSessionId((id) => id + 1);
               }}>
                 <i>TR</i><span><b>TRAINING SECTOR</b><small>SINGLE PLAYER · TEST YARD · NO MAP VOTING</small></span><em>TRAIN</em>
+              </button>
+              <button onClick={() => {
+                setSelectedSector("TRAINING SECTOR");
+                setServerBrowserOpen(false);
+                setSelectedMap("BLACKWOOD FOREST");
+                setMatchPhase("playing");
+                setMapVotes(0); setModeVotes(0); setHasVoted(false); setHasModeVoted(false); setMatchEndsAt(0);
+                setStarted(true);
+                setSessionId((id) => id + 1);
+              }}>
+                <i>BF</i><span><b>BLACKWOOD FOREST</b><small>SINGLE PLAYER · WOODLAND COMBAT · RANGER OUTPOST</small></span><em>DEPLOY</em>
               </button>
               {(["SECTOR 1", "SECTOR 2", "SECTOR 3", "SECTOR 4"] as MultiplayerSector[]).map((sector, index) => <button key={sector} onClick={() => {
                 setSelectedSector(sector);
