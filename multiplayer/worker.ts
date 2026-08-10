@@ -82,9 +82,18 @@ export class GameRoom extends DurableObject {
 
   async webSocketMessage(socket: WebSocket, message: string | ArrayBuffer) {
     if (typeof message !== "string" || message.length > 4096) return;
-    let packet: Partial<PlayerState> & { type?: string; category?: "map" | "mode"; map?: MultiplayerMap; mode?: GameMode; targetId?: string; damage?: number; weapon?: string; headshot?: boolean };
+    let packet: Partial<PlayerState> & { type?: string; category?: "map" | "mode"; map?: MultiplayerMap; mode?: GameMode; targetId?: string; damage?: number; weapon?: string; headshot?: boolean; tracerEnds?: unknown };
     try { packet = JSON.parse(message); } catch { return; }
     const attachment = socket.deserializeAttachment() as SocketAttachment;
+    if (packet.type === "shot") {
+      const meta = await this.currentMatch();
+      if (meta.phase !== "playing" || !Array.isArray(packet.tracerEnds)) return;
+      const tracerEnds = packet.tracerEnds.slice(0, 8).filter((point): point is number[] =>
+        Array.isArray(point) && point.length === 3 && point.every((coordinate) => typeof coordinate === "number" && Number.isFinite(coordinate) && Math.abs(coordinate) <= 200)
+      );
+      if (tracerEnds.length) this.broadcast({ type: "shot", id: attachment.id, tracerEnds }, socket);
+      return;
+    }
     if (packet.type === "hit") {
       const meta = await this.currentMatch();
       if (meta.phase !== "playing" || !packet.targetId || packet.targetId === attachment.id) return;

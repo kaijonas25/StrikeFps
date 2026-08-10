@@ -971,6 +971,22 @@ export function FpsGame() {
       if (avatar.userData.remoteSecondary) avatar.userData.remoteSecondary.visible = state.slot === 2;
       avatar.visible = (state.health ?? 100) > 0;
     };
+    const showRemoteTracers = (playerId: string, tracerEnds: number[][]) => {
+      const avatar = remotePlayers.get(playerId);
+      if (!avatar?.visible) return;
+      const activeWeapon = avatar.userData.remoteSlot === 2 ? avatar.userData.remoteSecondary : avatar.userData.remotePrimary;
+      const remoteMuzzle = (activeWeapon as THREE.Object3D | undefined)?.getObjectByName("muzzleAnchor");
+      const tracerStart = new THREE.Vector3();
+      if (remoteMuzzle) remoteMuzzle.getWorldPosition(tracerStart);
+      else avatar.localToWorld(tracerStart.set(0, 1.42, -.55));
+      tracerEnds.slice(0, 8).forEach((coordinates) => {
+        if (coordinates.length !== 3 || coordinates.some((coordinate) => !Number.isFinite(coordinate))) return;
+        const tracerMaterial = new THREE.LineBasicMaterial({ color: tracerEnds.length > 1 ? 0xffd09a : 0xffb06b, transparent: true, opacity: .9, depthWrite: false });
+        const tracer = new THREE.Line(new THREE.BufferGeometry().setFromPoints([tracerStart, new THREE.Vector3(coordinates[0], coordinates[1], coordinates[2])]), tracerMaterial);
+        tracer.raycast = () => {}; scene.add(tracer);
+        window.setTimeout(() => { scene.remove(tracer); tracer.geometry.dispose(); tracerMaterial.dispose(); }, tracerEnds.length > 1 ? 70 : 95);
+      });
+    };
     let multiplayerSocket: WebSocket | undefined;
     let localNetworkId = "";
     let lastMultiplayerSend = 0;
@@ -986,7 +1002,7 @@ export function FpsGame() {
       multiplayerSocket.addEventListener("message", (event) => {
         if (typeof event.data !== "string") return;
         try {
-          const packet = JSON.parse(event.data) as { type: string; player?: RemoteState; players?: RemoteState[]; id?: string; health?: number; score?: number; attackerId?: string; weapon?: string; headshot?: boolean; yourMapVote?: Exclude<GameMap, "TEST YARD"> | null; yourModeVote?: GameMode | null; map?: Exclude<GameMap, "TEST YARD">; match?: { phase: "voting" | "playing" | "results"; phaseEndsAt: number; votes: number; mapVotes?: { "CITY BLOCK"?: number; "BLACKWOOD FOREST"?: number }; map: Exclude<GameMap, "TEST YARD">; modeVotes: number; modeVoteCounts?: { FFA?: number; TDM?: number; KOTH?: number; CTP?: number }; endVotes: number; mode: GameMode; teamScores?: { ALPHA: number; BRAVO: number }; objectiveZones?: ObjectiveZone[]; winnerId: string | null; winningTeam?: "ALPHA" | "BRAVO" | null; winningKills: number } };
+          const packet = JSON.parse(event.data) as { type: string; player?: RemoteState; players?: RemoteState[]; id?: string; health?: number; score?: number; attackerId?: string; weapon?: string; headshot?: boolean; tracerEnds?: number[][]; yourMapVote?: Exclude<GameMap, "TEST YARD"> | null; yourModeVote?: GameMode | null; map?: Exclude<GameMap, "TEST YARD">; match?: { phase: "voting" | "playing" | "results"; phaseEndsAt: number; votes: number; mapVotes?: { "CITY BLOCK"?: number; "BLACKWOOD FOREST"?: number }; map: Exclude<GameMap, "TEST YARD">; modeVotes: number; modeVoteCounts?: { FFA?: number; TDM?: number; KOTH?: number; CTP?: number }; endVotes: number; mode: GameMode; teamScores?: { ALPHA: number; BRAVO: number }; objectiveZones?: ObjectiveZone[]; winnerId: string | null; winningTeam?: "ALPHA" | "BRAVO" | null; winningKills: number } };
           const applyMatch = (match: NonNullable<typeof packet.match>, resetVotes = false) => {
             setMatchPhase(match.phase); setMapVotes(match.votes); setCityMapVotes(match.mapVotes?.["CITY BLOCK"] ?? match.votes); setForestMapVotes(match.mapVotes?.["BLACKWOOD FOREST"] ?? 0); setModeVotes(match.modeVotes ?? 0); setFfaModeVotes(match.modeVoteCounts?.FFA ?? match.modeVotes); setTdmModeVotes(match.modeVoteCounts?.TDM ?? 0); setKothModeVotes(match.modeVoteCounts?.KOTH ?? 0); setCtpModeVotes(match.modeVoteCounts?.CTP ?? 0); setEndGameVotes(match.endVotes ?? 0); setMatchEndsAt(match.phaseEndsAt);
             setMatchMode(match.mode ?? "FFA"); setTeamScores(match.teamScores ?? { ALPHA: 0, BRAVO: 0 }); setObjectiveZones(match.objectiveZones ?? []); updateObjectiveMarkers(match.objectiveZones ?? [], match.mode ?? "FFA"); setMatchWinnerId(match.winnerId ?? null); setWinningTeam(match.winningTeam ?? null); setWinningKills(match.winningKills ?? 0);
@@ -1023,6 +1039,7 @@ export function FpsGame() {
             if (playerHealth <= 0) { setDead(true); triggerHeld = false; keys.clear(); if (document.pointerLockElement) document.exitPointerLock(); }
           }
           else if (packet.type === "objective_score" && typeof packet.score === "number") setLocalObjectiveScore(packet.score);
+          else if (packet.type === "shot" && packet.id && packet.tracerEnds) showRemoteTracers(packet.id, packet.tracerEnds);
           else if (packet.type === "killed" && packet.id) {
             const avatar = remotePlayers.get(packet.id); if (avatar) avatar.visible = false;
           }
@@ -1437,6 +1454,7 @@ export function FpsGame() {
       const worldMuzzle = (currentSlot === 1 ? worldPrimary : worldSecondary).getObjectByName("muzzleAnchor");
       (isThirdPerson && worldMuzzle ? worldMuzzle : currentSlot === 1 ? primaryWeapon.muzzleAnchor : secondaryWeapon.muzzleAnchor).getWorldPosition(tracerStart);
       const pelletCount = shotStats.pellets ?? 1;
+      const networkTracerEnds: number[][] = [];
       const burstAccuracyPenalty = activeAttachments().fireControl === "BURST TRIGGER" ? 1.25 : 1;
       const spreadDegrees = shotStats.spread * burstAccuracyPenalty * (aiming ? 0.42 : 1) * movementSpread;
       for (let pellet = 0; pellet < pelletCount; pellet++) {
@@ -1450,6 +1468,7 @@ export function FpsGame() {
         raycaster.set(ballisticOrigin, aimDirection);
         const hit = raycaster.intersectObjects(scene.children, true).find((result) => result.object !== camera && result.distance > .1 && result.distance <= shotStats.range);
         const tracerEnd = hit?.point.clone() ?? raycaster.ray.at(shotStats.range, new THREE.Vector3());
+        networkTracerEnds.push(tracerEnd.toArray());
         const tracerMaterial = new THREE.LineBasicMaterial({ color: pelletCount > 1 ? 0xffd09a : 0xffb06b, transparent: true, opacity: 0.82 });
         const visualTracerStart = isThirdPerson ? ballisticOrigin : tracerStart;
         const tracer = new THREE.Line(new THREE.BufferGeometry().setFromPoints([visualTracerStart, tracerEnd]), tracerMaterial);
@@ -1466,6 +1485,7 @@ export function FpsGame() {
           scene.add(impact); window.setTimeout(() => scene.remove(impact), 1800);
         }
       }
+      multiplayerSendRef.current({ type: "shot", tracerEnds: networkTracerEnds });
     };
     const onMouseDown = (e: MouseEvent) => {
       if (!isTouchInput && document.pointerLockElement !== renderer.domElement) return;
