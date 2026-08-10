@@ -34,7 +34,7 @@ type PlayerState = {
 type MultiplayerMap = "CITY BLOCK" | "BLACKWOOD FOREST";
 type GameMode = "FFA" | "TDM" | "KOTH" | "CTP";
 type ObjectiveZone = { id: string; x: number; z: number; radius: number; owner: PlayerState["team"] | null; progress: number };
-type SocketAttachment = { id: string; state: PlayerState; votedMapPhase?: number; votedMap?: MultiplayerMap; votedModePhase?: number; votedMode?: GameMode; endGamePhase?: number };
+type SocketAttachment = { id: string; state: PlayerState; votedMapPhase?: number; votedMap?: MultiplayerMap; votedModePhase?: number; votedMode?: GameMode; endGamePhase?: number; lastChatAt?: number };
 type MatchMeta = { day: string; phase: "voting" | "playing" | "results"; phaseEndsAt: number; votes: number; mapVotes: Record<MultiplayerMap, number>; modeVotes: number; modeVoteCounts: Record<GameMode, number>; endVotes: number; map: MultiplayerMap; mode: GameMode; teamScores: Record<PlayerState["team"], number>; objectiveZones: ObjectiveZone[]; lastObjectiveTick: number; winnerId: string | null; winningTeam: PlayerState["team"] | null; winningKills: number };
 const VOTE_DURATION = 30_000;
 const MATCH_DURATION = 10 * 60_000;
@@ -108,9 +108,18 @@ export class GameRoom extends DurableObject {
 
   async webSocketMessage(socket: WebSocket, message: string | ArrayBuffer) {
     if (typeof message !== "string" || message.length > 4096) return;
-    let packet: Partial<PlayerState> & { type?: string; category?: "map" | "mode"; map?: MultiplayerMap; mode?: GameMode; targetId?: string; damage?: number; weapon?: string; headshot?: boolean; tracerEnds?: unknown; effect?: string; duration?: number };
+    let packet: Partial<PlayerState> & { type?: string; category?: "map" | "mode"; map?: MultiplayerMap; mode?: GameMode; targetId?: string; damage?: number; weapon?: string; headshot?: boolean; tracerEnds?: unknown; effect?: string; duration?: number; text?: string };
     try { packet = JSON.parse(message); } catch { return; }
     const attachment = socket.deserializeAttachment() as SocketAttachment;
+    if (packet.type === "chat") {
+      const now = Date.now();
+      const text = typeof packet.text === "string" ? packet.text.replace(/\s+/g, " ").trim().slice(0, 160) : "";
+      if (!text || now - (attachment.lastChatAt ?? 0) < 750) return;
+      attachment.lastChatAt = now;
+      socket.serializeAttachment(attachment);
+      this.broadcast({ type: "chat", id: crypto.randomUUID(), senderId: attachment.id, text, sentAt: now });
+      return;
+    }
     if (packet.type === "shot") {
       const meta = await this.currentMatch();
       if (meta.phase !== "playing" || !Array.isArray(packet.tracerEnds)) return;

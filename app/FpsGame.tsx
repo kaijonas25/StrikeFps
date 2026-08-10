@@ -15,6 +15,7 @@ type GameMap = "TEST YARD" | "CITY BLOCK" | "BLACKWOOD FOREST";
 type GameSector = "TRAINING SECTOR" | "SECTOR 1" | "SECTOR 2" | "SECTOR 3" | "SECTOR 4";
 type MultiplayerSector = Exclude<GameSector, "TRAINING SECTOR">;
 type KillFeedEntry = { id: number; victim: string; weapon: string; headshot: boolean };
+type ChatMessage = { id: string; senderId: string; text: string; sentAt: number };
 type SightAttachment = "IRON SIGHTS" | "RED DOT" | "HOLOGRAPHIC" | "4X SCOPE";
 type MuzzleAttachment = "STANDARD BARREL" | "SUPPRESSOR";
 type TacticalAttachment = "NONE" | "RED LASER" | "WHITE LIGHT";
@@ -95,6 +96,8 @@ export function FpsGame() {
   const previousHealthRef = useRef(100);
   const adminAuthorizedRef = useRef(false);
   const adminPanelOpenRef = useRef(false);
+  const chatOpenRef = useRef(false);
+  const chatInputRef = useRef<HTMLInputElement>(null);
   const adminControlsRef = useRef({ flying: false, noclip: false, damageMultiplier: 1 });
   const adminCommandRef = useRef<(command: AdminCommand) => void>(() => {});
   const [locked, setLocked] = useState(false);
@@ -157,6 +160,9 @@ export function FpsGame() {
   const [adsActive, setAdsActive] = useState(false);
   const [crouching, setCrouching] = useState(false);
   const [killFeed, setKillFeed] = useState<KillFeedEntry[]>([]);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatDraft, setChatDraft] = useState("");
+  const [chatOpen, setChatOpen] = useState(false);
   const [leanSide, setLeanSide] = useState<-1 | 0 | 1>(0);
   const [prone, setProne] = useState(false);
   const [characterSkin, setCharacterSkin] = useState("#a9795e");
@@ -228,6 +234,11 @@ export function FpsGame() {
   useEffect(() => {
     adminPanelOpenRef.current = adminPanelOpen;
   }, [adminPanelOpen]);
+
+  useEffect(() => {
+    chatOpenRef.current = chatOpen;
+    if (chatOpen) window.setTimeout(() => chatInputRef.current?.focus(), 0);
+  }, [chatOpen]);
 
   useEffect(() => {
     if (health < previousHealthRef.current) {
@@ -1054,6 +1065,13 @@ export function FpsGame() {
             if (playerHealth <= 0) { setDead(true); triggerHeld = false; keys.clear(); if (document.pointerLockElement) document.exitPointerLock(); }
           }
           else if (packet.type === "objective_score" && typeof packet.score === "number") setLocalObjectiveScore(packet.score);
+          else if (packet.type === "chat") {
+            const chatPacket = packet as typeof packet & { id?: string; senderId?: string; text?: string; sentAt?: number };
+            if (chatPacket.id && chatPacket.senderId && chatPacket.text) setChatMessages((messages) => [
+              ...messages.slice(-49),
+              { id: chatPacket.id!, senderId: chatPacket.senderId!, text: chatPacket.text!, sentAt: chatPacket.sentAt ?? Date.now() },
+            ]);
+          }
           else if (packet.type === "shot" && packet.id && packet.tracerEnds) showRemoteTracers(packet.id, packet.tracerEnds);
           else if (packet.type === "utility_effect" && packet.effect === "flash") {
             setFlashed(true); window.setTimeout(() => setFlashed(false), Math.min(1700, Math.max(250, packet.duration ?? 1000)));
@@ -1198,6 +1216,13 @@ export function FpsGame() {
     };
 
     const onKeyDown = (e: KeyboardEvent) => {
+      if (e.code === "Enter" && !e.repeat && started && selectedSector !== "TRAINING SECTOR" && !adminPanelOpenRef.current) {
+        e.preventDefault();
+        chatOpenRef.current = true; setChatOpen(true); keys.clear();
+        if (document.pointerLockElement) document.exitPointerLock();
+        return;
+      }
+      if (chatOpenRef.current) return;
       if (e.code === "Equal" && !e.repeat && adminAuthorizedRef.current && started) {
         e.preventDefault();
         setAdminPanelOpen((open) => {
@@ -2052,6 +2077,23 @@ export function FpsGame() {
     window.dispatchEvent(new CustomEvent("mobile-move", { detail: { x: 0, y: 0 } }));
   };
 
+  const closeChat = (restorePointer = true) => {
+    chatOpenRef.current = false;
+    setChatOpen(false);
+    setChatDraft("");
+    if (restorePointer && matchPhase === "playing" && !dead) mountRef.current?.querySelector("canvas")?.requestPointerLock();
+  };
+  const sendChat = () => {
+    const text = chatDraft.replace(/\s+/g, " ").trim().slice(0, 160);
+    if (text && multiplayerStatus === "ONLINE") multiplayerSendRef.current({ type: "chat", text });
+    closeChat();
+  };
+  const chatSenderName = (senderId: string) => {
+    if (senderId === localPlayerId) return "YOU";
+    const index = connectedPlayerIds.indexOf(senderId);
+    return index >= 0 ? `OPERATOR ${String(index + 1).padStart(2, "0")}` : "OPERATOR";
+  };
+
   return (
     <main className={`game-shell${!started ? " game-menu" : ""}`}>
       <div ref={mountRef} className="viewport" aria-label="3D first-person training arena" />
@@ -2065,6 +2107,19 @@ export function FpsGame() {
       <div className="kill-feed" aria-live="polite">
         {killFeed.map((entry) => <div key={entry.id}><b>YOU</b><span>{entry.weapon}</span>{entry.headshot && <i>HEADSHOT</i>}<strong>{entry.victim}</strong></div>)}
       </div>
+      {started && selectedSector !== "TRAINING SECTOR" && <section className={`game-chat${chatOpen ? " open" : ""}`} aria-label="Match chat">
+        <div className="chat-log" aria-live="polite">
+          {!chatMessages.length && chatOpen && <p>NO COMMS YET</p>}
+          {chatMessages.slice(-6).map((message) => <div key={message.id} className={message.senderId === localPlayerId ? "local" : ""}>
+            <b>{chatSenderName(message.senderId)}</b><span>{message.text}</span>
+          </div>)}
+        </div>
+        {chatOpen ? <form onSubmit={(event) => { event.preventDefault(); sendChat(); }}>
+          <label htmlFor="match-chat-input">ALL</label>
+          <input ref={chatInputRef} id="match-chat-input" value={chatDraft} maxLength={160} autoComplete="off" placeholder={multiplayerStatus === "ONLINE" ? "MESSAGE ALL PLAYERS" : "COMMS OFFLINE"} disabled={multiplayerStatus !== "ONLINE"} onChange={(event) => setChatDraft(event.target.value)} onKeyDown={(event) => { event.stopPropagation(); if (event.key === "Escape") { event.preventDefault(); closeChat(); } }} />
+          <small>{chatDraft.length}/160 · ENTER SEND · ESC CANCEL</small>
+        </form> : <button onClick={() => { chatOpenRef.current = true; setChatOpen(true); if (document.pointerLockElement) document.exitPointerLock(); }}><kbd>ENTER</kbd> MATCH CHAT</button>}
+      </section>}
       {started && adminAuthorized && <div className="admin-game-badge"><kbd>=</kbd> ADMIN PANEL</div>}
       {started && adminAuthorized && adminPanelOpen && <div className="game-admin-overlay" role="dialog" aria-modal="true" aria-label="In-game admin panel">
         <section className="game-admin-panel">
@@ -2188,7 +2243,7 @@ export function FpsGame() {
           mountRef.current?.querySelector("canvas")?.requestPointerLock();
         }}>RESPAWN AT TEST YARD</button>
       </div>}
-      {!locked && !dead && matchPhase !== "voting" && matchPhase !== "results" && <div className={`menu-screen${!started ? " main-menu-screen" : " pause-screen"}`}>
+      {!locked && !chatOpen && !dead && matchPhase !== "voting" && matchPhase !== "results" && <div className={`menu-screen${!started ? " main-menu-screen" : " pause-screen"}`}>
         <div className="menu-rule" />
         {!started && menuPage !== "LOADOUT" && <button className="character-preview" onClick={() => setMenuPage("CHARACTER")} aria-label="Customize character">
           <div className="preview-glow" />
