@@ -221,3 +221,32 @@ kbd:first-child { margin-left: 0; }
 .auth-switches { display:flex; gap:12px; margin-top:16px; }.auth-switches button { padding:10px 0; border:0; color:#829497; background:transparent; cursor:pointer; font-size:7px; letter-spacing:.14em; }.auth-switches button:hover { color:#ff754c; }
 .auth-security { margin-top:20px!important; color:#526569!important; font-size:6px!important; letter-spacing:.14em!important; }.signout { cursor:pointer; background:transparent; font-family:inherit; }.account-loading { display:grid; place-items:center; color:#ff754c; font-size:9px; letter-spacing:.2em; }
 @media (max-width:700px) { .auth-grid,.profile-grid,.game-auth-form { grid-template-columns:1fr; }.stat-grid,.admin-stat-grid { grid-template-columns:1fr 1fr; }.profile-header,.admin-heading { align-items:flex-start; flex-direction:column; }.admin-actions { align-items:stretch; flex-direction:column; }.admin-actions span { margin:4px 0 0; } }
+
+/* Touch HUD: shown only when the game detects a coarse pointer. */
+.mobile-controls { display:none; }
+@media (pointer:coarse) {
+  html,body,.game-shell { overscroll-behavior:none; touch-action:none; user-select:none; -webkit-user-select:none; }
+  .mobile-controls { position:fixed; inset:0; z-index:12; display:block; pointer-events:none; }
+  .mobile-controls button,.mobile-look-pad { pointer-events:auto; touch-action:none; -webkit-tap-highlight-color:transparent; }
+  .mobile-controls button { border:1px solid rgba(218,237,235,.28); border-radius:50%; color:#eaf4f1; background:rgba(8,18,21,.55); box-shadow:inset 0 0 18px rgba(255,255,255,.035); font-size:9px; font-weight:750; }
+  .mobile-controls button:active { border-color:#ff754c; background:rgba(255,99,54,.3); transform:scale(.94); }
+  .mobile-move-pad { position:absolute; left:max(18px,env(safe-area-inset-left)); bottom:max(22px,env(safe-area-inset-bottom)); width:154px; height:154px; pointer-events:none; }
+  .mobile-move-pad button { position:absolute; width:52px; height:52px; }
+  .move-up { left:51px; top:0; }.move-left { left:0; top:51px; }.move-down { left:51px; top:102px; }.move-right { left:102px; top:51px; }
+  .mobile-move-pad .move-sprint { left:51px; top:51px; border-color:rgba(255,117,76,.48); color:#ff9b7f; font-size:7px; }
+  .mobile-look-pad { position:absolute; right:0; top:70px; width:52vw; height:calc(100% - 220px); border:1px dashed rgba(218,237,235,.08); background:rgba(255,255,255,.006); }
+  .mobile-look-pad span { position:absolute; top:50%; left:50%; color:rgba(218,237,235,.18); font-size:7px; letter-spacing:.18em; transform:translate(-50%,-50%); }
+  .mobile-actions { position:absolute; right:max(18px,env(safe-area-inset-right)); bottom:max(22px,env(safe-area-inset-bottom)); display:grid; grid-template-columns:repeat(4,42px); gap:8px; align-items:end; pointer-events:none; }
+  .mobile-actions button { width:42px; height:42px; border-radius:12px; font-size:6px; }
+  .mobile-actions .mobile-aim { grid-column:3; width:52px; height:52px; margin-left:-10px; border-radius:50%; }
+  .mobile-actions .mobile-fire { grid-column:4; width:70px; height:70px; margin-left:-18px; border:2px solid rgba(255,99,54,.8); color:#fff; background:rgba(174,48,22,.48); font-size:10px; }
+  .mobile-slots { position:absolute; right:max(20px,env(safe-area-inset-right)); top:max(76px,calc(env(safe-area-inset-top) + 60px)); display:flex; gap:7px; pointer-events:none; }
+  .mobile-slots button { width:34px; height:34px; border-radius:8px; }.mobile-slots button.active { border-color:#ff6336; color:#ff8c68; background:rgba(255,99,54,.22); }
+  .quick-slots,.test-legend,.stance-status { display:none; }
+  .hud-left { bottom:188px; }.hud-right { bottom:188px; }
+}
+@media (pointer:coarse) and (orientation:portrait) {
+  .mobile-look-pad { width:55vw; height:48vh; }
+  .mobile-move-pad { transform:scale(.88); transform-origin:left bottom; }
+  .mobile-actions { transform:scale(.88); transform-origin:right bottom; }
+}

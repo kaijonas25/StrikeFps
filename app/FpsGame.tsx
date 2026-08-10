@@ -90,11 +90,13 @@ export function FpsGame() {
   const mountRef = useRef<HTMLDivElement>(null);
   const respawnRef = useRef<() => void>(() => {});
   const multiplayerSendRef = useRef<(packet: unknown) => void>(() => {});
+  const mobileLookRef = useRef<{ id: number; x: number; y: number } | null>(null);
   const adminAuthorizedRef = useRef(false);
   const adminPanelOpenRef = useRef(false);
   const adminControlsRef = useRef({ flying: false, noclip: false, damageMultiplier: 1 });
   const adminCommandRef = useRef<(command: AdminCommand) => void>(() => {});
   const [locked, setLocked] = useState(false);
+  const [touchControls, setTouchControls] = useState(false);
   const [started, setStarted] = useState(false);
   const [ammo, setAmmo] = useState(30);
   const [fireMode, setFireMode] = useState<FireMode>("AUTO");
@@ -269,6 +271,10 @@ export function FpsGame() {
   useEffect(() => {
     const mount = mountRef.current;
     if (!mount) return;
+
+    const isTouchInput = window.matchMedia("(pointer: coarse)").matches || navigator.maxTouchPoints > 0;
+    setTouchControls(isTouchInput);
+    if (isTouchInput && started) setLocked(true);
 
     const scene = new THREE.Scene();
     const forestMap = selectedMap === "BLACKWOOD FOREST";
@@ -1244,16 +1250,19 @@ export function FpsGame() {
       }
     };
     const onKeyUp = (e: KeyboardEvent) => keys.delete(e.code);
-    const onMouseMove = (e: MouseEvent) => {
-      if (document.pointerLockElement !== renderer.domElement) return;
+    const applyLook = (movementX: number, movementY: number) => {
       if (isThirdPerson) {
-        if (!orbiting) return;
-        cameraYaw -= e.movementX * 0.0022;
-        cameraPitch = Math.max(-0.28, Math.min(0.72, cameraPitch + e.movementY * 0.0022));
+        cameraYaw -= movementX * 0.0022;
+        cameraPitch = Math.max(-0.28, Math.min(0.72, cameraPitch + movementY * 0.0022));
         return;
       }
-      yaw -= e.movementX * 0.0022;
-      pitch = Math.max(-1.48, Math.min(1.48, pitch - e.movementY * 0.0022));
+      yaw -= movementX * 0.0022;
+      pitch = Math.max(-1.48, Math.min(1.48, pitch - movementY * 0.0022));
+    };
+    const onMouseMove = (e: MouseEvent) => {
+      if (document.pointerLockElement !== renderer.domElement) return;
+      if (isThirdPerson && !orbiting) return;
+      applyLook(e.movementX, e.movementY);
     };
     const raycaster = new THREE.Raycaster();
     const getAimNdc = () => new THREE.Vector2(isThirdPerson ? 0.08 : 0, 0);
@@ -1394,7 +1403,7 @@ export function FpsGame() {
       }
     };
     const fireRound = () => {
-      if (document.pointerLockElement !== renderer.domElement || sprinting || sliding || currentSlot > 2 || reloadEnd > 0) return;
+      if ((!isTouchInput && document.pointerLockElement !== renderer.domElement) || sprinting || sliding || currentSlot > 2 || reloadEnd > 0) return;
       if (currentSlot === 2 && secondaryIsMelee) {
         const now = performance.now();
         if (now - lastMelee < 480) return;
@@ -1459,7 +1468,7 @@ export function FpsGame() {
       }
     };
     const onMouseDown = (e: MouseEvent) => {
-      if (document.pointerLockElement !== renderer.domElement) return;
+      if (!isTouchInput && document.pointerLockElement !== renderer.domElement) return;
       if (e.button === 2) {
         if (currentSlot === 4 && utility === "C4 CHARGE") {
           plantedC4.splice(0).forEach((charge) => detonate(charge));
@@ -1501,6 +1510,16 @@ export function FpsGame() {
       if (e.button === 2) { aiming = false; orbiting = false; setAdsActive(false); }
     };
     const onContextMenu = (e: MouseEvent) => e.preventDefault();
+    const onMobileLook = (event: Event) => {
+      const { x, y } = (event as CustomEvent<{ x: number; y: number }>).detail;
+      applyLook(x, y);
+    };
+    const onMobileFireStart = () => onMouseDown({ button: 0 } as MouseEvent);
+    const onMobileFireEnd = () => onMouseUp({ button: 0 } as MouseEvent);
+    const onMobileAim = (event: Event) => {
+      aiming = (event as CustomEvent<boolean>).detail;
+      setAdsActive(aiming);
+    };
     const onLockChange = () => {
       const isLocked = document.pointerLockElement === renderer.domElement;
       setLocked(isLocked);
@@ -1519,6 +1538,10 @@ export function FpsGame() {
     document.addEventListener("pointerlockchange", onLockChange);
     renderer.domElement.addEventListener("mousedown", onMouseDown);
     renderer.domElement.addEventListener("contextmenu", onContextMenu);
+    window.addEventListener("mobile-look", onMobileLook);
+    window.addEventListener("mobile-fire-start", onMobileFireStart);
+    window.addEventListener("mobile-fire-end", onMobileFireEnd);
+    window.addEventListener("mobile-aim", onMobileAim);
 
     let frame = 0;
     const animate = () => {
@@ -1921,6 +1944,10 @@ export function FpsGame() {
       document.removeEventListener("pointerlockchange", onLockChange);
       renderer.domElement.removeEventListener("mousedown", onMouseDown);
       renderer.domElement.removeEventListener("contextmenu", onContextMenu);
+      window.removeEventListener("mobile-look", onMobileLook);
+      window.removeEventListener("mobile-fire-start", onMobileFireStart);
+      window.removeEventListener("mobile-fire-end", onMobileFireEnd);
+      window.removeEventListener("mobile-aim", onMobileAim);
       [...suppressedShotPool, ...unsuppressedShotPool].forEach((audio) => { audio.pause(); audio.src = ""; });
       multiplayerSocket?.close(1000, "leaving sector");
       adminCommandRef.current = () => {};
@@ -1938,6 +1965,16 @@ export function FpsGame() {
   const activeMaxMagazine = activeSlot === 1
     ? magazineCapacity(WEAPON_STATS[primary].capacity, magazineAttachment)
     : activeSlot === 2 && WEAPON_STATS[secondary] ? magazineCapacity(WEAPON_STATS[secondary].capacity, secondaryMagazine) : 0;
+  const mobileKey = (code: string, pressed = true) =>
+    window.dispatchEvent(new KeyboardEvent(pressed ? "keydown" : "keyup", { code, bubbles: true }));
+  const mobileTap = (code: string) => {
+    mobileKey(code, true);
+    window.setTimeout(() => mobileKey(code, false), 40);
+  };
+  const stopMobileButton = (event: React.PointerEvent, code: string) => {
+    event.preventDefault();
+    mobileKey(code, false);
+  };
 
   return (
     <main className={`game-shell${!started ? " game-menu" : ""}`}>
@@ -2013,6 +2050,20 @@ export function FpsGame() {
       <div className={`heal-effect${healingEffect ? " active" : ""}`} />
       {selectedMap === "TEST YARD" && <div className="test-legend"><span className="damage-dot" /> DAMAGE PAD <span className="kill-dot" /> KILL PAD <span className="heal-dot" /> HEAL PAD <span className="medical-dot" /> MEDICAL DROP <span className="utility-dot" /> UTILITY DROP</div>}
       <div className="controls"><kbd>WASD</kbd> MOVE <kbd>SHIFT</kbd> SPRINT <kbd>C</kbd> CROUCH / SLIDE <kbd>X</kbd> PRONE <kbd>Q/E</kbd> LEAN <kbd>RMB</kbd> {thirdPerson ? "ORBIT CAMERA" : "AIM"} <kbd>LMB</kbd> FIRE <kbd>TAB</kbd> {thirdPerson ? "1ST PERSON" : "3RD PERSON"}{adminAuthorized && <><kbd>=</kbd> ADMIN</>}</div>
+      {started && touchControls && locked && !dead && matchPhase === "playing" && <div className="mobile-controls" aria-label="Mobile game controls">
+        <div className="mobile-move-pad">
+          {[["KeyW", "▲", "move-up"], ["KeyA", "◀", "move-left"], ["KeyS", "▼", "move-down"], ["KeyD", "▶", "move-right"]].map(([code, label, className]) =>
+            <button key={code} className={className} aria-label={code} onPointerDown={(event) => { event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); mobileKey(code); }} onPointerUp={(event) => stopMobileButton(event, code)} onPointerCancel={(event) => stopMobileButton(event, code)}>{label}</button>)}
+          <button className="move-sprint" aria-label="Sprint" onPointerDown={(event) => { event.preventDefault(); mobileKey("ShiftLeft"); }} onPointerUp={(event) => stopMobileButton(event, "ShiftLeft")} onPointerCancel={(event) => stopMobileButton(event, "ShiftLeft")}>RUN</button>
+        </div>
+        <div className="mobile-look-pad" aria-label="Drag to look" onPointerDown={(event) => { event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); mobileLookRef.current = { id: event.pointerId, x: event.clientX, y: event.clientY }; }} onPointerMove={(event) => { const last = mobileLookRef.current; if (!last || last.id !== event.pointerId) return; window.dispatchEvent(new CustomEvent("mobile-look", { detail: { x: event.clientX - last.x, y: event.clientY - last.y } })); last.x = event.clientX; last.y = event.clientY; }} onPointerUp={() => { mobileLookRef.current = null; }} onPointerCancel={() => { mobileLookRef.current = null; }}><span>DRAG TO AIM</span></div>
+        <div className="mobile-actions">
+          <button onClick={() => mobileTap("Space")}>JUMP</button><button onClick={() => mobileTap("KeyC")}>CROUCH</button><button onClick={() => mobileTap("KeyR")}>RELOAD</button><button onClick={() => mobileTap("KeyF")}>USE</button>
+          <button className="mobile-aim" onPointerDown={(event) => { event.preventDefault(); window.dispatchEvent(new CustomEvent("mobile-aim", { detail: true })); }} onPointerUp={() => window.dispatchEvent(new CustomEvent("mobile-aim", { detail: false }))}>ADS</button>
+          <button className="mobile-fire" onPointerDown={(event) => { event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); window.dispatchEvent(new Event("mobile-fire-start")); }} onPointerUp={() => window.dispatchEvent(new Event("mobile-fire-end"))} onPointerCancel={() => window.dispatchEvent(new Event("mobile-fire-end"))}>FIRE</button>
+        </div>
+        <div className="mobile-slots">{[1, 2, 3, 4].map((slot) => <button key={slot} className={activeSlot === slot ? "active" : ""} onClick={() => mobileTap(`Digit${slot}`)}>{slot}</button>)}</div>
+      </div>}
       {started && matchPhase === "voting" && <div className="match-vote-overlay">
         <div className="match-vote-panel">
           <small>{selectedSector} · NEXT MATCH STARTS IN <b>{formatMatchTime(matchTimeLeft)}</b></small>
