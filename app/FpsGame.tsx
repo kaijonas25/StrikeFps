@@ -8,7 +8,8 @@ import { auth } from "./firebase";
 type Box = { minX: number; maxX: number; minY: number; maxY: number; minZ: number; maxZ: number; active?: boolean };
 type PlayerStance = "standing" | "crouching" | "prone";
 type FireMode = "SEMI" | "BURST" | "AUTO";
-type GameMode = "FFA" | "TDM";
+type GameMode = "FFA" | "TDM" | "KOTH" | "CTP";
+type ObjectiveZone = { id: string; x: number; z: number; radius: number; owner: "ALPHA" | "BRAVO" | null; progress: number };
 type MenuPage = "HOME" | "LOADOUT" | "CHARACTER";
 type GameMap = "TEST YARD" | "CITY BLOCK" | "BLACKWOOD FOREST";
 type GameSector = "TRAINING SECTOR" | "SECTOR 1" | "SECTOR 2" | "SECTOR 3" | "SECTOR 4";
@@ -111,6 +112,8 @@ export function FpsGame() {
   const [modeVotes, setModeVotes] = useState(0);
   const [ffaModeVotes, setFfaModeVotes] = useState(0);
   const [tdmModeVotes, setTdmModeVotes] = useState(0);
+  const [kothModeVotes, setKothModeVotes] = useState(0);
+  const [ctpModeVotes, setCtpModeVotes] = useState(0);
   const [selectedModeVote, setSelectedModeVote] = useState<GameMode | null>(null);
   const [matchMode, setMatchMode] = useState<GameMode>("FFA");
   const [endGameVotes, setEndGameVotes] = useState(0);
@@ -126,6 +129,8 @@ export function FpsGame() {
   const [winningTeam, setWinningTeam] = useState<"ALPHA" | "BRAVO" | null>(null);
   const [localTeam, setLocalTeam] = useState<"ALPHA" | "BRAVO">("ALPHA");
   const [teamScores, setTeamScores] = useState({ ALPHA: 0, BRAVO: 0 });
+  const [objectiveZones, setObjectiveZones] = useState<ObjectiveZone[]>([]);
+  const [localObjectiveScore, setLocalObjectiveScore] = useState(0);
   const [multiplayerStatus, setMultiplayerStatus] = useState<"OFFLINE" | "CONNECTING" | "ONLINE">("OFFLINE");
   const [doorPrompt, setDoorPrompt] = useState(false);
   const [primary, setPrimary] = useState("VXR-4 CARBINE");
@@ -912,6 +917,17 @@ export function FpsGame() {
       item.traverse((object) => { if (object instanceof THREE.Mesh) object.raycast = () => {}; }); localPlayer.add(item);
     });
     type RemoteState = { id: string; x: number; y: number; z: number; yaw: number; movement: "static" | "walk" | "sprint"; crouching: boolean; prone: boolean; slot: number; primary?: string; secondary?: string; health?: number; team?: "ALPHA" | "BRAVO" } & Partial<PlayerAppearance>;
+    const objectiveMarkers: THREE.Group[] = [];
+    const updateObjectiveMarkers = (zones: ObjectiveZone[], mode: GameMode) => {
+      objectiveMarkers.splice(0).forEach((marker) => { scene.remove(marker); marker.traverse((object) => { if (object instanceof THREE.Mesh) { object.geometry.dispose(); if (Array.isArray(object.material)) object.material.forEach((entry) => entry.dispose()); else object.material.dispose(); } }); });
+      zones.forEach((zone) => {
+        const marker = new THREE.Group(); marker.position.set(zone.x, .075, zone.z);
+        const color = zone.owner === "ALPHA" ? 0x55c9ff : zone.owner === "BRAVO" ? 0xff6559 : mode === "KOTH" ? 0xffb347 : 0xe8f3ef;
+        const ring = new THREE.Mesh(new THREE.RingGeometry(zone.radius - .22, zone.radius, 64), new THREE.MeshBasicMaterial({ color, transparent:true, opacity:.72, side:THREE.DoubleSide, depthWrite:false })); ring.rotation.x = -Math.PI / 2; ring.raycast = () => {}; marker.add(ring);
+        const fill = new THREE.Mesh(new THREE.CircleGeometry(zone.radius - .3, 64), new THREE.MeshBasicMaterial({ color, transparent:true, opacity:.08, side:THREE.DoubleSide, depthWrite:false })); fill.rotation.x = -Math.PI / 2; fill.raycast = () => {}; marker.add(fill);
+        const beacon = new THREE.PointLight(color, 12, zone.radius * 2.2, 2); beacon.position.y = 1; marker.add(beacon); scene.add(marker); objectiveMarkers.push(marker);
+      });
+    };
     const remotePlayers = new Map<string, THREE.Group>();
     const upsertRemotePlayer = (state: RemoteState) => {
       const appearance: PlayerAppearance = { ...localAppearance, skin: state.skin ?? localAppearance.skin, uniform: state.uniform ?? localAppearance.uniform, armor: state.armor ?? localAppearance.armor, helmet: state.helmet ?? localAppearance.helmet, faceGear: state.faceGear ?? localAppearance.faceGear, headAccessory: state.headAccessory ?? localAppearance.headAccessory, chestRig: state.chestRig ?? localAppearance.chestRig, backpack: state.backpack ?? localAppearance.backpack, pants: state.pants ?? localAppearance.pants, gloves: state.gloves ?? localAppearance.gloves, boots: state.boots ?? localAppearance.boots };
@@ -964,10 +980,10 @@ export function FpsGame() {
       multiplayerSocket.addEventListener("message", (event) => {
         if (typeof event.data !== "string") return;
         try {
-          const packet = JSON.parse(event.data) as { type: string; player?: RemoteState; players?: RemoteState[]; id?: string; health?: number; attackerId?: string; weapon?: string; headshot?: boolean; yourMapVote?: Exclude<GameMap, "TEST YARD"> | null; yourModeVote?: GameMode | null; map?: Exclude<GameMap, "TEST YARD">; match?: { phase: "voting" | "playing" | "results"; phaseEndsAt: number; votes: number; mapVotes?: { "CITY BLOCK"?: number; "BLACKWOOD FOREST"?: number }; map: Exclude<GameMap, "TEST YARD">; modeVotes: number; modeVoteCounts?: { FFA?: number; TDM?: number }; endVotes: number; mode: GameMode; teamScores?: { ALPHA: number; BRAVO: number }; winnerId: string | null; winningTeam?: "ALPHA" | "BRAVO" | null; winningKills: number } };
+          const packet = JSON.parse(event.data) as { type: string; player?: RemoteState; players?: RemoteState[]; id?: string; health?: number; score?: number; attackerId?: string; weapon?: string; headshot?: boolean; yourMapVote?: Exclude<GameMap, "TEST YARD"> | null; yourModeVote?: GameMode | null; map?: Exclude<GameMap, "TEST YARD">; match?: { phase: "voting" | "playing" | "results"; phaseEndsAt: number; votes: number; mapVotes?: { "CITY BLOCK"?: number; "BLACKWOOD FOREST"?: number }; map: Exclude<GameMap, "TEST YARD">; modeVotes: number; modeVoteCounts?: { FFA?: number; TDM?: number; KOTH?: number; CTP?: number }; endVotes: number; mode: GameMode; teamScores?: { ALPHA: number; BRAVO: number }; objectiveZones?: ObjectiveZone[]; winnerId: string | null; winningTeam?: "ALPHA" | "BRAVO" | null; winningKills: number } };
           const applyMatch = (match: NonNullable<typeof packet.match>, resetVotes = false) => {
-            setMatchPhase(match.phase); setMapVotes(match.votes); setCityMapVotes(match.mapVotes?.["CITY BLOCK"] ?? match.votes); setForestMapVotes(match.mapVotes?.["BLACKWOOD FOREST"] ?? 0); setModeVotes(match.modeVotes ?? 0); setFfaModeVotes(match.modeVoteCounts?.FFA ?? match.modeVotes); setTdmModeVotes(match.modeVoteCounts?.TDM ?? 0); setEndGameVotes(match.endVotes ?? 0); setMatchEndsAt(match.phaseEndsAt);
-            setMatchMode(match.mode ?? "FFA"); setTeamScores(match.teamScores ?? { ALPHA: 0, BRAVO: 0 }); setMatchWinnerId(match.winnerId ?? null); setWinningTeam(match.winningTeam ?? null); setWinningKills(match.winningKills ?? 0);
+            setMatchPhase(match.phase); setMapVotes(match.votes); setCityMapVotes(match.mapVotes?.["CITY BLOCK"] ?? match.votes); setForestMapVotes(match.mapVotes?.["BLACKWOOD FOREST"] ?? 0); setModeVotes(match.modeVotes ?? 0); setFfaModeVotes(match.modeVoteCounts?.FFA ?? match.modeVotes); setTdmModeVotes(match.modeVoteCounts?.TDM ?? 0); setKothModeVotes(match.modeVoteCounts?.KOTH ?? 0); setCtpModeVotes(match.modeVoteCounts?.CTP ?? 0); setEndGameVotes(match.endVotes ?? 0); setMatchEndsAt(match.phaseEndsAt);
+            setMatchMode(match.mode ?? "FFA"); setTeamScores(match.teamScores ?? { ALPHA: 0, BRAVO: 0 }); setObjectiveZones(match.objectiveZones ?? []); updateObjectiveMarkers(match.objectiveZones ?? [], match.mode ?? "FFA"); setMatchWinnerId(match.winnerId ?? null); setWinningTeam(match.winningTeam ?? null); setWinningKills(match.winningKills ?? 0);
             if (match.phase === "playing" && match.map !== selectedMap) setSelectedMap(match.map);
             if ((match.endVotes ?? 0) === 0) setEndGameRequested(false);
             if (match.phase === "voting" && match.phaseEndsAt !== lastVotingPhase) {
@@ -1000,6 +1016,7 @@ export function FpsGame() {
             playerHealth = packet.health; setHealth(playerHealth);
             if (playerHealth <= 0) { setDead(true); triggerHeld = false; keys.clear(); if (document.pointerLockElement) document.exitPointerLock(); }
           }
+          else if (packet.type === "objective_score" && typeof packet.score === "number") setLocalObjectiveScore(packet.score);
           else if (packet.type === "killed" && packet.id) {
             const avatar = remotePlayers.get(packet.id); if (avatar) avatar.visible = false;
           }
@@ -1964,12 +1981,13 @@ export function FpsGame() {
           <footer><span>ADMIN SESSION · {auth.currentUser?.email}</span><button onClick={() => { adminPanelOpenRef.current = false; setAdminPanelOpen(false); mountRef.current?.querySelector("canvas")?.requestPointerLock(); }}>RETURN TO GAME <kbd>=</kbd></button></footer>
         </section>
       </div>}
-      {started && selectedSector !== "TRAINING SECTOR" && matchPhase === "playing" && matchMode === "TDM" && <aside className="tdm-scoreboard">
+      {started && selectedSector !== "TRAINING SECTOR" && matchPhase === "playing" && (matchMode === "TDM" || matchMode === "CTP") && <aside className="tdm-scoreboard">
         <div className={`tdm-team alpha${localTeam === "ALPHA" ? " local-team" : ""}`}><small>TEAM</small><span>ALPHA</span><strong>{teamScores.ALPHA}</strong></div>
-        <div className="tdm-clock"><small>TEAM DEATHMATCH</small><strong>{formatMatchTime(matchTimeLeft)}</strong><span>{selectedMap}</span></div>
+        <div className="tdm-clock"><small>{matchMode === "CTP" ? "CAPTURE POINTS" : "TEAM DEATHMATCH"}</small><strong>{formatMatchTime(matchTimeLeft)}</strong><span>{matchMode === "CTP" ? objectiveZones.map((zone) => `${zone.id}:${zone.owner?.[0] ?? "—"}`).join(" · ") : selectedMap}</span></div>
         <div className={`tdm-team bravo${localTeam === "BRAVO" ? " local-team" : ""}`}><strong>{teamScores.BRAVO}</strong><span>BRAVO</span><small>TEAM</small></div>
         <button disabled={endGameRequested} onClick={() => { multiplayerSendRef.current({ type: "end_game" }); setEndGameRequested(true); }}>{endGameRequested ? `${endGameVotes}/${Math.max(1, connectedPlayerIds.length)}` : "END VOTE"}</button>
       </aside>}
+      {started && matchPhase === "playing" && matchMode === "KOTH" && <aside className="objective-scoreboard"><small>KING OF THE HILL</small><strong>{Math.floor(localObjectiveScore)}</strong><span>HILL POINTS · {formatMatchTime(matchTimeLeft)}</span></aside>}
       {started && selectedSector !== "TRAINING SECTOR" && matchPhase === "playing" && matchMode === "FFA" && <aside className="leaderboard">
         <header><span>FREE FOR ALL</span><strong>{formatMatchTime(matchTimeLeft)}</strong></header>
         <div className="leaderboard-columns"><span>OPERATOR</span><i>K</i><i>D</i></div>
@@ -2018,15 +2036,23 @@ export function FpsGame() {
             <i>02</i><span><b>TEAM DEATHMATCH</b><small>10 MINUTES · ALPHA VS BRAVO · NO FRIENDLY FIRE</small></span><em>{selectedModeVote === "TDM" ? "YOUR VOTE" : hasModeVoted ? "LOCKED" : "VOTE"}</em>
           </button>
           <div className="vote-total"><i style={{ width: modeVotes ? `${tdmModeVotes / modeVotes * 100}%` : "0%" }} /><span>{tdmModeVotes} VOTE{tdmModeVotes === 1 ? "" : "S"}</span></div>
+          <button className={selectedModeVote === "KOTH" ? "voted selected-vote" : hasModeVoted ? "voted" : ""} disabled={hasModeVoted || multiplayerStatus !== "ONLINE"} onClick={() => { multiplayerSendRef.current({ type: "vote", category: "mode", mode: "KOTH" }); setSelectedModeVote("KOTH"); setHasModeVoted(true); }}>
+            <i>03</i><span><b>KING OF THE HILL</b><small>FFA · HOLD THE LARGE RANDOMIZED ZONE · EARN POINTS</small></span><em>{selectedModeVote === "KOTH" ? "YOUR VOTE" : hasModeVoted ? "LOCKED" : "VOTE"}</em>
+          </button>
+          <div className="vote-total"><i style={{ width: modeVotes ? `${kothModeVotes / modeVotes * 100}%` : "0%" }} /><span>{kothModeVotes} VOTE{kothModeVotes === 1 ? "" : "S"}</span></div>
+          <button className={selectedModeVote === "CTP" ? "voted selected-vote" : hasModeVoted ? "voted" : ""} disabled={hasModeVoted || multiplayerStatus !== "ONLINE"} onClick={() => { multiplayerSendRef.current({ type: "vote", category: "mode", mode: "CTP" }); setSelectedModeVote("CTP"); setHasModeVoted(true); }}>
+            <i>04</i><span><b>CAPTURE POINTS</b><small>ALPHA VS BRAVO · CAPTURE AND HOLD THREE ZONES</small></span><em>{selectedModeVote === "CTP" ? "YOUR VOTE" : hasModeVoted ? "LOCKED" : "VOTE"}</em>
+          </button>
+          <div className="vote-total"><i style={{ width: modeVotes ? `${ctpModeVotes / modeVotes * 100}%` : "0%" }} /><span>{ctpModeVotes} VOTE{ctpModeVotes === 1 ? "" : "S"}</span></div>
           <footer>ALL VOTES LOCK WHEN EVERY CONNECTED PLAYER HAS CHOSEN</footer>
         </div>
       </div>}
       {started && matchPhase === "results" && <div className="match-results-overlay">
         <div className="match-results-panel">
-          <small>{selectedSector} · {matchMode === "TDM" ? "TEAM DEATHMATCH" : "FREE FOR ALL"} COMPLETE</small>
-          <h2>{matchMode === "TDM" ? winningTeam ? "VICTORY TEAM" : "MATCH DRAW" : matchWinnerId ? "MATCH WINNER" : "MATCH DRAW"}</h2>
-          <strong>{matchMode === "TDM" ? winningTeam ? `TEAM ${winningTeam}` : "TEAMS TIED" : matchWinnerId === localPlayerId ? "YOU" : matchWinnerId ? `OPERATOR ${matchWinnerId.slice(0, 4).toUpperCase()}` : "NO SOLE WINNER"}</strong>
-          <p>{winningKills} KILL{winningKills === 1 ? "" : "S"}</p>
+          <small>{selectedSector} · {matchMode === "TDM" ? "TEAM DEATHMATCH" : matchMode === "CTP" ? "CAPTURE POINTS" : matchMode === "KOTH" ? "KING OF THE HILL" : "FREE FOR ALL"} COMPLETE</small>
+          <h2>{matchMode === "TDM" || matchMode === "CTP" ? winningTeam ? "VICTORY TEAM" : "MATCH DRAW" : matchWinnerId ? "MATCH WINNER" : "MATCH DRAW"}</h2>
+          <strong>{matchMode === "TDM" || matchMode === "CTP" ? winningTeam ? `TEAM ${winningTeam}` : "TEAMS TIED" : matchWinnerId === localPlayerId ? "YOU" : matchWinnerId ? `OPERATOR ${matchWinnerId.slice(0, 4).toUpperCase()}` : "NO SOLE WINNER"}</strong>
+          <p>{winningKills} {matchMode === "KOTH" || matchMode === "CTP" ? "POINTS" : `KILL${winningKills === 1 ? "" : "S"}`}</p>
           <footer>VOTING OPENS IN <b>{formatMatchTime(matchTimeLeft)}</b></footer>
         </div>
       </div>}
