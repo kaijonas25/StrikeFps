@@ -335,10 +335,16 @@ export function FpsGame() {
     const snowyMap = selectedMap === "FROSTLINE BASE";
     const beachMap = selectedMap === "TIDEBREAK BEACH";
     const terrainHeightAt = (x: number, z: number) => {
-      if (!snowyMap) return 0;
-      const climb = THREE.MathUtils.clamp((-z + 5) / 43, 0, 1);
-      const ridge = .34 + .66 * THREE.MathUtils.clamp(1 - Math.abs(x) / 49, 0, 1);
-      return Math.pow(climb, 1.12) * ridge * 13;
+      if (snowyMap) {
+        const climb = THREE.MathUtils.clamp((-z + 5) / 43, 0, 1);
+        const ridge = .34 + .66 * THREE.MathUtils.clamp(1 - Math.abs(x) / 49, 0, 1);
+        return Math.pow(climb, 1.12) * ridge * 13;
+      }
+      if (beachMap) {
+        const depth=THREE.MathUtils.clamp((-z-7)/20,0,1);
+        return -(depth*depth*(3-2*depth))*1.8;
+      }
+      return 0;
     };
     scene.background = new THREE.Color(snowyMap ? 0xb8cbd3 : beachMap ? 0x77c8df : forestMap ? 0x18271f : 0x111b21);
     scene.fog = new THREE.Fog(snowyMap ? 0xb8cbd3 : beachMap ? 0xa8dae5 : forestMap ? 0x18271f : 0x111b21, snowyMap ? 24 : beachMap ? 42 : forestMap ? 18 : 25, snowyMap ? 92 : beachMap ? 118 : forestMap ? 68 : 72);
@@ -369,9 +375,9 @@ export function FpsGame() {
       new THREE.MeshStandardMaterial({ color, roughness, metalness });
 
     const mapSize = selectedMap === "CITY BLOCK" || snowyMap || beachMap ? 96 : forestMap ? 88 : 64;
-    const floorGeometry = new THREE.PlaneGeometry(mapSize, mapSize, snowyMap ? 64 : 1, snowyMap ? 64 : 1);
+    const floorGeometry = new THREE.PlaneGeometry(mapSize, mapSize, snowyMap || beachMap ? 64 : 1, snowyMap || beachMap ? 64 : 1);
     let snowParticles: THREE.Points | undefined;
-    if (snowyMap) {
+    if (snowyMap || beachMap) {
       const positions = floorGeometry.attributes.position;
       for (let index = 0; index < positions.count; index++) positions.setZ(index, terrainHeightAt(positions.getX(index), -positions.getY(index)));
       positions.needsUpdate = true; floorGeometry.computeVertexNormals();
@@ -879,10 +885,10 @@ export function FpsGame() {
 
     if (beachMap) {
       // The surf closes the northern edge while dunes and sea walls frame the combat space.
-      addBox(0,2.5,47.5,96,5,1,0x8e805f); addBox(-47.5,2.5,0,1,5,96,0x7d7358); addBox(47.5,2.5,0,1,5,96,0x7d7358);
-      addBox(0,.72,-31,95,.08,33,0x269bb5,false); addBox(0,.76,-14.8,95,.06,3.2,0x68c6cf,false);
-      for(let wave=0;wave<6;wave++) addBox(-39+wave*16,.8,-14.8+(wave%2)*.35,8,.035,.42,0xe7fbf5,false);
-      addBox(0,1.3,-47.5,96,2.6,1.2,0x426f77);
+      addBox(0,2.5,47.5,96,5,1,0x8e805f); addBox(-47.5,0,0,1,6,96,0x7d7358); addBox(47.5,0,0,1,6,96,0x7d7358);
+      addBox(0,-.04,-28,95,.08,39,0x269bb5,false); addBox(0,0,-8.7,95,.06,2.8,0x68c6cf,false);
+      for(let wave=0;wave<6;wave++) addBox(-39+wave*16,.035,-8.7+(wave%2)*.3,8,.035,.42,0xe7fbf5,false);
+      addBox(0,-.3,-47.5,96,3.4,1.2,0x426f77);
 
       // Sandbag lines, driftwood barricades, and cargo give the open beach layered cover.
       [[-31,31,7],[0,29,8],[31,32,7],[-23,15,6],[20,16,7],[-11,-2,6],[13,-6,6],[-27,-10,7],[28,-11,7]].forEach(([x,z,w],i)=>{
@@ -901,21 +907,21 @@ export function FpsGame() {
       addBox(0,3.3,9,7.5,2.2,.35,0xe9d8a5); addBox(0,4.55,9,8,.3,6.5,0xd95d43,false);
 
       // A broken pier and grounded patrol boat make the shoreline tactically useful.
-      [-5,5].forEach(x=>{for(let z=-27;z>=-45;z-=4)addBox(x,.65,z,.35,1.3,.35,0x604936);});
-      for(let z=-27;z>=-45;z-=2)addBox(0,1.25,z,11,.28,1.7,0x76583c,false);
-      const hull=new THREE.Mesh(new THREE.CylinderGeometry(2.1,3.5,10,8,1,false),material(0x3f5960)); hull.rotation.z=Math.PI/2; hull.scale.z=.55; hull.position.set(25,.75,-32); hull.rotation.y=-.18; hull.castShadow=true; scene.add(hull); boxes.push({minX:20,maxX:30,minY:0,maxY:2.4,minZ:-35,maxZ:-29});
-      addBox(25,2.35,-32,3.4,2.4,3,0xd8d2b6); addBox(25,3.8,-32,.18,3,.18,0x495559,false);
+      [-5,5].forEach(x=>{for(let z=-10;z>=-45;z-=4)addBox(x,-.25,z,.35,3.1,.35,0x604936);});
+      for(let z=-10;z>=-45;z-=2)addBox(0,1.25,z,11,.28,1.7,0x76583c,false);
+      const hull=new THREE.Mesh(new THREE.CylinderGeometry(2.1,3.5,10,8,1,false),material(0x3f5960)); hull.rotation.z=Math.PI/2; hull.scale.z=.55; hull.position.set(25,.2,-32); hull.rotation.y=-.18; hull.castShadow=true; scene.add(hull); boxes.push({minX:20,maxX:30,minY:-1.4,maxY:1.85,minZ:-35,maxZ:-29});
+      addBox(25,1.8,-32,3.4,2.4,3,0xd8d2b6); addBox(25,3.25,-32,.18,3,.18,0x495559,false);
 
       // Dark volcanic rocks punctuate the sand and protect the shoreline approaches.
       [[-42,-8,5,3,4],[-31,-27,5.5,3.3,4.5],[-7,-20,4.2,2.5,3.5],[7,20,4.5,2.7,3.7],[24,-2,5,3.1,4],[41,-14,5.5,3.4,4.4],[-15,19,3.8,2.3,3.2],[16,-27,4,2.5,3.3]].forEach(([x,z,w,h,d],i)=>{
-        const rock=new THREE.Mesh(new THREE.DodecahedronGeometry(1,0),material(i%2?0x4f5752:0x64665b)); rock.position.set(x,h*.46,z); rock.scale.set(w*.5,h*.5,d*.5); rock.rotation.set(.1*i,.33*i,.06*(i%3)); rock.castShadow=rock.receiveShadow=true; scene.add(rock); boxes.push({minX:x-w*.45,maxX:x+w*.45,minY:0,maxY:h,minZ:z-d*.45,maxZ:z+d*.45});
+        const ground=terrainHeightAt(x,z),rock=new THREE.Mesh(new THREE.DodecahedronGeometry(1,0),material(i%2?0x4f5752:0x64665b)); rock.position.set(x,ground+h*.46,z); rock.scale.set(w*.5,h*.5,d*.5); rock.rotation.set(.1*i,.33*i,.06*(i%3)); rock.castShadow=rock.receiveShadow=true; scene.add(rock); boxes.push({minX:x-w*.45,maxX:x+w*.45,minY:ground,maxY:ground+h,minZ:z-d*.45,maxZ:z+d*.45});
       });
 
       // Palm groves provide visual density and narrow concealment along both flanks.
       const palmTrunk=material(0x7e5c37),palmLeaf=material(0x2f744b,.86,0);
       [[-43,39,.8],[-38,34,1],[-44,27,.9],[-39,20,.75],[-44,10,1.05],[-39,1,.82],[-43,-10,.92],[-37,-12,.78],[-24,38,.72],[-28,24,.85],[-29,5,.75],[-20,-7,.8],[-20,-12,.72],[43,39,.82],[38,34,1.02],[44,27,.88],[39,19,.78],[44,9,1.04],[39,0,.84],[43,-10,.95],[37,-12,.76],[24,38,.7],[28,25,.86],[29,5,.74],[20,-8,.82],[20,-12,.7]].forEach(([x,z,s],i)=>{
-        const trunk=new THREE.Mesh(new THREE.CylinderGeometry(.24*s,.45*s,6.2*s,8),palmTrunk); trunk.position.set(x,3.1*s,z); trunk.rotation.z=(i%3-1)*.05; trunk.castShadow=true; scene.add(trunk); boxes.push({minX:x-.4*s,maxX:x+.4*s,minY:0,maxY:6.2*s,minZ:z-.4*s,maxZ:z+.4*s});
-        for(let leaf=0;leaf<7;leaf++){const frond=new THREE.Mesh(new THREE.ConeGeometry(.72*s,4.2*s,5),palmLeaf); frond.position.set(x,6.3*s,z); frond.rotation.set(Math.PI/2.55,leaf*Math.PI*2/7,0); frond.castShadow=true; frond.raycast=()=>{}; scene.add(frond);}
+        const ground=terrainHeightAt(x,z),trunk=new THREE.Mesh(new THREE.CylinderGeometry(.24*s,.45*s,6.2*s,8),palmTrunk); trunk.position.set(x,ground+3.1*s,z); trunk.rotation.z=(i%3-1)*.05; trunk.castShadow=true; scene.add(trunk); boxes.push({minX:x-.4*s,maxX:x+.4*s,minY:ground,maxY:ground+6.2*s,minZ:z-.4*s,maxZ:z+.4*s});
+        for(let leaf=0;leaf<7;leaf++){const frond=new THREE.Mesh(new THREE.ConeGeometry(.72*s,4.2*s,5),palmLeaf); frond.position.set(x,ground+6.3*s,z); frond.rotation.set(Math.PI/2.55,leaf*Math.PI*2/7,0); frond.castShadow=true; frond.raycast=()=>{}; scene.add(frond);}
       });
     }
 
@@ -1925,7 +1931,7 @@ export function FpsGame() {
       );
       if (input.lengthSq() > 0) input.normalize();
       if (sliding && now >= slideEnd) { sliding = false; slideEnd = 0; }
-      const inBeachWater = beachMap && playerPosition.z < -14.2;
+      const inBeachWater = beachMap && playerPosition.z < -8.2;
       sprinting = !isCrouching && !isProne && !sliding && ((isTouchInput && input.length() > .82 && input.y > .25) || keys.has("ShiftLeft") || keys.has("ShiftRight")) && input.y > 0 && input.lengthSq() > 0;
       if (inBeachWater) { sprinting = false; sliding = false; }
       if (sprinting || sliding) { aiming = false; setAdsActive(false); }
@@ -1990,7 +1996,7 @@ export function FpsGame() {
       }
 
       const standingInCreek = forestMap && Math.abs((playerPosition.x + 10) + playerPosition.z * .08) < 3.5 && Math.abs(playerPosition.z) < 42;
-      const groundHeight = snowyMap ? PLAYER_HEIGHT + terrainHeightAt(playerPosition.x,playerPosition.z) : standingInCreek ? PLAYER_HEIGHT - .7 : PLAYER_HEIGHT;
+      const groundHeight = snowyMap || beachMap ? PLAYER_HEIGHT + terrainHeightAt(playerPosition.x,playerPosition.z) : standingInCreek ? PLAYER_HEIGHT - .7 : PLAYER_HEIGHT;
       const adminFlyingActive = adminAuthorizedRef.current && adminControlsRef.current.flying;
       if (adminFlyingActive) {
         verticalVelocity = 0; grounded = false;
@@ -2000,7 +2006,7 @@ export function FpsGame() {
         verticalVelocity = 0; grounded = false;
         if (isCrouching || isProne) { isCrouching=false; isProne=false; setCrouching(false); setProne(false); }
         const swimInput = Number(keys.has("Space")) - Number(keys.has("ControlLeft") || keys.has("ControlRight"));
-        const swimHeight = 1.12 + swimInput * .42 + Math.sin(clock.getElapsedTime()*2.1)*.045;
+        const swimHeight = .36 + swimInput * .42 + Math.sin(clock.getElapsedTime()*2.1)*.045;
         playerPosition.y = THREE.MathUtils.lerp(playerPosition.y,swimHeight,Math.min(1,dt*4.5));
       } else {
         verticalVelocity -= 14.5 * dt;
