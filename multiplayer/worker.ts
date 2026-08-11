@@ -45,7 +45,7 @@ const RESULTS_DURATION = 5_000;
 const FINAL_VOTE_DISPLAY_DURATION = 1_500;
 const EMPTY_ROOM_GRACE = 10_000;
 const FIREBASE_API_KEY = "AIzaSyBblKzSnl4XD7afgjqXETtVEhZyADn4-3s";
-const ADMIN_EMAIL = "kaigarcia2510@gmail.com";
+const ADMIN_EMAILS = new Set(["kaigarcia2510@gmail.com", "sebastian.ward@pinecrest.edu"]);
 const safeString = (value: unknown, fallback: string, maxLength: number) =>
   typeof value === "string" ? value.slice(0, maxLength) : fallback;
 
@@ -61,7 +61,8 @@ const verifiedAdminToken = async (idToken: unknown) => {
   });
   if (!response.ok) return false;
   const payload = await response.json() as { users?: { email?: string }[] };
-  return payload.users?.[0]?.email?.toLowerCase() === ADMIN_EMAIL;
+  const email = payload.users?.[0]?.email?.toLowerCase();
+  return Boolean(email && ADMIN_EMAILS.has(email));
 };
 
 const SPAWNS: Record<MultiplayerMap, { free: [number,number][]; ALPHA: [number,number][]; BRAVO: [number,number][] }> = {
