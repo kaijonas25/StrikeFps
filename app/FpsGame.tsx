@@ -1757,6 +1757,88 @@ export function FpsGame() {
       const mesh = createThrownUtilityMesh(utilityType); mesh.position.fromArray(position); scene.add(mesh);
       remoteUtilities.set(utilityId, { mesh, velocity: new THREE.Vector3().fromArray(velocity), age: 0, type: utilityType, networkId: utilityId });
     };
+    const spawnExplosionVisual = (position: THREE.Vector3, utilityType: string) => {
+      const flashbang = utilityType === "FLASHBANG";
+      const power = utilityType === "C4 CHARGE" ? 1.35 : utilityType === "LANDMINE" ? 1.08 : flashbang ? .82 : 1;
+      const effect = new THREE.Group(); effect.position.copy(position); scene.add(effect);
+      const noRaycast = (mesh: THREE.Object3D) => { mesh.raycast = () => {}; return mesh; };
+      const additive = THREE.AdditiveBlending;
+
+      const core = noRaycast(new THREE.Mesh(
+        new THREE.IcosahedronGeometry(.48 * power, 2),
+        new THREE.MeshBasicMaterial({ color: flashbang ? 0xffffff : 0xfff2b2, transparent: true, opacity: 1, blending: additive, depthWrite: false }),
+      )) as THREE.Mesh;
+      effect.add(core);
+      const shell = noRaycast(new THREE.Mesh(
+        new THREE.SphereGeometry(.62 * power, 18, 12),
+        new THREE.MeshBasicMaterial({ color: flashbang ? 0xdffaff : 0xff6a18, transparent: true, opacity: .72, blending: additive, depthWrite: false, side: THREE.DoubleSide }),
+      )) as THREE.Mesh;
+      effect.add(shell);
+      const shockwave = noRaycast(new THREE.Mesh(
+        new THREE.TorusGeometry(.7 * power, .035 * power, 6, 40),
+        new THREE.MeshBasicMaterial({ color: flashbang ? 0xeaffff : 0xffc06a, transparent: true, opacity: .82, blending: additive, depthWrite: false }),
+      )) as THREE.Mesh;
+      shockwave.rotation.x = Math.PI / 2; effect.add(shockwave);
+      const light = new THREE.PointLight(flashbang ? 0xe8ffff : 0xff7b25, flashbang ? 150 : 105 * power, 14 * power, 2);
+      light.position.y = .35; effect.add(light);
+
+      const lobes: { mesh: THREE.Mesh; direction: THREE.Vector3; speed: number }[] = [];
+      if (!flashbang) for (let i = 0; i < 9; i++) {
+        const mesh = noRaycast(new THREE.Mesh(
+          new THREE.IcosahedronGeometry((.22 + Math.random() * .24) * power, 1),
+          new THREE.MeshBasicMaterial({ color: i % 3 === 0 ? 0xffdc72 : 0xff5b16, transparent: true, opacity: .86, blending: additive, depthWrite: false }),
+        )) as THREE.Mesh;
+        const angle = (i / 9) * Math.PI * 2 + Math.random() * .45;
+        const direction = new THREE.Vector3(Math.cos(angle), .25 + Math.random() * .8, Math.sin(angle)).normalize();
+        effect.add(mesh); lobes.push({ mesh, direction, speed: (1.5 + Math.random() * 2.3) * power });
+      }
+
+      const sparkCount = flashbang ? 28 : Math.round(48 * power);
+      const sparkPositions = new Float32Array(sparkCount * 3);
+      const sparkVelocities: THREE.Vector3[] = [];
+      for (let i = 0; i < sparkCount; i++) {
+        const angle = Math.random() * Math.PI * 2, speed = (3.5 + Math.random() * 8) * power;
+        sparkVelocities.push(new THREE.Vector3(Math.cos(angle) * speed, 2 + Math.random() * 7, Math.sin(angle) * speed));
+      }
+      const sparkGeometry = new THREE.BufferGeometry(); sparkGeometry.setAttribute("position", new THREE.BufferAttribute(sparkPositions, 3));
+      const sparkMaterial = new THREE.PointsMaterial({ color: flashbang ? 0xf2ffff : 0xffc05a, size: .09 * power, transparent: true, opacity: 1, blending: additive, depthWrite: false, sizeAttenuation: true });
+      const sparks = noRaycast(new THREE.Points(sparkGeometry, sparkMaterial)) as THREE.Points; effect.add(sparks);
+
+      const smokePuffs: THREE.Mesh[] = [];
+      if (!flashbang) for (let i = 0; i < 7; i++) {
+        const puff = noRaycast(new THREE.Mesh(
+          new THREE.IcosahedronGeometry((.3 + Math.random() * .2) * power, 1),
+          new THREE.MeshBasicMaterial({ color: i % 2 ? 0x333638 : 0x56514a, transparent: true, opacity: .42, depthWrite: false }),
+        )) as THREE.Mesh;
+        const angle = Math.random() * Math.PI * 2;
+        puff.position.set(Math.cos(angle) * .25, .1 + Math.random() * .35, Math.sin(angle) * .25); effect.add(puff); smokePuffs.push(puff);
+      }
+
+      if (!flashbang) {
+        const scorchMaterial = new THREE.MeshBasicMaterial({ color: 0x171411, transparent: true, opacity: .62, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 });
+        const scorch = noRaycast(new THREE.Mesh(new THREE.CircleGeometry(1.25 * power, 24), scorchMaterial)) as THREE.Mesh;
+        scorch.rotation.x = -Math.PI / 2; scorch.position.set(position.x, terrainHeightAt(position.x, position.z) + .018, position.z); scene.add(scorch);
+        window.setTimeout(() => { scene.remove(scorch); scorch.geometry.dispose(); scorchMaterial.dispose(); }, 7000);
+      }
+
+      const startedAt = performance.now(); let previous = startedAt;
+      const animateExplosion = (now: number) => {
+        const elapsed = (now - startedAt) / 1000, dt = Math.min(.04, (now - previous) / 1000); previous = now;
+        const blastPhase = Math.min(1, elapsed / .28), fade = Math.max(0, 1 - elapsed / 1.45);
+        core.scale.setScalar(.7 + blastPhase * 3.8); (core.material as THREE.MeshBasicMaterial).opacity = Math.max(0, 1 - elapsed / .24);
+        shell.scale.setScalar(.65 + blastPhase * 4.8); (shell.material as THREE.MeshBasicMaterial).opacity = Math.max(0, .72 * (1 - elapsed / .42));
+        shockwave.scale.setScalar(1 + elapsed * 8.5); (shockwave.material as THREE.MeshBasicMaterial).opacity = Math.max(0, .82 * (1 - elapsed / .48));
+        light.intensity = (flashbang ? 150 : 105 * power) * Math.max(0, 1 - elapsed / .32) ** 2;
+        lobes.forEach(({ mesh, direction, speed }, index) => { mesh.position.addScaledVector(direction, speed * dt); mesh.position.y += dt * (.5 - elapsed * 1.3); mesh.scale.setScalar(1 + elapsed * (1.8 + index % 3 * .3)); (mesh.material as THREE.MeshBasicMaterial).opacity = Math.max(0, .86 * (1 - elapsed / .58)); });
+        const positions = sparkGeometry.attributes.position as THREE.BufferAttribute;
+        sparkVelocities.forEach((velocity, index) => { positions.setXYZ(index, positions.getX(index) + velocity.x * dt, positions.getY(index) + velocity.y * dt, positions.getZ(index) + velocity.z * dt); velocity.y -= 15 * dt; velocity.multiplyScalar(.985); });
+        positions.needsUpdate = true; sparkMaterial.opacity = Math.max(0, 1 - elapsed / .9);
+        smokePuffs.forEach((puff, index) => { puff.position.y += dt * (.7 + index * .05); puff.position.x += Math.sin(index * 2.1) * dt * .18; puff.scale.setScalar(1 + elapsed * (2.1 + index * .08)); (puff.material as THREE.MeshBasicMaterial).opacity = .42 * fade; });
+        if (elapsed < 1.45) requestAnimationFrame(animateExplosion);
+        else { scene.remove(effect); effect.traverse((object) => { if (!(object instanceof THREE.Mesh || object instanceof THREE.Points)) return; object.geometry.dispose(); const mats = Array.isArray(object.material) ? object.material : [object.material]; mats.forEach((entry) => entry.dispose()); }); }
+      };
+      requestAnimationFrame(animateExplosion);
+    };
     const showRemoteUtilityDetonation = (utilityId: string, utilityType: string, position: number[]) => {
       const remote = remoteUtilities.get(utilityId); if (remote) { scene.remove(remote.mesh); remoteUtilities.delete(utilityId); }
       const worldPosition = new THREE.Vector3().fromArray(position);
@@ -1769,10 +1851,7 @@ export function FpsGame() {
         }
         window.setTimeout(() => scene.remove(cloud), 9000);
       } else {
-        const blast = new THREE.Mesh(new THREE.SphereGeometry(.35, 12, 8), new THREE.MeshBasicMaterial({ color: utilityType === "FLASHBANG" ? 0xeaffff : 0xff6a32, transparent: true, opacity: .85, wireframe: true }));
-        blast.position.copy(worldPosition); scene.add(blast); let scale = 1;
-        const expand = window.setInterval(() => { scale += .8; blast.scale.setScalar(scale); }, 20);
-        window.setTimeout(() => { window.clearInterval(expand); scene.remove(blast); }, 260);
+        spawnExplosionVisual(worldPosition, utilityType);
       }
     };
     const throwUtility = () => {
@@ -1836,12 +1915,7 @@ export function FpsGame() {
         }
         window.setTimeout(() => scene.remove(cloud), 9000);
       } else {
-        const blastColor = projectile.type === "FLASHBANG" ? 0xeaffff : 0xff6a32;
-        const blast = new THREE.Mesh(new THREE.SphereGeometry(0.35, 12, 8), new THREE.MeshBasicMaterial({ color: blastColor, transparent: true, opacity: 0.85, wireframe: true }));
-        blast.position.copy(position); scene.add(blast);
-        let scale = 1;
-        const expand = window.setInterval(() => { scale += 0.8; blast.scale.setScalar(scale); }, 20);
-        window.setTimeout(() => { window.clearInterval(expand); scene.remove(blast); }, 260);
+        spawnExplosionVisual(position, projectile.type);
         if (projectile.type === "FLASHBANG" && playerPosition.distanceTo(position) < 13) {
           setFlashed(true); window.setTimeout(() => setFlashed(false), 1700);
         }
