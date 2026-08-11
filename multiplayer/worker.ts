@@ -40,6 +40,7 @@ type MatchMeta = { day: string; phase: "voting" | "playing" | "results"; phaseEn
 const VOTE_DURATION = 30_000;
 const MATCH_DURATION = 10 * 60_000;
 const RESULTS_DURATION = 5_000;
+const FINAL_VOTE_DISPLAY_DURATION = 1_500;
 const EMPTY_ROOM_GRACE = 10_000;
 const safeString = (value: unknown, fallback: string, maxLength: number) =>
   typeof value === "string" ? value.slice(0, maxLength) : fallback;
@@ -231,8 +232,13 @@ export class GameRoom extends DurableObject {
         const vote = candidate.deserializeAttachment() as SocketAttachment;
         return vote.votedMapPhase === meta.phaseEndsAt && vote.votedModePhase === meta.phaseEndsAt;
       });
-      if (everyoneFinished) await this.advanceMatch(meta);
-      else this.broadcast({ type: "match", match: meta });
+      this.broadcast({ type: "match", match: meta });
+      if (everyoneFinished) {
+        // Let every client render the last player's vote before changing screens.
+        await new Promise((resolve) => setTimeout(resolve, FINAL_VOTE_DISPLAY_DURATION));
+        const latest = await this.currentMatch();
+        if (latest.phase === "voting" && latest.phaseEndsAt === meta.phaseEndsAt) await this.advanceMatch(latest);
+      }
       return;
     }
     if (packet.type !== "state") return;

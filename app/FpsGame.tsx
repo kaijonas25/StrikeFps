@@ -2576,7 +2576,7 @@ export function FpsGame() {
             <i>04</i><span><b>CAPTURE POINTS</b><small>ALPHA VS BRAVO · CAPTURE AND HOLD THREE ZONES</small></span><em>{selectedModeVote === "CTP" ? "YOUR VOTE" : hasModeVoted ? "LOCKED" : "VOTE"}</em>
           </button>
           <div className="vote-total"><i style={{ width: modeVotes ? `${ctpModeVotes / modeVotes * 100}%` : "0%" }} /><span>{ctpModeVotes} VOTE{ctpModeVotes === 1 ? "" : "S"}</span></div>
-          <footer>ALL VOTES LOCK WHEN EVERY CONNECTED PLAYER HAS CHOSEN</footer>
+          <footer>{mapVotes}/{connectedPlayerIds.length} MAP VOTES · {modeVotes}/{connectedPlayerIds.length} MODE VOTES · ALL VOTES DISPLAY BEFORE MATCH START</footer>
         </div>
       </div>}
       {started && matchPhase === "results" && <div className="match-results-overlay">
