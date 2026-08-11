@@ -815,6 +815,14 @@ export function FpsGame() {
         addBox(x,y+.7,z-2.5,3.4,1.4,1.7,index ? 0x496c75 : 0x6d604c); addBox(x+3.6,y+.52,z+2.3,2.4,1.04,1.4,0x52636a);
       });
       [[-12,25],[0,22],[12,25],[-34,18],[34,18]].forEach(([x,z],i) => alpineRock(x,z,4.5,.9,1.1,i%2?0xaab8bb:0x87979c));
+      // Layered base defenses break up the long approach without enclosing the spawn lane.
+      [[-19,35,5.5],[-10,29,4.5],[11,30,4.5],[20,35,5.5],[-31,25,4.8],[31,25,4.8]].forEach(([x,z,w],i)=>{
+        const y=terrainHeightAt(x,z); addBox(x,y+.7,z,w,1.4,.8,i%2?0x65757a:0x777465);
+        addBox(x-w*.32,y+1.05,z-.15,.28,2.1,1.05,0x4a5151,false); addBox(x+w*.32,y+1.05,z-.15,.28,2.1,1.05,0x4a5151,false);
+      });
+      [[-23,29],[24,28],[-35,32],[35,34],[-15,20],[17,20]].forEach(([x,z],i)=>{
+        const y=terrainHeightAt(x,z); addBox(x,y+.65,z,2.5,1.3,2.2,i%2?0x52646a:0x5f665d); addBox(x+(i%2?.7:-.7),y+1.65,z+.3,1.15,.7,1.1,0x46565c);
+      });
 
       // Alpine boulders and ice outcrops create cover along multiple ascent routes.
       [[-38,5,4,2.4,3],[-24,9,5,2.8,3.5],[-8,5,3.5,2.1,3],[11,8,5,3.2,3.5],[30,4,4.2,2.5,3],[-32,-9,5,3.3,4],[-15,-11,4,2.7,3],[5,-9,5.5,3.4,4],[25,-12,4.5,2.8,3.5],[-27,-25,5,3.2,4],[-6,-24,4.2,2.6,3],[18,-27,5.4,3.5,4]].forEach(([x,z,w,h,d],i) => alpineRock(x,z,w,h,d,i%3===0?0x687d88:0x7f9199));
@@ -846,9 +854,9 @@ export function FpsGame() {
         route.forEach(([x,z],index)=>{const px=x+side*4.2,ground=terrainHeightAt(px,z); addBox(px,ground+.8,z,.16,1.6,.16,0x39494f,false); const reflector=new THREE.Mesh(new THREE.BoxGeometry(.22,.16,.06),new THREE.MeshBasicMaterial({color:index%2?0xff6c42:0x73dfff})); reflector.position.set(px,ground+1.35,z); reflector.raycast=()=>{}; scene.add(reflector); ropePoints.push(new THREE.Vector3(px,ground+1.12,z)); if(index===2||index===5){const lamp=new THREE.PointLight(0xff9a54,13,9,2); lamp.position.set(px,ground+1.7,z); scene.add(lamp);}});
         const rope=new THREE.Line(new THREE.BufferGeometry().setFromPoints(ropePoints),new THREE.LineBasicMaterial({color:0x4a5557})); rope.raycast=()=>{}; scene.add(rope);
       });
-      // Sparse, varied alpine pines frame the routes while leaving long mountain sightlines.
+      // Dense, varied alpine pines frame the routes while preserving the central ascent corridor.
       const alpineTrunk=material(0x4b4036,.95,.01), alpineNeedles=material(0x35545a,.98,0);
-      [[-42,34,.7],[-39,23,.95],[40,30,.8],[42,13,1.1],[-37,-2,.75],[37,-5,.9],[-34,-20,.65],[35,-24,.8],[-18,18,.7],[15,15,.9],[-31,-35,.65],[29,-37,.72]].forEach(([x,z,s]) => {
+      [[-44,39,.7],[-40,34,.88],[-35,38,.62],[-42,27,1.02],[-35,22,.76],[-28,19,.68],[-43,13,.96],[-36,8,.64],[-40,-1,.8],[-34,-8,.72],[-42,-18,.9],[-35,-24,.66],[-40,-34,.78],[-31,-37,.65],[-24,-31,.72],[44,38,.76],[39,33,.92],[34,38,.64],[43,26,1.04],[36,21,.72],[29,18,.66],[44,12,.98],[36,7,.7],[41,-2,.82],[34,-10,.68],[43,-18,.92],[36,-25,.7],[41,-34,.8],[30,-37,.72],[23,-31,.68],[-22,28,.58],[22,25,.62],[-27,12,.7],[27,10,.68],[-25,-14,.62],[27,-16,.66],[-16,-31,.58],[16,-34,.62]].forEach(([x,z,s]) => {
         const ground=terrainHeightAt(x,z); const trunk=new THREE.Mesh(new THREE.CylinderGeometry(.28*s,.4*s,4.5*s,8),alpineTrunk); trunk.position.set(x,ground+2.25*s,z); trunk.castShadow=true; scene.add(trunk); boxes.push({minX:x-.38*s,maxX:x+.38*s,minY:ground,maxY:ground+4.5*s,minZ:z-.38*s,maxZ:z+.38*s});
         for(let tier=0;tier<3;tier++){const crown=new THREE.Mesh(new THREE.ConeGeometry((1.8-tier*.3)*s,3*s,8),alpineNeedles); crown.position.set(x,ground+(4.2+tier*1.25)*s,z); crown.castShadow=true; crown.raycast=()=>{}; scene.add(crown);}
       });
