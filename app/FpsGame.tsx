@@ -793,6 +793,13 @@ export function FpsGame() {
     if (snowyMap) {
       // Snowbanks define the playable base while the northern terrain rises into a climbable summit.
       addBox(0, 3, 47.5, 96, 6, 1, 0xa9bdc5); addBox(-47.5, 4.5, 0, 1, 9, 96, 0x8298a2); addBox(47.5, 4.5, 0, 1, 9, 96, 0x8298a2);
+      // A high, jagged back ridge closes the summit view so the mountain continues into solid terrain.
+      addBox(0,11,-47.5,96,22,1.6,0x667b85);
+      for(let ridge=0;ridge<9;ridge++){
+        const x=-42+ridge*10.5, height=14+((ridge*7)%9); addBox(x,height/2,-46.55,10.8,height,1.1,ridge%2?0x738791:0x607580,false);
+        addBox(x,height+.22,-46.4,11,.44,1.35,0xd7e5e8,false);
+      }
+      [[-31,25,13],[0,31,16],[33,23,12]].forEach(([x,height,radius])=>{const distantPeak=new THREE.Mesh(new THREE.ConeGeometry(radius,height,7),material(0x8498a1,.95,0)); distantPeak.position.set(x,8+height/2,-67); distantPeak.raycast=()=>{}; scene.add(distantPeak); const cap=new THREE.Mesh(new THREE.ConeGeometry(radius*.48,height*.42,7),material(0xe1eaec,.98,0)); cap.position.set(x,8+height*.79,-67); cap.raycast=()=>{}; scene.add(cap);});
       const snowRock = (x:number,z:number,w:number,h:number,d:number,color=0x71828a) => addBox(x,terrainHeightAt(x,z)+h/2,z,w,h,d,color);
       // Base camp: two open shelters, cargo, and defensive barriers.
       [[-28,31],[28,31]].forEach(([x,z], index) => {
