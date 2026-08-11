@@ -12,6 +12,7 @@ type PlayerState = {
   slot: number;
   primary: string;
   secondary: string;
+  equipment: "ARMOR PLATING" | "HEAT VISION GOGGLES" | "360 GOGGLES" | "SATELLITE GPS";
   skin: string;
   uniform: string;
   camo: string;
@@ -48,6 +49,7 @@ const FIREBASE_API_KEY = "AIzaSyBblKzSnl4XD7afgjqXETtVEhZyADn4-3s";
 const ADMIN_EMAILS = new Set(["kaigarcia2510@gmail.com", "sebastian.ward@pinecrest.edu"]);
 const safeString = (value: unknown, fallback: string, maxLength: number) =>
   typeof value === "string" ? value.slice(0, maxLength) : fallback;
+const maxHealth = (player: Pick<PlayerState, "equipment">) => player.equipment === "ARMOR PLATING" ? 125 : 100;
 
 const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), {
   status,
@@ -135,7 +137,7 @@ export class GameRoom extends DurableObject {
     const team: PlayerState["team"] = playerNumber % 2 === 0 ? "ALPHA" : "BRAVO";
     const spawn = chooseSpawn(meta, team, existingPlayers);
     const spawnX = spawn.x, spawnZ = spawn.z;
-    const initial: PlayerState = { id, x: spawnX, y: 1.7, z: spawnZ, yaw: spawnZ > 0 ? 0 : Math.PI, movement: "static", crouching: false, prone: false, slot: 1, primary: "VXR-4 CARBINE", secondary: "P9 SIDEARM", skin: "#a9795e", uniform: "#303a3b", camo: "SOLID", accessories: ["GOGGLES", "HEADSET"], armor: "#20292b", helmet: "TACTICAL", faceGear: "GOGGLES", headAccessory: "HEADSET", chestRig: "PLATE CARRIER", backpack: "ASSAULT PACK", pants: "#303a3b", gloves: "#20292b", boots: "#151b1d", kills: 0, deaths: 0, health: 100, team, objectiveScore: 0, spawnProtectedUntil: Date.now() + 3000, callsign:`OPERATOR ${id.slice(0,4).toUpperCase()}` };
+    const initial: PlayerState = { id, x: spawnX, y: 1.7, z: spawnZ, yaw: spawnZ > 0 ? 0 : Math.PI, movement: "static", crouching: false, prone: false, slot: 1, primary: "VXR-4 CARBINE", secondary: "P9 SIDEARM", equipment: "ARMOR PLATING", skin: "#a9795e", uniform: "#303a3b", camo: "SOLID", accessories: ["GOGGLES", "HEADSET"], armor: "#20292b", helmet: "TACTICAL", faceGear: "GOGGLES", headAccessory: "HEADSET", chestRig: "PLATE CARRIER", backpack: "ASSAULT PACK", pants: "#303a3b", gloves: "#20292b", boots: "#151b1d", kills: 0, deaths: 0, health: 125, team, objectiveScore: 0, spawnProtectedUntil: Date.now() + 3000, callsign:`OPERATOR ${id.slice(0,4).toUpperCase()}` };
     this.ctx.acceptWebSocket(server);
     server.serializeAttachment({ id, state: initial, isAdmin: false, godMode: false, damageMultiplier: 1, lastSeenAt: Date.now() } satisfies SocketAttachment);
 
@@ -245,7 +247,7 @@ export class GameRoom extends DurableObject {
       const meta = await this.currentMatch();
       const otherPlayers = this.ctx.getWebSockets().filter((candidate) => candidate !== socket && candidate.readyState === WebSocket.OPEN).map((candidate) => (candidate.deserializeAttachment() as SocketAttachment).state);
       const spawn = chooseSpawn(meta, attachment.state.team, otherPlayers);
-      attachment.state.health = 100;
+      attachment.state.health = maxHealth(attachment.state);
       attachment.state.spawnProtectedUntil = Date.now() + 3000;
       attachment.state.x = spawn.x;
       attachment.state.y = 1.7;
@@ -309,6 +311,7 @@ export class GameRoom extends DurableObject {
       slot: typeof packet.slot === "number" && packet.slot >= 1 && packet.slot <= 4 ? packet.slot : attachment.state.slot,
       primary: typeof packet.primary === "string" ? packet.primary.slice(0, 40) : attachment.state.primary,
       secondary: typeof packet.secondary === "string" ? packet.secondary.slice(0, 40) : attachment.state.secondary,
+      equipment: packet.equipment === "HEAT VISION GOGGLES" || packet.equipment === "360 GOGGLES" || packet.equipment === "SATELLITE GPS" ? packet.equipment : "ARMOR PLATING",
       skin: safeString(packet.skin, attachment.state.skin, 16), uniform: safeString(packet.uniform, attachment.state.uniform, 16), camo: safeString(packet.camo, attachment.state.camo, 24),
       accessories: Array.isArray(packet.accessories) ? packet.accessories.filter((item): item is string => typeof item === "string" && ["GOGGLES", "MASK", "HEADSET", "NVG"].includes(item)).slice(0, 4) : attachment.state.accessories,
       armor: safeString(packet.armor, attachment.state.armor, 16),
@@ -317,6 +320,7 @@ export class GameRoom extends DurableObject {
       pants: safeString(packet.pants, attachment.state.pants, 16), gloves: safeString(packet.gloves, attachment.state.gloves, 16), boots: safeString(packet.boots, attachment.state.boots, 16),
       callsign: safeString(packet.callsign, attachment.state.callsign, 18).replace(/[^a-z0-9 _-]/gi, "").trim() || attachment.state.callsign,
     };
+    attachment.state.health = Math.min(attachment.state.health, maxHealth(attachment.state));
     socket.serializeAttachment(attachment);
     this.broadcast({ type: "state", player: attachment.state }, socket);
     const meta = await this.currentMatch();
@@ -466,7 +470,7 @@ export class GameRoom extends DurableObject {
       roundSockets.forEach((socket, index) => {
         const attachment = socket.deserializeAttachment() as SocketAttachment;
         attachment.state.team = index % 2 === 0 ? "ALPHA" : "BRAVO";
-        attachment.state.kills = 0; attachment.state.deaths = 0; attachment.state.health = 100; attachment.state.objectiveScore = 0;
+        attachment.state.kills = 0; attachment.state.deaths = 0; attachment.state.health = maxHealth(attachment.state); attachment.state.objectiveScore = 0;
         attachment.state.spawnProtectedUntil = Date.now() + 3000;
         const spawn = chooseSpawn(meta, attachment.state.team, spawnedPlayers);
         attachment.state.x = spawn.x; attachment.state.z = spawn.z;

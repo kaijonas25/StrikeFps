@@ -18,16 +18,18 @@ type KillFeedEntry = { id: number; killer: string; victim: string; weapon: strin
 type NetworkPlayerSummary = { callsign: string; kills: number; deaths: number };
 type ChatMessage = { id: string; senderId: string; text: string; sentAt: number };
 type DamageNumber = { id: number; damage: number; x: number; y: number; headshot: boolean };
+type RadarPing = { id: string; x: number; z: number; local: boolean };
 type SightAttachment = "IRON SIGHTS" | "RED DOT" | "HOLOGRAPHIC" | "4X SCOPE";
 type MuzzleAttachment = "STANDARD BARREL" | "SUPPRESSOR";
 type TacticalAttachment = "NONE" | "RED LASER" | "WHITE LIGHT";
 type MagazineAttachment = "STANDARD MAG" | "EXTENDED MAG" | "DRUM MAG";
 type FireControlAttachment = "STANDARD TRIGGER" | "BURST TRIGGER";
+type PassiveEquipment = "ARMOR PLATING" | "HEAT VISION GOGGLES" | "360 GOGGLES" | "SATELLITE GPS";
 type CamoPattern = "SOLID" | "WOODLAND" | "MULTICAM" | "DIGITAL" | "URBAN CAMO";
 type OperatorAccessory = "GOGGLES" | "MASK" | "HEADSET" | "NVG";
 type WeaponAttachments = { sight: SightAttachment; muzzle: MuzzleAttachment; tactical: TacticalAttachment; magazine: MagazineAttachment; fireControl: FireControlAttachment };
 type PlayerAppearance = { skin: string; uniform: string; camo: CamoPattern; accessories: OperatorAccessory[]; armor: string; helmet: string; faceGear: string; headAccessory: string; chestRig: string; backpack: string; pants: string; gloves: string; boots: string };
-type SavedLoadout = { primary: string; secondary: string; medical: string; utility: string; weaponSight: SightAttachment; muzzleAttachment: MuzzleAttachment; tacticalAttachment: TacticalAttachment; magazineAttachment: MagazineAttachment; fireControlAttachment: FireControlAttachment; secondarySight: SightAttachment; secondaryMuzzle: MuzzleAttachment; secondaryTactical: TacticalAttachment; secondaryMagazine: MagazineAttachment; secondaryFireControl: FireControlAttachment };
+type SavedLoadout = { primary: string; secondary: string; medical: string; utility: string; equipment: PassiveEquipment; weaponSight: SightAttachment; muzzleAttachment: MuzzleAttachment; tacticalAttachment: TacticalAttachment; magazineAttachment: MagazineAttachment; fireControlAttachment: FireControlAttachment; secondarySight: SightAttachment; secondaryMuzzle: MuzzleAttachment; secondaryTactical: TacticalAttachment; secondaryMagazine: MagazineAttachment; secondaryFireControl: FireControlAttachment };
 type SavedOperator = { characterSkin: string; characterUniform: string; camoPattern?: CamoPattern; accessories?: OperatorAccessory[]; characterArmor: string; characterHelmet: "TACTICAL" | "LIGHT" | "HEAVY"; faceGear: "NONE" | "GOGGLES" | "MASK"; headAccessory: "NONE" | "HEADSET" | "NVG"; chestRig: "LIGHT" | "PLATE CARRIER" | "HEAVY"; backpack: "NONE" | "ASSAULT PACK" | "RADIO PACK"; pantsColor: string; gloveColor: string; bootColor: string };
 type AdminCommand = "refill_ammo" | "refill_medical" | "refill_utility" | "restore_health" | "kill_targets";
 
@@ -179,6 +181,7 @@ export function FpsGame() {
   const [secondary, setSecondary] = useState("P9 SIDEARM");
   const [medical, setMedical] = useState("FIELD MEDKIT");
   const [utility, setUtility] = useState("FRAG GRENADE");
+  const [equipment, setEquipment] = useState<PassiveEquipment>("ARMOR PLATING");
   const [activeSlot, setActiveSlot] = useState(1);
   const [reloading, setReloading] = useState(false);
   const [reloadDuration, setReloadDuration] = useState(0);
@@ -199,6 +202,7 @@ export function FpsGame() {
   const [chatOpen, setChatOpen] = useState(false);
   const [damageNumbersEnabled, setDamageNumbersEnabled] = useState(() => typeof window === "undefined" || window.localStorage.getItem("strikeyard.damageNumbers") !== "false");
   const [damageNumbers, setDamageNumbers] = useState<DamageNumber[]>([]);
+  const [radarPings, setRadarPings] = useState<RadarPing[]>([]);
   const [leanSide, setLeanSide] = useState<-1 | 0 | 1>(0);
   const [prone, setProne] = useState(false);
   const [characterSkin, setCharacterSkin] = useState("#a9795e");
@@ -255,6 +259,7 @@ export function FpsGame() {
       if (loadout) {
         if (loadout.primary) setPrimary(loadout.primary); if (loadout.secondary) setSecondary(loadout.secondary);
         if (loadout.medical) setMedical(loadout.medical); if (loadout.utility) setUtility(loadout.utility);
+        if (loadout.equipment) setEquipment(loadout.equipment);
         if (loadout.weaponSight) setWeaponSight(loadout.weaponSight); if (loadout.muzzleAttachment) setMuzzleAttachment(loadout.muzzleAttachment);
         if (loadout.tacticalAttachment) setTacticalAttachment(loadout.tacticalAttachment); if (loadout.magazineAttachment) setMagazineAttachment(loadout.magazineAttachment);
         if (loadout.fireControlAttachment) setFireControlAttachment(loadout.fireControlAttachment); if (loadout.secondarySight) setSecondarySight(loadout.secondarySight);
@@ -313,7 +318,7 @@ export function FpsGame() {
     const user = auth.currentUser;
     if (!user) { setAccountSaveStatus("idle"); return; }
     setAccountSaveStatus("saving");
-    const loadout: SavedLoadout = { primary, secondary, medical, utility, weaponSight, muzzleAttachment, tacticalAttachment, magazineAttachment, fireControlAttachment, secondarySight, secondaryMuzzle, secondaryTactical, secondaryMagazine, secondaryFireControl };
+    const loadout: SavedLoadout = { primary, secondary, medical, utility, equipment, weaponSight, muzzleAttachment, tacticalAttachment, magazineAttachment, fireControlAttachment, secondarySight, secondaryMuzzle, secondaryTactical, secondaryMagazine, secondaryFireControl };
     const savedFaceGear: SavedOperator["faceGear"] = equippedAccessories.includes("MASK") ? "MASK" : equippedAccessories.includes("GOGGLES") ? "GOGGLES" : "NONE";
     const savedHeadAccessory: SavedOperator["headAccessory"] = equippedAccessories.includes("NVG") ? "NVG" : equippedAccessories.includes("HEADSET") ? "HEADSET" : "NONE";
     const operator: SavedOperator = { characterSkin, characterUniform, camoPattern, accessories: equippedAccessories, characterArmor, characterHelmet, faceGear: savedFaceGear, headAccessory: savedHeadAccessory, chestRig, backpack, pantsColor, gloveColor, bootColor };
@@ -383,6 +388,7 @@ export function FpsGame() {
 
     const camera = new THREE.PerspectiveCamera(78, mount.clientWidth / mount.clientHeight, 0.05, beachMap ? 180 : 120);
     camera.position.set(0, PLAYER_HEIGHT, 15);
+    const rearCamera = new THREE.PerspectiveCamera(68, 16 / 9, 0.05, beachMap ? 180 : 120);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -619,6 +625,11 @@ export function FpsGame() {
         bar.position.z = .006; bar.raycast = () => {}; healthBarRoot.add(bar);
         dummy.userData.healthBarRoot = healthBarRoot; dummy.userData.healthBars = [bar];
       }
+      if (equipment === "HEAT VISION GOGGLES") dummy.traverse((object) => {
+        if (!(object instanceof THREE.Mesh) || !(object.material instanceof THREE.MeshStandardMaterial)) return;
+        object.material.emissive.set(targetable ? 0xff351f : 0xff8a36);
+        object.material.emissiveIntensity = targetable ? 2.2 : 1.65;
+      });
       scene.add(dummy); if (targetable) dummies.push(dummy); return dummy;
     };
     const namedDummy = (dummy: THREE.Group, callsign: string) => { dummy.userData.callsign = callsign; return dummy; };
@@ -1398,7 +1409,7 @@ export function FpsGame() {
           }
           else if ((packet.type === "round_start" || packet.type === "respawned") && packet.player) {
             playerPosition.set(packet.player.x, packet.player.y, packet.player.z); camera.position.copy(playerPosition); lastClearPosition.copy(playerPosition);
-            yaw = packet.player.yaw; playerHealth = 100; setHealth(100); setDead(false); setHealing(false); keys.clear();
+            yaw = packet.player.yaw; playerHealth = maxPlayerHealth; setHealth(maxPlayerHealth); setDead(false); setHealing(false); keys.clear();
             if (packet.player.team) { localNetworkTeam = packet.player.team; setLocalTeam(packet.player.team); refreshTeammateMarkers(); }
             if (packet.map && packet.map !== selectedMap) setSelectedMap(packet.map);
           }
@@ -1476,7 +1487,8 @@ export function FpsGame() {
     const activeAttachments = (): WeaponAttachments => currentSlot > 2 || (currentSlot === 2 && secondaryIsMelee)
       ? { sight: "IRON SIGHTS", muzzle: "STANDARD BARREL", tactical: "NONE", magazine: "STANDARD MAG", fireControl: "STANDARD TRIGGER" }
       : currentSlot === 1 ? primaryAttachments : secondaryAttachments;
-    let playerHealth = 100, nextPadTick = 0, healEnd = 0;
+    const maxPlayerHealth = equipment === "ARMOR PLATING" ? 125 : 100;
+    let playerHealth = maxPlayerHealth, nextPadTick = 0, healEnd = 0;
     const playerPosition = new THREE.Vector3(0, PLAYER_HEIGHT, spawnZ);
     const lastClearPosition = playerPosition.clone();
     let isThirdPerson = false, orbiting = false, isCrouching = false, isProne = false, slideEnd = 0, stanceOffset = 0, crouchPoseAmount = 0, proneAmount = 0, leanDirection: -1 | 0 | 1 = 0, leanAmount = 0;
@@ -1484,12 +1496,14 @@ export function FpsGame() {
     respawnRef.current = () => {
       playerPosition.set(0, PLAYER_HEIGHT, spawnZ); camera.position.copy(playerPosition);
       lastClearPosition.copy(playerPosition);
-      yaw = 0; pitch = 0; verticalVelocity = 0; playerHealth = 100;
+      yaw = 0; pitch = 0; verticalVelocity = 0; playerHealth = maxPlayerHealth;
       isCrouching = false; isProne = false; sliding = false; slideEnd = 0; stanceOffset = 0; crouchPoseAmount = 0; proneAmount = 0; leanDirection = 0; leanAmount = 0; setCrouching(false); setProne(false); setLeanSide(0);
       keys.clear();
     };
     let last = performance.now();
     let nextSupplyWave = last + 60_000;
+    let nextSatelliteScan = last;
+    let satelliteClearTimer = 0;
     const clock = new THREE.Clock();
 
     const currentStance = (): PlayerStance => isProne ? "prone" : isCrouching ? "crouching" : "standing";
@@ -1734,7 +1748,7 @@ export function FpsGame() {
       } else if (command === "refill_utility") {
         grenadesLeft = 9; setUtilityCount(grenadesLeft);
       } else if (command === "restore_health") {
-        playerHealth = 100; setHealth(100); setDead(false);
+        playerHealth = maxPlayerHealth; setHealth(maxPlayerHealth); setDead(false);
       } else if (command === "kill_targets") {
         dummies.filter((dummy) => dummy.visible).forEach((dummy) => damageDummyGroup(dummy, dummy.userData.health, "ADMIN", false));
       }
@@ -2097,6 +2111,15 @@ export function FpsGame() {
       const now = performance.now();
       const dt = Math.min((now - last) / 1000, 0.05);
       last = now;
+      if (equipment === "SATELLITE GPS" && now >= nextSatelliteScan) {
+        nextSatelliteScan = now + 10_000;
+        setRadarPings([
+          { id: "local", x: playerPosition.x, z: playerPosition.z, local: true },
+          ...[...remotePlayers.entries()].filter(([, avatar]) => avatar.visible).map(([id, avatar]) => ({ id, x: avatar.position.x, z: avatar.position.z, local: false })),
+        ]);
+        window.clearTimeout(satelliteClearTimer);
+        satelliteClearTimer = window.setTimeout(() => setRadarPings([]), 2500);
+      }
       if (now >= nextSupplyWave) { spawnSupplyWave(); nextSupplyWave = now + 60_000; }
       camera.rotation.order = "YXZ";
       camera.rotation.set(pitch, yaw, 0);
@@ -2325,7 +2348,7 @@ export function FpsGame() {
         });
       });
       if (healEnd && now >= healEnd) {
-        playerHealth = Math.min(100, playerHealth + MEDICAL_STATS[medical].healing);
+        playerHealth = Math.min(maxPlayerHealth, playerHealth + MEDICAL_STATS[medical].healing);
         medicalCharges -= 1; healEnd = 0;
         setHealth(playerHealth); setMedicalCount(medicalCharges); setHealing(false); setHealingEffect(true);
         window.setTimeout(() => setHealingEffect(false), 650);
@@ -2469,7 +2492,7 @@ export function FpsGame() {
       localPlayer.scale.set(1, 1, 1);
       if (multiplayerSocket?.readyState === WebSocket.OPEN && now - lastMultiplayerSend >= 66) {
         lastMultiplayerSend = now;
-        multiplayerSocket.send(JSON.stringify({ type: "state", x: playerPosition.x, y: playerPosition.y, z: playerPosition.z, yaw, movement: localPlayer.userData.movement, crouching: isCrouching, prone: isProne, slot: currentSlot, primary, secondary, skin: characterSkin, uniform: characterUniform, camo: camoPattern, accessories: equippedAccessories, armor: characterArmor, helmet: characterHelmet, faceGear: localFaceGear, headAccessory: localHeadAccessory, chestRig, backpack, pants: pantsColor, gloves: gloveColor, boots: bootColor, callsign:playerCallsignRef.current }));
+        multiplayerSocket.send(JSON.stringify({ type: "state", x: playerPosition.x, y: playerPosition.y, z: playerPosition.z, yaw, movement: localPlayer.userData.movement, crouching: isCrouching, prone: isProne, slot: currentSlot, primary, secondary, equipment, skin: characterSkin, uniform: characterUniform, camo: camoPattern, accessories: equippedAccessories, armor: characterArmor, helmet: characterHelmet, faceGear: localFaceGear, headAccessory: localHeadAccessory, chestRig, backpack, pants: pantsColor, gloves: gloveColor, boots: bootColor, callsign:playerCallsignRef.current }));
       }
       if (isThirdPerson) {
         const orbitDistance = 4.2;
@@ -2512,11 +2535,29 @@ export function FpsGame() {
         }
       }
       renderer.render(scene, camera);
+      if (equipment === "360 GOGGLES" && started) {
+        const panelWidth = Math.min(260, Math.floor(mount.clientWidth * .28));
+        const panelHeight = Math.floor(panelWidth * 9 / 16);
+        const panelRight = 24, panelBottom = 185;
+        rearCamera.position.copy(camera.position);
+        rearCamera.quaternion.copy(camera.quaternion);
+        rearCamera.rotateY(Math.PI);
+        rearCamera.aspect = panelWidth / panelHeight;
+        rearCamera.updateProjectionMatrix();
+        renderer.setScissorTest(true);
+        renderer.setViewport(mount.clientWidth - panelWidth - panelRight, panelBottom, panelWidth, panelHeight);
+        renderer.setScissor(mount.clientWidth - panelWidth - panelRight, panelBottom, panelWidth, panelHeight);
+        renderer.clearDepth();
+        renderer.render(scene, rearCamera);
+        renderer.setScissorTest(false);
+        renderer.setViewport(0, 0, mount.clientWidth, mount.clientHeight);
+      }
     };
     animate();
 
     return () => {
       cancelAnimationFrame(frame);
+      window.clearTimeout(satelliteClearTimer);
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
       window.removeEventListener("mousemove", onMouseMove);
@@ -2540,9 +2581,11 @@ export function FpsGame() {
       renderer.dispose();
       mount.removeChild(renderer.domElement);
     };
-  }, [sessionId, started, selectedSector, selectedMap, primary, secondary, medical, utility, characterSkin, characterUniform, camoPattern, equippedAccessories, characterArmor, characterHelmet, chestRig, backpack, pantsColor, gloveColor, bootColor, weaponSight, muzzleAttachment, tacticalAttachment, magazineAttachment, fireControlAttachment, secondarySight, secondaryMuzzle, secondaryTactical, secondaryMagazine, secondaryFireControl]);
+  }, [sessionId, started, selectedSector, selectedMap, primary, secondary, medical, utility, equipment, characterSkin, characterUniform, camoPattern, equippedAccessories, characterArmor, characterHelmet, chestRig, backpack, pantsColor, gloveColor, bootColor, weaponSight, muzzleAttachment, tacticalAttachment, magazineAttachment, fireControlAttachment, secondarySight, secondaryMuzzle, secondaryTactical, secondaryMagazine, secondaryFireControl]);
 
   const equippedItems = [primary, secondary, medical, utility];
+  const maximumHealth = equipment === "ARMOR PLATING" ? 125 : 100;
+  const radarBounds = selectedMap === "TIDEBREAK BEACH" ? { minX: -60, maxX: 60, minZ: -50, maxZ: 96 } : selectedMap === "TEST YARD" ? { minX: -32, maxX: 32, minZ: -32, maxZ: 32 } : { minX: -50, maxX: 50, minZ: -50, maxZ: 50 };
   const activeIsMelee = activeSlot === 2 && secondary === "COMBAT KNIFE";
   const activeSightAttachment = activeSlot === 1 ? weaponSight : secondarySight;
   const activeMaxMagazine = activeSlot === 1
@@ -2671,7 +2714,16 @@ export function FpsGame() {
         {damageNumbers.map((number) => <span key={number.id} className={number.headshot ? "headshot" : ""} style={{ left: number.x, top: number.y }}>-{number.damage}</span>)}
       </div>
       <div className="crosshair" style={{ left: thirdPerson ? leanSide < 0 ? "46%" : "54%" : "50%" }}><span /><span /></div>
-      <div className="hud-left"><small>VITALS</small><strong>{health}</strong><div className="health"><i style={{ width: `${health}%` }} /></div></div>
+      <div className="hud-left"><small>VITALS · {equipment}</small><strong>{health}</strong><div className="health"><i style={{ width: `${health / maximumHealth * 100}%` }} /></div></div>
+      {started && equipment === "HEAT VISION GOGGLES" && <div className="heat-vision-overlay"><span>THERMAL OPTICS</span></div>}
+      {started && equipment === "360 GOGGLES" && <aside className="rear-view-panel"><header>REAR VIEW · 180°</header></aside>}
+      {started && equipment === "SATELLITE GPS" && <aside className={`satellite-map${radarPings.length ? " scanning" : ""}`}>
+        <header><span>SATELLITE GPS</span><b>{radarPings.length ? "CONTACTS" : "SCANNING"}</b></header>
+        <div className="radar-grid">
+          {radarPings.map((ping) => <i key={ping.id} className={ping.local ? "local" : "enemy"} style={{ left: `${(ping.x - radarBounds.minX) / (radarBounds.maxX - radarBounds.minX) * 100}%`, top: `${(ping.z - radarBounds.minZ) / (radarBounds.maxZ - radarBounds.minZ) * 100}%` }} />)}
+        </div>
+        <small>PLAYER LOCATIONS PULSE EVERY 10 SEC</small>
+      </aside>}
       {(crouching || prone) && <div className="stance-status">{prone ? "PRONE" : "CROUCHED"} · <kbd>{prone ? "X" : "C"}</kbd> STAND</div>}
       {doorPrompt && <div className="door-prompt"><kbd>F</kbd> OPEN / CLOSE DOOR</div>}
       <div className="hud-right"><small>{equippedItems[activeSlot - 1]}{activeIsMelee ? " · MELEE" : activeSlot <= 2 ? ` · ${fireMode}` : " · READY"}</small><strong>{activeSlot === 4 ? utilityCount : activeSlot === 3 ? medicalCount : activeIsMelee ? "—" : ammo} <em>{activeSlot === 4 ? "THROWABLES" : activeSlot === 3 ? "MEDICAL" : activeIsMelee ? "" : `/ ${activeMaxMagazine}`}</em></strong></div>
@@ -2756,7 +2808,7 @@ export function FpsGame() {
       {dead && <div className="death-screen">
         <div className="death-code">KIA</div><h2>OPERATOR DOWN</h2><p>TEST CONDITION: FATAL DAMAGE</p>
         <button onClick={() => {
-          respawnRef.current(); setHealth(100); setDead(false);
+          respawnRef.current(); setHealth(maximumHealth); setDead(false);
           multiplayerSendRef.current({ type: "respawn", x: 0, z: selectedMap === "TIDEBREAK BEACH" ? 86 : selectedMap === "CITY BLOCK" ? 38 : selectedMap === "BLACKWOOD FOREST" || selectedMap === "FROSTLINE BASE" ? 36 : 15 });
           mountRef.current?.querySelector("canvas")?.requestPointerLock();
         }}>RESPAWN AT TEST YARD</button>
@@ -2794,6 +2846,7 @@ export function FpsGame() {
                 setSelectedMap("TEST YARD");
                 setMatchPhase("playing");
                 setMapVotes(0); setModeVotes(0); setHasVoted(false); setHasModeVoted(false); setMatchEndsAt(0);
+                setHealth(equipment === "ARMOR PLATING" ? 125 : 100);
                 setStarted(true);
                 setSessionId((id) => id + 1);
               }}>
@@ -2805,6 +2858,7 @@ export function FpsGame() {
                 setSelectedMap("CITY BLOCK");
                 setMatchPhase("connecting");
                 setMapVotes(0); setModeVotes(0); setHasVoted(false); setHasModeVoted(false); setMatchEndsAt(0);
+                setHealth(equipment === "ARMOR PLATING" ? 125 : 100);
                 setStarted(true);
                 setSessionId((id) => id + 1);
               }}>
@@ -2845,6 +2899,9 @@ export function FpsGame() {
               <LoadoutSlot label="UTILITY" selected={utility} options={[
                 ["FRAG GRENADE", "LETHAL EXPLOSIVE"], ["SMOKE GRENADE", "VISION COVER"], ["FLASHBANG", "DISORIENT TARGETS"], ["C4 CHARGE", "PLACE · FIRE AGAIN TO DETONATE"], ["LANDMINE", "PROXIMITY EXPLOSIVE"], ["GAS BOMB", "AREA DENIAL · DAMAGE OVER TIME"]
               ]} onSelect={setUtility} />
+              <LoadoutSlot label="PASSIVE EQUIPMENT" selected={equipment} options={[
+                ["ARMOR PLATING", "+25 MAX HEALTH"], ["HEAT VISION GOGGLES", "HIGHLIGHT COMBATANTS"], ["360 GOGGLES", "LIVE REAR-VIEW PANEL"], ["SATELLITE GPS", "PLAYER SCAN EVERY 10 SEC"]
+              ]} onSelect={(value) => setEquipment(value as PassiveEquipment)} />
             </div>
             <div className="attachments-panel">
               <div className="attachments-heading"><span>PRIMARY</span> ATTACHMENTS <small>{primary}</small></div>
