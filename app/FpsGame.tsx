@@ -341,8 +341,8 @@ export function FpsGame() {
         return Math.pow(climb, 1.12) * ridge * 13;
       }
       if (beachMap) {
-        const depth=THREE.MathUtils.clamp((-z-7)/20,0,1);
-        return -(depth*depth*(3-2*depth))*1.8;
+        const depth=THREE.MathUtils.clamp((-z-7)/40,0,1);
+        return -(depth*depth*(3-2*depth))*4;
       }
       return 0;
     };
@@ -885,10 +885,10 @@ export function FpsGame() {
 
     if (beachMap) {
       // The surf closes the northern edge while dunes and sea walls frame the combat space.
-      addBox(0,2.5,47.5,96,5,1,0x8e805f); addBox(-47.5,0,0,1,6,96,0x7d7358); addBox(47.5,0,0,1,6,96,0x7d7358);
+      addBox(0,2.5,47.5,96,5,1,0x8e805f); addBox(-47.5,0,0,1,10,96,0x7d7358); addBox(47.5,0,0,1,10,96,0x7d7358);
       addBox(0,-.04,-28,95,.08,39,0x269bb5,false); addBox(0,0,-8.7,95,.06,2.8,0x68c6cf,false);
       for(let wave=0;wave<6;wave++) addBox(-39+wave*16,.035,-8.7+(wave%2)*.3,8,.035,.42,0xe7fbf5,false);
-      addBox(0,-.3,-47.5,96,3.4,1.2,0x426f77);
+      addBox(0,-1.5,-47.5,96,6,1.2,0x426f77);
 
       // Sandbag lines, driftwood barricades, and cargo give the open beach layered cover.
       [[-31,31,7],[0,29,8],[31,32,7],[-23,15,6],[20,16,7],[-11,-2,6],[13,-6,6],[-27,-10,7],[28,-11,7]].forEach(([x,z,w],i)=>{
@@ -909,6 +909,8 @@ export function FpsGame() {
       // A broken pier and grounded patrol boat make the shoreline tactically useful.
       [-5,5].forEach(x=>{for(let z=-10;z>=-45;z-=4)addBox(x,-.25,z,.35,3.1,.35,0x604936);});
       for(let z=-10;z>=-45;z-=2)addBox(0,1.25,z,11,.28,1.7,0x76583c,false);
+      const dockRamp=new THREE.Mesh(new THREE.BoxGeometry(9.4,.28,6),material(0x806043)); dockRamp.position.set(0,.7,-7.2); dockRamp.rotation.x=.23; dockRamp.castShadow=dockRamp.receiveShadow=true; dockRamp.raycast=()=>{}; scene.add(dockRamp);
+      [-4.25,4.25].forEach(x=>{addBox(x,.95,-7.2,.18,1.9,6.1,0x604936,false); addBox(x,1.78,-7.2,.16,.16,6.2,0xa48056,false);});
       const hull=new THREE.Mesh(new THREE.CylinderGeometry(2.1,3.5,10,8,1,false),material(0x3f5960)); hull.rotation.z=Math.PI/2; hull.scale.z=.55; hull.position.set(25,.2,-32); hull.rotation.y=-.18; hull.castShadow=true; scene.add(hull); boxes.push({minX:20,maxX:30,minY:-1.4,maxY:1.85,minZ:-35,maxZ:-29});
       addBox(25,1.8,-32,3.4,2.4,3,0xd8d2b6); addBox(25,3.25,-32,.18,3,.18,0x495559,false);
 
@@ -1931,7 +1933,8 @@ export function FpsGame() {
       );
       if (input.lengthSq() > 0) input.normalize();
       if (sliding && now >= slideEnd) { sliding = false; slideEnd = 0; }
-      const inBeachWater = beachMap && playerPosition.z < -8.2;
+      const onBeachDock = beachMap && Math.abs(playerPosition.x)<5.5 && playerPosition.z < -4.2 && playerPosition.z > -46;
+      const inBeachWater = beachMap && playerPosition.z < -8.2 && !onBeachDock;
       sprinting = !isCrouching && !isProne && !sliding && ((isTouchInput && input.length() > .82 && input.y > .25) || keys.has("ShiftLeft") || keys.has("ShiftRight")) && input.y > 0 && input.lengthSq() > 0;
       if (inBeachWater) { sprinting = false; sliding = false; }
       if (sprinting || sliding) { aiming = false; setAdsActive(false); }
@@ -1996,7 +1999,10 @@ export function FpsGame() {
       }
 
       const standingInCreek = forestMap && Math.abs((playerPosition.x + 10) + playerPosition.z * .08) < 3.5 && Math.abs(playerPosition.z) < 42;
-      const groundHeight = snowyMap || beachMap ? PLAYER_HEIGHT + terrainHeightAt(playerPosition.x,playerPosition.z) : standingInCreek ? PLAYER_HEIGHT - .7 : PLAYER_HEIGHT;
+      const onDockRamp=beachMap&&Math.abs(playerPosition.x)<4.7&&playerPosition.z<=-4.2&&playerPosition.z>-10;
+      const onPier=beachMap&&Math.abs(playerPosition.x)<5.5&&playerPosition.z<=-10&&playerPosition.z>-46;
+      const beachGround=onDockRamp?THREE.MathUtils.lerp(terrainHeightAt(playerPosition.x,playerPosition.z),1.39,THREE.MathUtils.clamp((-playerPosition.z-4.2)/5.8,0,1)):onPier?1.39:terrainHeightAt(playerPosition.x,playerPosition.z);
+      const groundHeight = snowyMap || beachMap ? PLAYER_HEIGHT + beachGround : standingInCreek ? PLAYER_HEIGHT - .7 : PLAYER_HEIGHT;
       const adminFlyingActive = adminAuthorizedRef.current && adminControlsRef.current.flying;
       if (adminFlyingActive) {
         verticalVelocity = 0; grounded = false;
