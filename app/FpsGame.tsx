@@ -1272,10 +1272,9 @@ export function FpsGame() {
       avatar.userData.remoteProne = state.prone; avatar.userData.remoteCrouching = state.crouching;
       avatar.userData.remoteTeam = state.team ?? "ALPHA";
       avatar.userData.remoteSlot = state.slot; avatar.userData.remoteSecondaryName = state.secondary ?? "P9 SIDEARM";
-      if ((state.health ?? 100) > 0 && avatar.userData.ragdoll) resetRagdoll(avatar);
       if (avatar.userData.remotePrimary) avatar.userData.remotePrimary.visible = state.slot === 1;
       if (avatar.userData.remoteSecondary) avatar.userData.remoteSecondary.visible = state.slot === 2;
-      avatar.visible = (state.health ?? 100) > 0 || Boolean(avatar.userData.ragdoll);
+      avatar.visible = (state.health ?? 100) > 0;
       const teammateMarker = avatar.userData.teammateMarker as THREE.Sprite | undefined;
       if (teammateMarker) teammateMarker.visible = teamModeActive() && avatar.userData.remoteTeam === localNetworkTeam && avatar.visible;
     };
@@ -1383,15 +1382,10 @@ export function FpsGame() {
               playerSummariesRef.current = { ...playerSummariesRef.current, [packet.id]: next };
               setPlayerSummaries(playerSummariesRef.current);
             }
-            const avatar = remotePlayers.get(packet.id);
-            if (avatar) {
-              const attacker = packet.attackerId ? remotePlayers.get(packet.attackerId) : undefined;
-              const source = packet.attackerId === localNetworkId ? playerPosition : attacker?.position;
-              beginRagdoll(avatar, source ? avatar.position.clone().sub(source) : undefined);
-            }
+            const avatar = remotePlayers.get(packet.id); if (avatar) avatar.visible = false;
           }
           else if (packet.type === "player_health" && packet.id && packet.health === 100) {
-            const avatar = remotePlayers.get(packet.id); if (avatar) { resetRagdoll(avatar); avatar.visible = true; }
+            const avatar = remotePlayers.get(packet.id); if (avatar) avatar.visible = true;
           }
           else if ((packet.type === "round_start" || packet.type === "respawned") && packet.player) {
             playerPosition.set(packet.player.x, packet.player.y, packet.player.z); camera.position.copy(playerPosition); lastClearPosition.copy(playerPosition);
@@ -1668,50 +1662,6 @@ export function FpsGame() {
     flashlight.castShadow = true; flashlight.shadow.mapSize.set(512, 512); flashlight.target.raycast = () => {}; scene.add(flashlight, flashlight.target);
     const impactGeometry = new THREE.SphereGeometry(0.045, 6, 6);
     const impactMaterial = new THREE.MeshBasicMaterial({ color: 0xff9a55 });
-    type RagdollState = { velocity: THREE.Vector3; targetX: number; targetZ: number; spin: number; settled: boolean; limbTargets: Map<THREE.Object3D, THREE.Euler> };
-    const resetRagdoll = (actor: THREE.Group) => {
-      actor.userData.ragdoll = undefined;
-      actor.rotation.x = 0; actor.rotation.z = 0;
-      const headRig = actor.userData.headRig as THREE.Group | undefined;
-      if (headRig) { headRig.rotation.set(0, 0, 0); headRig.position.x = 0; }
-      const healthBar = actor.userData.healthBarRoot as THREE.Group | undefined;
-      if (healthBar) healthBar.visible = true;
-      const marker = actor.userData.teammateMarker as THREE.Sprite | undefined;
-      if (marker) marker.visible = teamModeActive() && actor.userData.remoteTeam === localNetworkTeam;
-      if (actor.userData.remotePrimary) actor.userData.remotePrimary.visible = actor.userData.remoteSlot === 1;
-      if (actor.userData.remoteSecondary) actor.userData.remoteSecondary.visible = actor.userData.remoteSlot === 2;
-    };
-    const beginRagdoll = (actor: THREE.Group, impulse?: THREE.Vector3) => {
-      if (actor.userData.ragdoll) return;
-      const direction = impulse?.clone().setY(0).normalize() ?? new THREE.Vector3((Math.random() - .5) * 1.4, 0, (Math.random() - .5) * 1.4);
-      const limbTargets = new Map<THREE.Object3D, THREE.Euler>();
-      const rig = actor.userData.rig as { kind: "arm" | "leg"; side: number; upper: THREE.Mesh; lower: THREE.Mesh; joint?: THREE.Mesh; end: THREE.Mesh }[];
-      rig.forEach((limb, index) => {
-        [limb.upper, limb.lower, limb.joint, limb.end].filter((part): part is THREE.Mesh => Boolean(part)).forEach((part, partIndex) => {
-          limbTargets.set(part, new THREE.Euler(
-            (limb.kind === "arm" ? 1.1 : .55) * (partIndex % 2 ? -1 : 1) + (Math.random() - .5) * .8,
-            (Math.random() - .5) * .65,
-            limb.side * (.55 + index * .08) + (Math.random() - .5) * .55,
-          ));
-        });
-      });
-      actor.userData.ragdoll = {
-        velocity: new THREE.Vector3(direction.x * 2.2, 2.1, direction.z * 2.2),
-        targetX: Math.PI / 2 * (Math.random() < .5 ? -1 : 1),
-        targetZ: (Math.random() - .5) * 1.25,
-        spin: (Math.random() - .5) * 4,
-        settled: false,
-        limbTargets,
-      } satisfies RagdollState;
-      actor.visible = true;
-      actor.userData.movement = "static";
-      const healthBar = actor.userData.healthBarRoot as THREE.Group | undefined;
-      if (healthBar) healthBar.visible = false;
-      const marker = actor.userData.teammateMarker as THREE.Sprite | undefined;
-      if (marker) marker.visible = false;
-      if (actor.userData.remotePrimary) actor.userData.remotePrimary.visible = false;
-      if (actor.userData.remoteSecondary) actor.userData.remoteSecondary.visible = false;
-    };
     const showDamageNumber = (point: THREE.Vector3, damage: number, headshot: boolean) => {
       if (!damageNumbersEnabledRef.current) return;
       const projected = point.clone().project(camera);
@@ -1742,11 +1692,10 @@ export function FpsGame() {
       });
       if (dummy.userData.health <= 0) {
         addKill(dummy, weapon, headshot);
-        beginRagdoll(dummy);
+        dummy.visible = false;
         window.setTimeout(() => {
           dummy.userData.health = dummy.userData.maxHealth;
           (dummy.userData.healthBars as THREE.Mesh[]).forEach((bar) => { bar.scale.x = 1; (bar.material as THREE.MeshBasicMaterial).color.set(0x63e690); });
-          resetRagdoll(dummy);
           dummy.visible = true;
         }, 3000);
       }
@@ -2181,7 +2130,6 @@ export function FpsGame() {
       setDoorPrompt(Boolean(nearbyDoor));
       localPlayer.userData.movement = isProne ? "static" : sprinting || sliding ? "sprint" : moving ? "walk" : "static";
       remotePlayers.forEach((avatar) => {
-        if (avatar.userData.ragdoll) return;
         const target = avatar.userData.targetPosition as THREE.Vector3 | undefined;
         if (target) avatar.position.lerp(target, Math.min(1, dt * 12));
         avatar.rotation.y = THREE.MathUtils.lerp(avatar.rotation.y, avatar.userData.targetYaw ?? avatar.rotation.y, Math.min(1, dt * 12));
@@ -2193,34 +2141,6 @@ export function FpsGame() {
         const healthBarRoot = dummy.userData.healthBarRoot as THREE.Group | undefined;
         if (healthBarRoot) healthBarRoot.lookAt(camera.position);
         if (!dummy.visible) return;
-        const ragdoll = dummy.userData.ragdoll as RagdollState | undefined;
-        if (ragdoll) {
-          if (!ragdoll.settled) {
-            ragdoll.velocity.y -= 9.8 * dt;
-            dummy.position.addScaledVector(ragdoll.velocity, dt);
-            dummy.rotation.y += ragdoll.spin * dt;
-            ragdoll.spin *= Math.max(0, 1 - dt * 3.4);
-            const ground = terrainHeightAt(dummy.position.x, dummy.position.z);
-            if (dummy.position.y <= ground) {
-              dummy.position.y = ground;
-              ragdoll.velocity.y = Math.abs(ragdoll.velocity.y) > 1.4 ? Math.abs(ragdoll.velocity.y) * .18 : 0;
-              ragdoll.velocity.x *= Math.max(0, 1 - dt * 7);
-              ragdoll.velocity.z *= Math.max(0, 1 - dt * 7);
-              if (ragdoll.velocity.lengthSq() < .035) ragdoll.settled = true;
-            }
-          }
-          dummy.rotation.x = THREE.MathUtils.lerp(dummy.rotation.x, ragdoll.targetX, Math.min(1, dt * 7));
-          dummy.rotation.z = THREE.MathUtils.lerp(dummy.rotation.z, ragdoll.targetZ, Math.min(1, dt * 7));
-          const headRig = dummy.userData.headRig as THREE.Group;
-          headRig.rotation.x = THREE.MathUtils.lerp(headRig.rotation.x, -.55, Math.min(1, dt * 9));
-          headRig.rotation.z = THREE.MathUtils.lerp(headRig.rotation.z, ragdoll.targetZ > 0 ? .8 : -.8, Math.min(1, dt * 9));
-          ragdoll.limbTargets.forEach((target, part) => {
-            part.rotation.x = THREE.MathUtils.lerp(part.rotation.x, target.x, Math.min(1, dt * 8));
-            part.rotation.y = THREE.MathUtils.lerp(part.rotation.y, target.y, Math.min(1, dt * 8));
-            part.rotation.z = THREE.MathUtils.lerp(part.rotation.z, target.z, Math.min(1, dt * 8));
-          });
-          return;
-        }
         const speed = movement === "sprint" ? 4.2 : 1.75;
         const travel = (t * speed) % 24;
         if (isLocal) {
