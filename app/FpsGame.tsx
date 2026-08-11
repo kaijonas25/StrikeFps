@@ -2691,41 +2691,44 @@ export function FpsGame() {
         <div className="match-vote-panel">
           <small>{selectedSector} · NEXT MATCH STARTS IN <b>{formatMatchTime(matchTimeLeft)}</b></small>
           <h2><span>MATCH</span> VOTING</h2>
-          <p>CHOOSE THE NEXT BATTLEFIELD AND GAMEMODE</p>
-          <h3>MAP</h3>
-          <button className={selectedMapVote === "CITY BLOCK" ? "voted selected-vote" : hasVoted ? "voted" : ""} disabled={hasVoted || multiplayerStatus !== "ONLINE"} onClick={() => { multiplayerSendRef.current({ type: "vote", category: "map", map: "CITY BLOCK" }); setSelectedMapVote("CITY BLOCK"); setHasVoted(true); }}>
+          <p>CAST ONE BATTLEFIELD VOTE AND ONE RULESET VOTE</p>
+          <div className="vote-columns">
+          <section className="vote-section map-section"><header><i>01</i><span><b>BATTLEFIELD</b><small>CHOOSE WHERE YOU FIGHT</small></span><em>{mapVotes}/{connectedPlayerIds.length} CAST</em></header><div className="vote-grid">
+          <div className="vote-option"><button className={selectedMapVote === "CITY BLOCK" ? "voted selected-vote" : hasVoted ? "voted" : ""} disabled={hasVoted || multiplayerStatus !== "ONLINE"} onClick={() => { multiplayerSendRef.current({ type: "vote", category: "map", map: "CITY BLOCK" }); setSelectedMapVote("CITY BLOCK"); setHasVoted(true); }}>
             <i>01</i><span><b>CITY BLOCK</b><small>URBAN WARFARE · ENTERABLE BUILDINGS · DEBRIS</small></span><em>{selectedMapVote === "CITY BLOCK" ? "YOUR VOTE" : hasVoted ? "LOCKED" : multiplayerStatus !== "ONLINE" ? "CONNECTING" : "VOTE"}</em>
           </button>
-          <div className="vote-total"><i style={{ width: mapVotes ? `${cityMapVotes / mapVotes * 100}%` : "0%" }} /><span>{cityMapVotes} VOTE{cityMapVotes === 1 ? "" : "S"}</span></div>
-          <button className={selectedMapVote === "BLACKWOOD FOREST" ? "voted selected-vote" : hasVoted ? "voted" : ""} disabled={hasVoted || multiplayerStatus !== "ONLINE"} onClick={() => { multiplayerSendRef.current({ type: "vote", category: "map", map: "BLACKWOOD FOREST" }); setSelectedMapVote("BLACKWOOD FOREST"); setHasVoted(true); }}>
+          <div className="vote-total"><i style={{ width: mapVotes ? `${cityMapVotes / mapVotes * 100}%` : "0%" }} /><span>{cityMapVotes} VOTE{cityMapVotes === 1 ? "" : "S"}</span></div></div>
+          <div className="vote-option"><button className={selectedMapVote === "BLACKWOOD FOREST" ? "voted selected-vote" : hasVoted ? "voted" : ""} disabled={hasVoted || multiplayerStatus !== "ONLINE"} onClick={() => { multiplayerSendRef.current({ type: "vote", category: "map", map: "BLACKWOOD FOREST" }); setSelectedMapVote("BLACKWOOD FOREST"); setHasVoted(true); }}>
             <i>02</i><span><b>BLACKWOOD FOREST</b><small>WOODLAND COMBAT · CREEK CROSSING · RANGER OUTPOST</small></span><em>{selectedMapVote === "BLACKWOOD FOREST" ? "YOUR VOTE" : hasVoted ? "LOCKED" : multiplayerStatus !== "ONLINE" ? "CONNECTING" : "VOTE"}</em>
           </button>
-          <div className="vote-total"><i style={{ width: mapVotes ? `${forestMapVotes / mapVotes * 100}%` : "0%" }} /><span>{forestMapVotes} VOTE{forestMapVotes === 1 ? "" : "S"}</span></div>
-          <button className={selectedMapVote === "FROSTLINE BASE" ? "voted selected-vote" : hasVoted ? "voted" : ""} disabled={hasVoted || multiplayerStatus !== "ONLINE"} onClick={() => { multiplayerSendRef.current({ type: "vote", category: "map", map: "FROSTLINE BASE" }); setSelectedMapVote("FROSTLINE BASE"); setHasVoted(true); }}>
+          <div className="vote-total"><i style={{ width: mapVotes ? `${forestMapVotes / mapVotes * 100}%` : "0%" }} /><span>{forestMapVotes} VOTE{forestMapVotes === 1 ? "" : "S"}</span></div></div>
+          <div className="vote-option"><button className={selectedMapVote === "FROSTLINE BASE" ? "voted selected-vote" : hasVoted ? "voted" : ""} disabled={hasVoted || multiplayerStatus !== "ONLINE"} onClick={() => { multiplayerSendRef.current({ type: "vote", category: "map", map: "FROSTLINE BASE" }); setSelectedMapVote("FROSTLINE BASE"); setHasVoted(true); }}>
             <i>03</i><span><b>FROSTLINE BASE</b><small>SNOWY MOUNTAIN · CLIMBABLE SUMMIT · HIGH-GROUND COMBAT</small></span><em>{selectedMapVote === "FROSTLINE BASE" ? "YOUR VOTE" : hasVoted ? "LOCKED" : multiplayerStatus !== "ONLINE" ? "CONNECTING" : "VOTE"}</em>
           </button>
-          <div className="vote-total"><i style={{ width: mapVotes ? `${frostMapVotes / mapVotes * 100}%` : "0%" }} /><span>{frostMapVotes} VOTE{frostMapVotes === 1 ? "" : "S"}</span></div>
-          <button className={selectedMapVote === "TIDEBREAK BEACH" ? "voted selected-vote" : hasVoted ? "voted" : ""} disabled={hasVoted || multiplayerStatus !== "ONLINE"} onClick={() => { multiplayerSendRef.current({ type: "vote", category: "map", map: "TIDEBREAK BEACH" }); setSelectedMapVote("TIDEBREAK BEACH"); setHasVoted(true); }}>
+          <div className="vote-total"><i style={{ width: mapVotes ? `${frostMapVotes / mapVotes * 100}%` : "0%" }} /><span>{frostMapVotes} VOTE{frostMapVotes === 1 ? "" : "S"}</span></div></div>
+          <div className="vote-option"><button className={selectedMapVote === "TIDEBREAK BEACH" ? "voted selected-vote" : hasVoted ? "voted" : ""} disabled={hasVoted || multiplayerStatus !== "ONLINE"} onClick={() => { multiplayerSendRef.current({ type: "vote", category: "map", map: "TIDEBREAK BEACH" }); setSelectedMapVote("TIDEBREAK BEACH"); setHasVoted(true); }}>
             <i>04</i><span><b>TIDEBREAK BEACH</b><small>TROPICAL SHORE · PALM GROVES · HUTS · BROKEN PIER</small></span><em>{selectedMapVote === "TIDEBREAK BEACH" ? "YOUR VOTE" : hasVoted ? "LOCKED" : multiplayerStatus !== "ONLINE" ? "CONNECTING" : "VOTE"}</em>
           </button>
-          <div className="vote-total"><i style={{ width: mapVotes ? `${beachMapVotes / mapVotes * 100}%` : "0%" }} /><span>{beachMapVotes} VOTE{beachMapVotes === 1 ? "" : "S"}</span></div>
-          <h3>GAMEMODE</h3>
-          <button className={selectedModeVote === "FFA" ? "voted selected-vote" : hasModeVoted ? "voted" : ""} disabled={hasModeVoted || multiplayerStatus !== "ONLINE"} onClick={() => { multiplayerSendRef.current({ type: "vote", category: "mode", mode: "FFA" }); setSelectedModeVote("FFA"); setHasModeVoted(true); }}>
+          <div className="vote-total"><i style={{ width: mapVotes ? `${beachMapVotes / mapVotes * 100}%` : "0%" }} /><span>{beachMapVotes} VOTE{beachMapVotes === 1 ? "" : "S"}</span></div></div>
+          </div></section>
+          <section className="vote-section mode-section"><header><i>02</i><span><b>RULESET</b><small>CHOOSE HOW YOU FIGHT</small></span><em>{modeVotes}/{connectedPlayerIds.length} CAST</em></header><div className="vote-grid">
+          <div className="vote-option"><button className={selectedModeVote === "FFA" ? "voted selected-vote" : hasModeVoted ? "voted" : ""} disabled={hasModeVoted || multiplayerStatus !== "ONLINE"} onClick={() => { multiplayerSendRef.current({ type: "vote", category: "mode", mode: "FFA" }); setSelectedModeVote("FFA"); setHasModeVoted(true); }}>
             <i>01</i><span><b>FREE FOR ALL</b><small>10 MINUTES · EVERY OPERATOR FOR THEMSELVES</small></span><em>{selectedModeVote === "FFA" ? "YOUR VOTE" : hasModeVoted ? "LOCKED" : "VOTE"}</em>
           </button>
-          <div className="vote-total"><i style={{ width: modeVotes ? `${ffaModeVotes / modeVotes * 100}%` : "0%" }} /><span>{ffaModeVotes} VOTE{ffaModeVotes === 1 ? "" : "S"}</span></div>
-          <button className={selectedModeVote === "TDM" ? "voted selected-vote" : hasModeVoted ? "voted" : ""} disabled={hasModeVoted || multiplayerStatus !== "ONLINE"} onClick={() => { multiplayerSendRef.current({ type: "vote", category: "mode", mode: "TDM" }); setSelectedModeVote("TDM"); setHasModeVoted(true); }}>
+          <div className="vote-total"><i style={{ width: modeVotes ? `${ffaModeVotes / modeVotes * 100}%` : "0%" }} /><span>{ffaModeVotes} VOTE{ffaModeVotes === 1 ? "" : "S"}</span></div></div>
+          <div className="vote-option"><button className={selectedModeVote === "TDM" ? "voted selected-vote" : hasModeVoted ? "voted" : ""} disabled={hasModeVoted || multiplayerStatus !== "ONLINE"} onClick={() => { multiplayerSendRef.current({ type: "vote", category: "mode", mode: "TDM" }); setSelectedModeVote("TDM"); setHasModeVoted(true); }}>
             <i>02</i><span><b>TEAM DEATHMATCH</b><small>10 MINUTES · ALPHA VS BRAVO · NO FRIENDLY FIRE</small></span><em>{selectedModeVote === "TDM" ? "YOUR VOTE" : hasModeVoted ? "LOCKED" : "VOTE"}</em>
           </button>
-          <div className="vote-total"><i style={{ width: modeVotes ? `${tdmModeVotes / modeVotes * 100}%` : "0%" }} /><span>{tdmModeVotes} VOTE{tdmModeVotes === 1 ? "" : "S"}</span></div>
-          <button className={selectedModeVote === "KOTH" ? "voted selected-vote" : hasModeVoted ? "voted" : ""} disabled={hasModeVoted || multiplayerStatus !== "ONLINE"} onClick={() => { multiplayerSendRef.current({ type: "vote", category: "mode", mode: "KOTH" }); setSelectedModeVote("KOTH"); setHasModeVoted(true); }}>
+          <div className="vote-total"><i style={{ width: modeVotes ? `${tdmModeVotes / modeVotes * 100}%` : "0%" }} /><span>{tdmModeVotes} VOTE{tdmModeVotes === 1 ? "" : "S"}</span></div></div>
+          <div className="vote-option"><button className={selectedModeVote === "KOTH" ? "voted selected-vote" : hasModeVoted ? "voted" : ""} disabled={hasModeVoted || multiplayerStatus !== "ONLINE"} onClick={() => { multiplayerSendRef.current({ type: "vote", category: "mode", mode: "KOTH" }); setSelectedModeVote("KOTH"); setHasModeVoted(true); }}>
             <i>03</i><span><b>KING OF THE HILL</b><small>FFA · HOLD THE LARGE RANDOMIZED ZONE · EARN POINTS</small></span><em>{selectedModeVote === "KOTH" ? "YOUR VOTE" : hasModeVoted ? "LOCKED" : "VOTE"}</em>
           </button>
-          <div className="vote-total"><i style={{ width: modeVotes ? `${kothModeVotes / modeVotes * 100}%` : "0%" }} /><span>{kothModeVotes} VOTE{kothModeVotes === 1 ? "" : "S"}</span></div>
-          <button className={selectedModeVote === "CTP" ? "voted selected-vote" : hasModeVoted ? "voted" : ""} disabled={hasModeVoted || multiplayerStatus !== "ONLINE"} onClick={() => { multiplayerSendRef.current({ type: "vote", category: "mode", mode: "CTP" }); setSelectedModeVote("CTP"); setHasModeVoted(true); }}>
+          <div className="vote-total"><i style={{ width: modeVotes ? `${kothModeVotes / modeVotes * 100}%` : "0%" }} /><span>{kothModeVotes} VOTE{kothModeVotes === 1 ? "" : "S"}</span></div></div>
+          <div className="vote-option"><button className={selectedModeVote === "CTP" ? "voted selected-vote" : hasModeVoted ? "voted" : ""} disabled={hasModeVoted || multiplayerStatus !== "ONLINE"} onClick={() => { multiplayerSendRef.current({ type: "vote", category: "mode", mode: "CTP" }); setSelectedModeVote("CTP"); setHasModeVoted(true); }}>
             <i>04</i><span><b>CAPTURE POINTS</b><small>ALPHA VS BRAVO · CAPTURE AND HOLD THREE ZONES</small></span><em>{selectedModeVote === "CTP" ? "YOUR VOTE" : hasModeVoted ? "LOCKED" : "VOTE"}</em>
           </button>
-          <div className="vote-total"><i style={{ width: modeVotes ? `${ctpModeVotes / modeVotes * 100}%` : "0%" }} /><span>{ctpModeVotes} VOTE{ctpModeVotes === 1 ? "" : "S"}</span></div>
+          <div className="vote-total"><i style={{ width: modeVotes ? `${ctpModeVotes / modeVotes * 100}%` : "0%" }} /><span>{ctpModeVotes} VOTE{ctpModeVotes === 1 ? "" : "S"}</span></div></div>
+          </div></section></div>
           <footer>{mapVotes}/{connectedPlayerIds.length} MAP VOTES · {modeVotes}/{connectedPlayerIds.length} MODE VOTES · ALL VOTES DISPLAY BEFORE MATCH START</footer>
         </div>
       </div>}
