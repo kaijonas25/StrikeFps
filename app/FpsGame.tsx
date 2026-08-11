@@ -2098,7 +2098,7 @@ export function FpsGame() {
       const adminFlyingActive = adminAuthorizedRef.current && adminControlsRef.current.flying;
       if (adminFlyingActive) {
         verticalVelocity = 0; grounded = false;
-        const verticalInput = Number(keys.has("Space")) - Number(keys.has("ControlLeft") || keys.has("ControlRight"));
+        const verticalInput = Number(keys.has("Space")) - Number(keys.has("KeyC"));
         playerPosition.y = Math.max(.35, playerPosition.y + verticalInput * 7.5 * dt);
       } else if (inBeachWater) {
         verticalVelocity = 0; grounded = false;
@@ -2540,7 +2540,7 @@ export function FpsGame() {
             <article><h3>MOVEMENT</h3>
               <button className={adminFlying ? "active" : ""} onClick={() => updateAdminControls({ flying: !adminFlying })}><span>FLY MODE</span><b>{adminFlying ? "ON" : "OFF"}</b></button>
               <button className={adminNoclip ? "active" : ""} onClick={() => updateAdminControls({ noclip: !adminNoclip })}><span>NOCLIP</span><b>{adminNoclip ? "ON" : "OFF"}</b></button>
-              <p>Fly with WASD · Space up · Ctrl down</p>
+              <p>Fly with WASD · Space up · C down</p>
             </article>
             <article><h3>COMBAT</h3>
               <label><span>DAMAGE MULTIPLIER</span><select value={adminDamageMultiplier} onChange={(event) => updateAdminControls({ damageMultiplier: Number(event.target.value) })}><option value={1}>1× NORMAL</option><option value={2}>2× DAMAGE</option><option value={5}>5× DAMAGE</option><option value={10}>10× DAMAGE</option><option value={100}>100× INSTANT</option></select></label>
