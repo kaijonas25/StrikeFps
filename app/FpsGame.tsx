@@ -137,6 +137,7 @@ export function FpsGame() {
   const [matchEndsAt, setMatchEndsAt] = useState(0);
   const [matchTimeLeft, setMatchTimeLeft] = useState(0);
   const [localPlayerId, setLocalPlayerId] = useState("");
+  const [accountCallsign, setAccountCallsign] = useState("OPERATOR");
   const [connectedPlayerIds, setConnectedPlayerIds] = useState<string[]>([]);
   const [playerSummaries, setPlayerSummaries] = useState<Record<string, NetworkPlayerSummary>>({});
   const [matchWinnerId, setMatchWinnerId] = useState<string | null>(null);
@@ -210,13 +211,14 @@ export function FpsGame() {
   };
 
   useEffect(() => onAuthStateChanged(auth, async (user) => {
-    if (!user) { playerCallsignRef.current = "OPERATOR"; adminAuthorizedRef.current = false; setAdminAuthorized(false); setAdminPanelOpen(false); setAccountSaveStatus("idle"); return; }
+    if (!user) { playerCallsignRef.current = "OPERATOR"; setAccountCallsign("OPERATOR"); adminAuthorizedRef.current = false; setAdminAuthorized(false); setAdminPanelOpen(false); setAccountSaveStatus("idle"); return; }
     try {
       const token = await user.getIdToken();
       const response = await fetch("/api/player", { headers: { Authorization: `Bearer ${token}` } });
       if (!response.ok) throw new Error("Unable to load preferences");
       const data = await response.json() as { isAdmin?: boolean; player?: { callsign?: string; loadout?: Partial<SavedLoadout>; operator?: Partial<SavedOperator> } };
       playerCallsignRef.current = data.player?.callsign?.slice(0,18) || user.displayName?.slice(0,18).toUpperCase() || "OPERATOR";
+      setAccountCallsign(playerCallsignRef.current);
       adminAuthorizedRef.current = Boolean(data.isAdmin);
       setAdminAuthorized(Boolean(data.isAdmin));
       const loadout = data.player?.loadout;
@@ -240,6 +242,15 @@ export function FpsGame() {
       setAccountSaveStatus("saved");
     } catch { adminAuthorizedRef.current = false; setAdminAuthorized(false); setAccountSaveStatus("error"); }
   }), []);
+
+  useEffect(() => {
+    if (!localPlayerId) return;
+    const previous = playerSummariesRef.current[localPlayerId];
+    if (previous?.callsign === accountCallsign) return;
+    const next = { callsign: accountCallsign, kills: previous?.kills ?? 0, deaths: previous?.deaths ?? 0 };
+    playerSummariesRef.current = { ...playerSummariesRef.current, [localPlayerId]: next };
+    setPlayerSummaries(playerSummariesRef.current);
+  }, [accountCallsign, localPlayerId]);
 
   useEffect(() => {
     adminPanelOpenRef.current = adminPanelOpen;

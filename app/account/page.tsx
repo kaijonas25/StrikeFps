@@ -68,8 +68,8 @@ export default function AccountPage() {
       const response = await fetch("/api/player", { method: "PATCH", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({ callsign: cleaned }) });
       const data = await response.json() as { callsign?: string; error?: string };
       if (!response.ok || !data.callsign) throw new Error(data.error || "Unable to save nickname.");
-      await updateProfile(user, { displayName: data.callsign });
       setNickname(data.callsign); setPlayer((current) => current ? { ...current, callsign: data.callsign! } : current); setNicknameStatus("saved");
+      try { await updateProfile(user, { displayName: data.callsign }); } catch { /* The database remains the authoritative nickname. */ }
     } catch (error) { setNicknameError(error instanceof Error ? error.message : "Unable to save nickname."); setNicknameStatus("error"); }
   };
 

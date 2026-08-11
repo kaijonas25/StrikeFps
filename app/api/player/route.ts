@@ -23,7 +23,7 @@ export async function GET(request: Request) {
   const fallbackCallsign = account.email.split("@")[0].replace(/[^a-z0-9_-]/gi, "").slice(0, 18).toUpperCase() || "OPERATOR";
   const callsign = account.displayName?.trim().slice(0, 18).toUpperCase() || fallbackCallsign;
   const db = getDb();
-  await db.insert(players).values({ id: account.localId, email: account.email, callsign }).onConflictDoUpdate({ target: players.id, set: { email: account.email, callsign } });
+  await db.insert(players).values({ id: account.localId, email: account.email, callsign }).onConflictDoUpdate({ target: players.id, set: { email: account.email } });
   const [player] = await db.select().from(players).where(eq(players.id, account.localId)).limit(1);
   return Response.json({
     isAdmin: account.email.toLowerCase() === ADMIN_EMAIL,
