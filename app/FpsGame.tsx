@@ -819,6 +819,17 @@ export function FpsGame() {
 
       // Alpine boulders and ice outcrops create cover along multiple ascent routes.
       [[-38,5,4,2.4,3],[-24,9,5,2.8,3.5],[-8,5,3.5,2.1,3],[11,8,5,3.2,3.5],[30,4,4.2,2.5,3],[-32,-9,5,3.3,4],[-15,-11,4,2.7,3],[5,-9,5.5,3.4,4],[25,-12,4.5,2.8,3.5],[-27,-25,5,3.2,4],[-6,-24,4.2,2.6,3],[18,-27,5.4,3.5,4]].forEach(([x,z,w,h,d],i) => snowRock(x,z,w,h,d,i%3===0?0x687d88:0x7f9199));
+      // Dense rock shelves frame the outer slopes and create additional leapfrog cover.
+      [[-43,18,5.8,3.7,4.4],[-39,10,3.8,2.2,3.1],[-42,-13,6.2,4.1,4.8],[-38,-29,5.1,3.4,4.2],[-30,-38,6.4,4.5,4.6],[42,20,5.5,3.5,4.1],[39,11,3.7,2.4,3],[43,-11,6,4,4.5],[39,-29,5.3,3.6,4.2],[30,-39,6.2,4.3,4.8]].forEach(([x,z,w,h,d],i)=>snowRock(x,z,w,h,d,i%2?0x596f79:0x72868e));
+      // Mid-sized clusters form natural pockets without obstructing the marked climbing route.
+      [[-29,25,3.2,1.9,2.7],[-21,17,2.7,1.6,2.4],[24,20,3.5,2.1,2.8],[32,13,2.8,1.7,2.5],[-37,-1,3,1.8,2.6],[-22,-1,2.5,1.5,2.2],[22,-5,2.9,1.8,2.5],[34,-18,3.3,2,2.8],[-18,-19,2.8,1.7,2.5],[11,-20,3.1,1.9,2.7],[-20,-34,3.6,2.2,3],[25,-33,3.4,2.1,2.9]].forEach(([x,z,w,h,d],i)=>{
+        snowRock(x,z,w,h,d,i%3===1?0x8a9ba1:0x697e87);
+        const side=i%2===0?1:-1; snowRock(x+side*w*.55,z+d*.42,w*.48,h*.58,d*.52,0x627780);
+      });
+      // Low rock chains add texture and partial cover near the base camp flanks.
+      [[-42,36],[-38,32],[-19,29],[18,29],[38,34],[43,29]].forEach(([x,z],i)=>{
+        for(let stone=0;stone<3;stone++) snowRock(x+(stone-1)*1.55,z+(stone%2)*.7,1.8+stone*.35,.75+(stone%2)*.35,1.5+(stone%3)*.28,i%2?0x85969b:0x70848c);
+      });
       // Small fractured stones and translucent ice shards break up the snow surface.
       for(let shard=0;shard<28;shard++){
         const x=-40+((shard*17.7)%80),z=30-((shard*13.9)%67),ground=terrainHeightAt(x,z);
