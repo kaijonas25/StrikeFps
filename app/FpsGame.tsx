@@ -1384,7 +1384,9 @@ export function FpsGame() {
     const secondaryStats = { ...baseSecondaryStats, capacity: magazineCapacity(baseSecondaryStats.capacity, secondaryMagazine), reload: reloadTimeWithMagazine(baseSecondaryStats.reload, secondaryMagazine) };
     const ammoCounts = [primaryStats.capacity, secondaryStats.capacity];
     setAmmo(primaryStats.capacity);
-    let ammoCount = ammoCounts[0], recoil = 0, muzzleTimer = 0, aiming = false, sprinting = false, sliding = false, reloadEnd = 0, meleeSwing = 0, lastMelee = 0;
+    let ammoCount = ammoCounts[0], recoil = 0, muzzleTimer = 0, aiming = false, toggleAim = false, holdAim = false, sprinting = false, sliding = false, reloadEnd = 0, meleeSwing = 0, lastMelee = 0;
+    const syncAim = () => { aiming = toggleAim || holdAim; setAdsActive(aiming); };
+    const clearAim = () => { toggleAim = false; holdAim = false; syncAim(); };
     let throwableAiming = false, grenadesLeft = 2, medicalCharges = 2;
     type UtilityProjectile = { mesh: THREE.Object3D; velocity: THREE.Vector3; age: number; type: string; networkId?: string };
     const projectiles: UtilityProjectile[] = [];
@@ -1496,10 +1498,14 @@ export function FpsGame() {
       keys.add(e.code);
       if (e.code === "Tab" && !e.repeat) {
         e.preventDefault(); isThirdPerson = !isThirdPerson; setThirdPerson(isThirdPerson);
-        aiming = false; setAdsActive(false);
+        clearAim();
         if (isThirdPerson) { cameraYaw = yaw; cameraPitch = isProne ? 0 : 0.2; }
         else { yaw = cameraYaw; pitch = 0; }
         localPlayer.visible = isThirdPerson;
+      }
+      if (e.code === "KeyZ" && !e.repeat && !isThirdPerson && currentSlot <= 2 && !sprinting && !sliding && !reloadEnd) {
+        toggleAim = !toggleAim;
+        syncAim();
       }
       if (e.code === "Space" && grounded && !adminControlsRef.current.flying) {
         if ((isProne || isCrouching) && !fitStanceOutsideWalls("standing")) return;
@@ -1518,13 +1524,13 @@ export function FpsGame() {
           if (isCrouching && !fitStanceOutsideWalls("standing")) return;
           sliding = false; slideEnd = 0; isCrouching = !isCrouching;
         }
-        aiming = false; setAdsActive(false); setCrouching(isCrouching);
+        clearAim(); setCrouching(isCrouching);
       }
       if (e.code === "KeyX" && !e.repeat && grounded) {
         if (!fitStanceOutsideWalls(isProne ? "standing" : "prone")) return;
         isProne = !isProne; isCrouching = false; sliding = false; slideEnd = 0;
         if (isProne && isThirdPerson) cameraPitch = 0;
-        aiming = false; setAdsActive(false); setProne(isProne); setCrouching(false);
+        clearAim(); setProne(isProne); setCrouching(false);
       }
       if ((e.code === "KeyQ" || e.code === "KeyE") && !e.repeat) {
         const requested = e.code === "KeyQ" ? -1 : 1;
@@ -1540,7 +1546,7 @@ export function FpsGame() {
         if (ammoCounts[currentSlot - 1] < stats.capacity) {
           reloadEnd = performance.now() + stats.reload * 1000;
           triggerHeld = false;
-          aiming = false; setAdsActive(false);
+          clearAim();
           setReloadDuration(stats.reload);
           setReloading(true);
         }
@@ -1558,7 +1564,7 @@ export function FpsGame() {
           setFireMode(currentFireMode);
         }
         if (currentSlot <= 2) { ammoCount = ammoCounts[currentSlot - 1]; setAmmo(ammoCount); }
-        aiming = false; setAdsActive(false);
+        clearAim();
         triggerHeld = false;
         throwableAiming = false;
         trajectory.visible = false;
@@ -1865,7 +1871,7 @@ export function FpsGame() {
           plantedC4.splice(0).forEach((charge) => detonate(charge));
           return;
         }
-        if (isThirdPerson) orbiting = true; else { aiming = true; setAdsActive(true); } return;
+        if (isThirdPerson) orbiting = true; else { holdAim = true; syncAim(); } return;
       }
       if (e.button !== 0 || sprinting || sliding) return;
       if (currentSlot === 3) {
@@ -1898,7 +1904,7 @@ export function FpsGame() {
         if (placementAiming) { placeUtility(); placementAiming = false; placementPreview.visible = false; placementPoint = null; }
         if (throwableAiming) { throwableAiming = false; trajectory.visible = false; throwUtility(); }
       }
-      if (e.button === 2) { aiming = false; orbiting = false; setAdsActive(false); }
+      if (e.button === 2) { holdAim = false; orbiting = false; syncAim(); }
     };
     const onContextMenu = (e: MouseEvent) => e.preventDefault();
     const onMobileLook = (event: Event) => {
@@ -1912,13 +1918,13 @@ export function FpsGame() {
     const onMobileFireStart = () => onMouseDown({ button: 0 } as MouseEvent);
     const onMobileFireEnd = () => onMouseUp({ button: 0 } as MouseEvent);
     const onMobileAim = (event: Event) => {
-      aiming = (event as CustomEvent<boolean>).detail;
-      setAdsActive(aiming);
+      toggleAim = (event as CustomEvent<boolean>).detail;
+      syncAim();
     };
     const onLockChange = () => {
       const isLocked = document.pointerLockElement === renderer.domElement;
       setLocked(isLocked);
-      if (!isLocked) { aiming = false; setAdsActive(false); orbiting = false; triggerHeld = false; throwableAiming = false; trajectory.visible = false; placementAiming = false; placementPreview.visible = false; placementPoint = null; keys.clear(); }
+      if (!isLocked) { clearAim(); orbiting = false; triggerHeld = false; throwableAiming = false; trajectory.visible = false; placementAiming = false; placementPreview.visible = false; placementPoint = null; keys.clear(); }
     };
     const onResize = () => {
       camera.aspect = mount.clientWidth / mount.clientHeight;
@@ -1959,7 +1965,7 @@ export function FpsGame() {
       const inBeachWater = beachMap && playerPosition.z < -8.2 && !onBeachDock;
       sprinting = !isCrouching && !isProne && !sliding && ((isTouchInput && input.length() > .82 && input.y > .25) || keys.has("ShiftLeft") || keys.has("ShiftRight")) && input.y > 0 && input.lengthSq() > 0;
       if (inBeachWater) { sprinting = false; sliding = false; }
-      if (sprinting || sliding) { aiming = false; setAdsActive(false); }
+      if (sprinting || sliding) clearAim();
       // The creek follows a slightly diagonal north/south channel through the forest.
       const inForestCreek = forestMap && Math.abs((playerPosition.x + 10) + playerPosition.z * .08) < 3.5 && Math.abs(playerPosition.z) < 42;
       const baseSpeed = isProne ? 1.55 : isCrouching ? 2.8 : sprinting ? 8.2 : aiming ? 3.8 : 5.2;
@@ -2526,7 +2532,7 @@ export function FpsGame() {
       <div className={`heal-effect${healingEffect ? " active" : ""}`} />
       <div className={`damage-effect${damageFlash ? " active" : ""}`} aria-hidden="true" />
       {selectedMap === "TEST YARD" && <div className="test-legend"><span className="damage-dot" /> DAMAGE PAD <span className="kill-dot" /> KILL PAD <span className="heal-dot" /> HEAL PAD <span className="medical-dot" /> MEDICAL DROP <span className="utility-dot" /> UTILITY DROP</div>}
-      <div className="controls"><kbd>WASD</kbd> MOVE <kbd>SHIFT</kbd> SPRINT <kbd>C</kbd> CROUCH / SLIDE <kbd>X</kbd> PRONE <kbd>Q/E</kbd> LEAN <kbd>RMB</kbd> {thirdPerson ? "ORBIT CAMERA" : "AIM"} <kbd>LMB</kbd> FIRE <kbd>TAB</kbd> {thirdPerson ? "1ST PERSON" : "3RD PERSON"}{adminAuthorized && <><kbd>=</kbd> ADMIN</>}</div>
+      <div className="controls"><kbd>WASD</kbd> MOVE <kbd>SHIFT</kbd> SPRINT <kbd>C</kbd> CROUCH / SLIDE <kbd>X</kbd> PRONE <kbd>Q/E</kbd> LEAN <kbd>RMB</kbd> {thirdPerson ? "ORBIT CAMERA" : "HOLD AIM"} <kbd>Z</kbd> TOGGLE AIM <kbd>LMB</kbd> FIRE <kbd>TAB</kbd> {thirdPerson ? "1ST PERSON" : "3RD PERSON"}{adminAuthorized && <><kbd>=</kbd> ADMIN</>}</div>
       {started && touchControls && locked && !dead && matchPhase === "playing" && <div className="mobile-controls" aria-label="Mobile game controls">
         <div className="mobile-move-pad" aria-label="Movement joystick. Push farther to sprint." onPointerDown={(event) => { event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); const rect = event.currentTarget.getBoundingClientRect(); mobileMoveRef.current = { id: event.pointerId, centerX: rect.left + rect.width / 2, centerY: rect.top + rect.height / 2 }; updateMobileStick(event); }} onPointerMove={updateMobileStick} onPointerUp={releaseMobileStick} onPointerCancel={releaseMobileStick}><div className="mobile-stick"><span>RUN</span></div></div>
         <div className="mobile-look-pad" aria-label="Drag to look" onPointerDown={(event) => { event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); mobileLookRef.current = { id: event.pointerId, x: event.clientX, y: event.clientY }; }} onPointerMove={(event) => { const last = mobileLookRef.current; if (!last || last.id !== event.pointerId) return; window.dispatchEvent(new CustomEvent("mobile-look", { detail: { x: event.clientX - last.x, y: event.clientY - last.y } })); last.x = event.clientX; last.y = event.clientY; }} onPointerUp={() => { mobileLookRef.current = null; }} onPointerCancel={() => { mobileLookRef.current = null; }}><span>DRAG TO AIM</span></div>
@@ -2773,6 +2779,7 @@ export function FpsGame() {
             <div><kbd>WASD</kbd><span>MOVE</span></div>
             <div><kbd>SHIFT</kbd><span>SPRINT</span></div>
             <div><kbd>RMB</kbd><span>AIM</span></div>
+            <div><kbd>Z</kbd><span>TOGGLE AIM</span></div>
             <div><kbd>LMB</kbd><span>FIRE</span></div>
             <div><kbd>B</kbd><span>FIRE MODE</span></div>
             <div><kbd>R</kbd><span>RELOAD</span></div>
