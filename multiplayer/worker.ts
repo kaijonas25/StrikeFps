@@ -66,8 +66,8 @@ const SPAWNS: Record<MultiplayerMap, { free: [number,number][]; ALPHA: [number,n
     BRAVO: [[-38,-26],[-24,-32],[-8,-38],[8,-38],[24,-32],[38,-26]],
   },
   "TIDEBREAK BEACH": {
-    free: [[-54,50],[-32,55],[0,54],[32,55],[54,49],[-51,20],[51,18],[-48,-2],[48,-2],[-29,-11],[29,-11],[-14,-29],[15,-31]],
-    ALPHA: [[-54,55],[-34,57],[-12,58],[12,58],[34,57],[54,55]],
+    free: [[-55,86],[-34,90],[0,88],[34,90],[55,86],[-52,67],[52,68],[-54,50],[-32,55],[0,54],[32,55],[54,49],[-51,20],[51,18],[-48,-2],[48,-2],[-29,-11],[29,-11],[-14,-29],[15,-31]],
+    ALPHA: [[-55,87],[-35,91],[-12,92],[12,92],[35,91],[55,87]],
     BRAVO: [[-54,-2],[-34,-4],[-12,-6],[12,-6],[34,-4],[54,-2]],
   },
 };
@@ -391,7 +391,7 @@ export class GameRoom extends DurableObject {
       const citySpots = [[0,0],[-24,0],[24,0],[0,-25],[0,25],[-18,-18],[18,18]];
       const forestSpots = [[5,0],[-25,-15],[22,15],[-26,24],[25,-24],[8,-23],[-18,10]];
       const frostSpots = [[0,22],[-28,18],[28,18],[-22,-5],[22,-5],[-12,-24],[12,-24]];
-      const beachSpots = [[0,25],[-43,35],[43,35],[-31,11],[32,10],[-47,-5],[47,-5],[-15,-27],[16,-29]];
+      const beachSpots = [[0,73],[-45,77],[45,77],[-31,57],[32,58],[0,43],[-43,35],[43,35],[-31,11],[32,10],[-47,-5],[47,-5],[-15,-27],[16,-29]];
       const spots = [...(meta.map === "CITY BLOCK" ? citySpots : meta.map === "BLACKWOOD FOREST" ? forestSpots : meta.map === "FROSTLINE BASE" ? frostSpots : beachSpots)].sort(() => Math.random() - .5);
       meta.objectiveZones = meta.mode === "KOTH" ? [{ id:"HILL", x:spots[0][0], z:spots[0][1], radius:7.5, owner:null, progress:0 }] : meta.mode === "CTP" ? spots.slice(0,3).map(([x,z], index) => ({ id:String.fromCharCode(65 + index), x, z, radius:4.25, owner:null, progress:0 })) : [];
       meta.lastObjectiveTick = Date.now();

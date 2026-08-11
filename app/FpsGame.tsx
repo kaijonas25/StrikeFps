@@ -375,15 +375,17 @@ export function FpsGame() {
       new THREE.MeshStandardMaterial({ color, roughness, metalness });
 
     const mapSize = beachMap ? 128 : selectedMap === "CITY BLOCK" || snowyMap ? 96 : forestMap ? 88 : 64;
-    const floorGeometry = new THREE.PlaneGeometry(mapSize, mapSize, beachMap ? 80 : snowyMap ? 64 : 1, beachMap ? 80 : snowyMap ? 64 : 1);
+    const beachCenterZ=16,beachDepth=160;
+    const floorGeometry = new THREE.PlaneGeometry(mapSize, beachMap ? beachDepth : mapSize, beachMap ? 80 : snowyMap ? 64 : 1, beachMap ? 100 : snowyMap ? 64 : 1);
     let snowParticles: THREE.Points | undefined;
     if (snowyMap || beachMap) {
       const positions = floorGeometry.attributes.position;
-      for (let index = 0; index < positions.count; index++) positions.setZ(index, terrainHeightAt(positions.getX(index), -positions.getY(index)));
+      for (let index = 0; index < positions.count; index++) positions.setZ(index, terrainHeightAt(positions.getX(index), -positions.getY(index)+(beachMap?beachCenterZ:0)));
       positions.needsUpdate = true; floorGeometry.computeVertexNormals();
     }
     const floor = new THREE.Mesh(floorGeometry, material(selectedMap === "CITY BLOCK" ? 0x252b2d : snowyMap ? 0xd8e5e8 : beachMap ? 0xd8bd79 : forestMap ? 0x263522 : 0x364044));
     floor.rotation.x = -Math.PI / 2;
+    if(beachMap) floor.position.z=beachCenterZ;
     floor.receiveShadow = true;
     scene.add(floor);
     placementSurfaces.push(floor);
@@ -427,7 +429,7 @@ export function FpsGame() {
       ? [[-5, -14], [5, 14], [-5, 35], [5, -35], [-23, -14], [23, -14], [-23, 14], [23, 14], [-7, -40], [7, 40], [-40, -7], [40, 7]]
       : forestMap ? [[-31, -24], [29, -26], [-27, 21], [30, 24], [-8, -12], [12, 17], [2, -31], [-16, 32]]
       : snowyMap ? [[-35,30],[35,30],[-28,8],[28,8],[-22,-12],[22,-12],[-12,-30],[12,-30]]
-      : beachMap ? [[-52,49],[52,48],[-37,31],[36,30],[-28,10],[27,12],[-20,-15],[22,-13],[-10,-39],[14,-42]]
+      : beachMap ? [[-52,84],[52,82],[-38,70],[37,72],[-52,49],[52,48],[-37,31],[36,30],[-28,10],[27,12],[-20,-15],[22,-13],[-10,-39],[14,-42]]
       : [[-25, 23], [25, 23], [-22, -18], [22, -18], [-14, 14], [14, 14]];
     const clearSupplyDrops = () => {
       supplyDrops.splice(0).forEach(({ drop }) => {
@@ -570,7 +572,7 @@ export function FpsGame() {
       namedDummy(addDummy(-7, -14, 0x4d7182), "TARGET ALPHA"); namedDummy(addDummy(0, -14, 0x706347), "TARGET BRAVO"); namedDummy(addDummy(7, -14, 0x754b4b), "TARGET CHARLIE");
       namedDummy(addDummy(15, -15, 0x38785d, "walk"), "WALKER ONE"); namedDummy(addDummy(26, -15, 0x804f32, "sprint"), "RUNNER ONE");
     }
-    const spawnZ = beachMap ? 54 : selectedMap === "CITY BLOCK" ? 38 : forestMap || snowyMap ? 36 : 15;
+    const spawnZ = beachMap ? 86 : selectedMap === "CITY BLOCK" ? 38 : forestMap || snowyMap ? 36 : 15;
     const localPlayer = addDummy(0, spawnZ, 0x435e70, "static", false);
     localPlayer.rotation.order = "YXZ";
     localPlayer.visible = false;
@@ -885,17 +887,17 @@ export function FpsGame() {
 
     if (beachMap) {
       // The surf closes the northern edge while dunes and sea walls frame the combat space.
-      addBox(0,2.5,63.5,128,5,1,0x8e805f); addBox(-63.5,0,0,1,10,128,0x7d7358); addBox(63.5,0,0,1,10,128,0x7d7358);
+      addBox(0,2.5,95.5,128,5,1,0x8e805f); addBox(-63.5,0,16,1,10,160,0x7d7358); addBox(63.5,0,16,1,10,160,0x7d7358);
       addBox(0,-.04,-35.75,127,.08,55.5,0x269bb5,false); addBox(0,0,-8.7,127,.06,2.8,0x68c6cf,false);
       for(let wave=0;wave<8;wave++) addBox(-56+wave*16,.035,-8.7+(wave%2)*.3,8,.035,.42,0xe7fbf5,false);
       addBox(0,-1.5,-63.5,128,6,1.2,0x426f77);
 
       // Sandbag lines, driftwood barricades, and cargo give the open beach layered cover.
-      [[-48,51,8],[-24,53,7],[0,49,9],[25,54,7],[49,50,8],[-51,34,7],[-31,31,7],[0,29,8],[31,32,7],[51,35,7],[-23,15,6],[20,16,7],[-49,13,7],[49,14,7],[-11,-2,6],[13,-6,6],[-27,-10,7],[28,-11,7]].forEach(([x,z,w],i)=>{
+      [[-50,85,8],[-26,88,7],[0,84,9],[27,88,7],[51,84,8],[-55,70,7],[-34,72,8],[0,68,9],[35,73,8],[55,69,7],[-48,51,8],[-24,53,7],[0,49,9],[25,54,7],[49,50,8],[-51,34,7],[-31,31,7],[0,29,8],[31,32,7],[51,35,7],[-23,15,6],[20,16,7],[-49,13,7],[49,14,7],[-11,-2,6],[13,-6,6],[-27,-10,7],[28,-11,7]].forEach(([x,z,w],i)=>{
         addBox(x,.52,z,w,1.04,1.05,i%2?0x9b8b63:0xaa9468);
         addBox(x-w*.28,.9,z,.24,1.8,1.2,0x69543a,false); addBox(x+w*.28,.9,z,.24,1.8,1.2,0x69543a,false);
       });
-      [[-55,45],[54,44],[-42,54],[41,52],[-38,24],[37,22],[-18,28],[18,27],[-53,5],[52,6],[-35,3],[34,4],[-18,-9],[18,-10]].forEach(([x,z],i)=>{
+      [[-56,88],[55,87],[-42,78],[42,79],[-18,86],[19,84],[-55,45],[54,44],[-42,54],[41,52],[-38,24],[37,22],[-18,28],[18,27],[-53,5],[52,6],[-35,3],[34,4],[-18,-9],[18,-10]].forEach(([x,z],i)=>{
         addBox(x,.65,z,2.8,1.3,2.3,i%3===0?0x3f6870:0x6f765e); addBox(x+(i%2?.7:-.7),1.62,z+.15,1.25,.65,1.15,0x59634f);
       });
 
@@ -922,7 +924,7 @@ export function FpsGame() {
       // Tall coconut palms use curved slender trunks and feathered, naturally drooping fronds.
       const palmTrunks=[material(0x76695b),material(0x887665),material(0x685d52)];
       const palmLeaves=[new THREE.MeshStandardMaterial({color:0x34783f,roughness:.9,side:THREE.DoubleSide}),new THREE.MeshStandardMaterial({color:0x4b873f,roughness:.88,side:THREE.DoubleSide}),new THREE.MeshStandardMaterial({color:0x727b32,roughness:.92,side:THREE.DoubleSide})];
-      [[-59,57,.82],[-52,52,1.02],[-43,55,.76],[-58,42,.9],[-53,31,.72],[-59,19,.96],[-54,7,.8],[-58,-5,.9],[-43,39,.8],[-38,34,1],[-44,27,.9],[-39,20,.75],[-44,10,1.05],[-39,1,.82],[-43,-10,.92],[-37,-12,.78],[-24,52,.8],[-24,38,.72],[-28,24,.85],[-29,5,.75],[-20,-7,.8],[-20,-12,.72],[59,57,.84],[52,52,1.04],[43,55,.78],[58,42,.92],[53,31,.74],[59,19,.98],[54,7,.82],[58,-5,.92],[43,39,.82],[38,34,1.02],[44,27,.88],[39,19,.78],[44,9,1.04],[39,0,.84],[43,-10,.95],[37,-12,.76],[24,52,.82],[24,38,.7],[28,25,.86],[29,5,.74],[20,-8,.82],[20,-12,.7]].forEach(([x,z,s],i)=>{
+      [[-59,91,.86],[-51,87,1.03],[-42,93,.76],[-58,78,.92],[-48,70,.8],[-31,87,.78],[-20,74,.84],[-59,57,.82],[-52,52,1.02],[-43,55,.76],[-58,42,.9],[-53,31,.72],[-59,19,.96],[-54,7,.8],[-58,-5,.9],[-43,39,.8],[-38,34,1],[-44,27,.9],[-39,20,.75],[-44,10,1.05],[-39,1,.82],[-43,-10,.92],[-37,-12,.78],[-24,52,.8],[-24,38,.72],[-28,24,.85],[-29,5,.75],[-20,-7,.8],[-20,-12,.72],[59,91,.88],[51,87,1.05],[42,93,.78],[58,78,.94],[48,70,.82],[31,87,.8],[20,74,.86],[59,57,.84],[52,52,1.04],[43,55,.78],[58,42,.92],[53,31,.74],[59,19,.98],[54,7,.82],[58,-5,.92],[43,39,.82],[38,34,1.02],[44,27,.88],[39,19,.78],[44,9,1.04],[39,0,.84],[43,-10,.95],[37,-12,.76],[24,52,.82],[24,38,.7],[28,25,.86],[29,5,.74],[20,-8,.82],[20,-12,.7]].forEach(([x,z,s],i)=>{
         const ground=terrainHeightAt(x,z),height=s*(8+(i%4)*.65),leanX=s*((i*7)%5-2)*.58,leanZ=s*((i*11)%5-2)*.24,grove=new THREE.Group(); grove.position.set(x,ground,z); scene.add(grove);
         const trunkCurve=new THREE.CatmullRomCurve3([new THREE.Vector3(0,0,0),new THREE.Vector3(leanX*.12,height*.34,leanZ*.1),new THREE.Vector3(leanX*.48,height*.7,leanZ*.45),new THREE.Vector3(leanX,height,leanZ)]);
         const trunk=new THREE.Mesh(new THREE.TubeGeometry(trunkCurve,10,.22*s,8,false),palmTrunks[i%palmTrunks.length]); trunk.castShadow=trunk.receiveShadow=true; grove.add(trunk);
@@ -2590,7 +2592,7 @@ export function FpsGame() {
         <div className="death-code">KIA</div><h2>OPERATOR DOWN</h2><p>TEST CONDITION: FATAL DAMAGE</p>
         <button onClick={() => {
           respawnRef.current(); setHealth(100); setDead(false);
-          multiplayerSendRef.current({ type: "respawn", x: 0, z: selectedMap === "TIDEBREAK BEACH" ? 54 : selectedMap === "CITY BLOCK" ? 38 : selectedMap === "BLACKWOOD FOREST" || selectedMap === "FROSTLINE BASE" ? 36 : 15 });
+          multiplayerSendRef.current({ type: "respawn", x: 0, z: selectedMap === "TIDEBREAK BEACH" ? 86 : selectedMap === "CITY BLOCK" ? 38 : selectedMap === "BLACKWOOD FOREST" || selectedMap === "FROSTLINE BASE" ? 36 : 15 });
           mountRef.current?.querySelector("canvas")?.requestPointerLock();
         }}>RESPAWN AT TEST YARD</button>
       </div>}
