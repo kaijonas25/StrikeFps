@@ -11,7 +11,7 @@ type FireMode = "SEMI" | "BURST" | "AUTO";
 type GameMode = "FFA" | "TDM" | "KOTH" | "CTP";
 type ObjectiveZone = { id: string; x: number; z: number; radius: number; owner: "ALPHA" | "BRAVO" | null; progress: number };
 type MenuPage = "HOME" | "LOADOUT" | "CHARACTER" | "SETTINGS";
-type GameMap = "TEST YARD" | "CITY BLOCK" | "BLACKWOOD FOREST";
+type GameMap = "TEST YARD" | "CITY BLOCK" | "BLACKWOOD FOREST" | "FROSTLINE BASE";
 type GameSector = "TRAINING SECTOR" | "SECTOR 1" | "SECTOR 2" | "SECTOR 3" | "SECTOR 4";
 type MultiplayerSector = Exclude<GameSector, "TRAINING SECTOR">;
 type KillFeedEntry = { id: number; killer: string; victim: string; weapon: string; headshot: boolean };
@@ -122,6 +122,7 @@ export function FpsGame() {
   const [mapVotes, setMapVotes] = useState(0);
   const [cityMapVotes, setCityMapVotes] = useState(0);
   const [forestMapVotes, setForestMapVotes] = useState(0);
+  const [frostMapVotes, setFrostMapVotes] = useState(0);
   const [selectedMapVote, setSelectedMapVote] = useState<Exclude<GameMap, "TEST YARD"> | null>(null);
   const [modeVotes, setModeVotes] = useState(0);
   const [ffaModeVotes, setFfaModeVotes] = useState(0);
@@ -330,8 +331,15 @@ export function FpsGame() {
 
     const scene = new THREE.Scene();
     const forestMap = selectedMap === "BLACKWOOD FOREST";
-    scene.background = new THREE.Color(forestMap ? 0x18271f : 0x111b21);
-    scene.fog = new THREE.Fog(forestMap ? 0x18271f : 0x111b21, forestMap ? 18 : 25, forestMap ? 68 : 72);
+    const snowyMap = selectedMap === "FROSTLINE BASE";
+    const terrainHeightAt = (x: number, z: number) => {
+      if (!snowyMap) return 0;
+      const climb = THREE.MathUtils.clamp((-z + 5) / 43, 0, 1);
+      const ridge = .34 + .66 * THREE.MathUtils.clamp(1 - Math.abs(x) / 49, 0, 1);
+      return Math.pow(climb, 1.12) * ridge * 13;
+    };
+    scene.background = new THREE.Color(snowyMap ? 0xb8cbd3 : forestMap ? 0x18271f : 0x111b21);
+    scene.fog = new THREE.Fog(snowyMap ? 0xb8cbd3 : forestMap ? 0x18271f : 0x111b21, snowyMap ? 24 : forestMap ? 18 : 25, snowyMap ? 92 : forestMap ? 68 : 72);
 
     const camera = new THREE.PerspectiveCamera(78, mount.clientWidth / mount.clientHeight, 0.05, 120);
     camera.position.set(0, PLAYER_HEIGHT, 15);
@@ -344,7 +352,7 @@ export function FpsGame() {
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     mount.appendChild(renderer.domElement);
 
-    scene.add(new THREE.HemisphereLight(forestMap ? 0xa8c5a5 : 0x9dc6d8, forestMap ? 0x10180d : 0x162017, forestMap ? 1.45 : 1.8));
+    scene.add(new THREE.HemisphereLight(snowyMap ? 0xe9f7ff : forestMap ? 0xa8c5a5 : 0x9dc6d8, snowyMap ? 0x52616a : forestMap ? 0x10180d : 0x162017, snowyMap ? 2.15 : forestMap ? 1.45 : 1.8));
     const sun = new THREE.DirectionalLight(0xffd6a0, 3.5);
     sun.position.set(-18, 28, 12);
     sun.castShadow = true;
@@ -358,8 +366,15 @@ export function FpsGame() {
     const material = (color: THREE.ColorRepresentation, roughness = 0.82, metalness = 0.05) =>
       new THREE.MeshStandardMaterial({ color, roughness, metalness });
 
-    const mapSize = selectedMap === "CITY BLOCK" ? 96 : forestMap ? 88 : 64;
-    const floor = new THREE.Mesh(new THREE.PlaneGeometry(mapSize, mapSize), material(selectedMap === "CITY BLOCK" ? 0x252b2d : forestMap ? 0x263522 : 0x364044));
+    const mapSize = selectedMap === "CITY BLOCK" || snowyMap ? 96 : forestMap ? 88 : 64;
+    const floorGeometry = new THREE.PlaneGeometry(mapSize, mapSize, snowyMap ? 64 : 1, snowyMap ? 64 : 1);
+    let snowParticles: THREE.Points | undefined;
+    if (snowyMap) {
+      const positions = floorGeometry.attributes.position;
+      for (let index = 0; index < positions.count; index++) positions.setZ(index, terrainHeightAt(positions.getX(index), -positions.getY(index)));
+      positions.needsUpdate = true; floorGeometry.computeVertexNormals();
+    }
+    const floor = new THREE.Mesh(floorGeometry, material(selectedMap === "CITY BLOCK" ? 0x252b2d : snowyMap ? 0xd8e5e8 : forestMap ? 0x263522 : 0x364044));
     floor.rotation.x = -Math.PI / 2;
     floor.receiveShadow = true;
     scene.add(floor);
@@ -367,7 +382,7 @@ export function FpsGame() {
 
     const grid = new THREE.GridHelper(mapSize, selectedMap === "CITY BLOCK" ? 48 : 32, forestMap ? 0x33452f : 0x516166, forestMap ? 0x2b3b28 : 0x465358);
     grid.position.y = 0.008;
-    scene.add(grid);
+    if (!snowyMap) scene.add(grid);
 
     function addBox(x: number, y: number, z: number, w: number, h: number, d: number, color: number, collide = true) {
       const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material(color));
@@ -383,7 +398,7 @@ export function FpsGame() {
 
     // Shared floating resupply model used by both the training yard and live maps.
     const addSupplyDrop = (x: number, z: number, color: number, medicalDrop: boolean) => {
-      const drop = new THREE.Group(); drop.position.set(x, .68, z); drop.scale.setScalar(.48); drop.userData.floatPhase = supplyDrops.length * 1.37; scene.add(drop);
+      const drop = new THREE.Group(); drop.position.set(x, terrainHeightAt(x,z)+.68, z); drop.scale.setScalar(.48); drop.userData.floatPhase = supplyDrops.length * 1.37; drop.userData.groundY=terrainHeightAt(x,z); scene.add(drop);
       const addDropPart = (geometry: THREE.BufferGeometry, partMaterial: THREE.Material, px: number, py: number, pz: number) => {
         const mesh = new THREE.Mesh(geometry, partMaterial); mesh.position.set(px, py, pz); mesh.castShadow = mesh.receiveShadow = true; mesh.raycast = () => {}; drop.add(mesh); return mesh;
       };
@@ -403,6 +418,7 @@ export function FpsGame() {
     const supplySpawnLocations: [number, number][] = selectedMap === "CITY BLOCK"
       ? [[-5, -14], [5, 14], [-5, 35], [5, -35], [-23, -14], [23, -14], [-23, 14], [23, 14], [-7, -40], [7, 40], [-40, -7], [40, 7]]
       : forestMap ? [[-31, -24], [29, -26], [-27, 21], [30, 24], [-8, -12], [12, 17], [2, -31], [-16, 32]]
+      : snowyMap ? [[-35,30],[35,30],[-28,8],[28,8],[-22,-12],[22,-12],[-12,-30],[12,-30]]
       : [[-25, 23], [25, 23], [-22, -18], [22, -18], [-14, 14], [14, 14]];
     const clearSupplyDrops = () => {
       supplyDrops.splice(0).forEach(({ drop }) => {
@@ -417,7 +433,7 @@ export function FpsGame() {
     const spawnSupplyWave = () => {
       clearSupplyDrops();
       const locations = [...supplySpawnLocations].sort(() => Math.random() - .5);
-      locations.slice(0, selectedMap === "CITY BLOCK" ? 6 : forestMap ? 4 : 2).forEach(([x, z], index) => {
+      locations.slice(0, selectedMap === "CITY BLOCK" ? 6 : forestMap || snowyMap ? 4 : 2).forEach(([x, z], index) => {
         const medicalDrop = index % 2 === 0;
         addSupplyDrop(x, z, medicalDrop ? 0x2c9b67 : 0x397f9e, medicalDrop);
       });
@@ -545,7 +561,7 @@ export function FpsGame() {
       namedDummy(addDummy(-7, -14, 0x4d7182), "TARGET ALPHA"); namedDummy(addDummy(0, -14, 0x706347), "TARGET BRAVO"); namedDummy(addDummy(7, -14, 0x754b4b), "TARGET CHARLIE");
       namedDummy(addDummy(15, -15, 0x38785d, "walk"), "WALKER ONE"); namedDummy(addDummy(26, -15, 0x804f32, "sprint"), "RUNNER ONE");
     }
-    const spawnZ = selectedMap === "CITY BLOCK" ? 38 : forestMap ? 36 : 15;
+    const spawnZ = selectedMap === "CITY BLOCK" ? 38 : forestMap || snowyMap ? 36 : 15;
     const localPlayer = addDummy(0, spawnZ, 0x435e70, "static", false);
     localPlayer.rotation.order = "YXZ";
     localPlayer.visible = false;
@@ -774,6 +790,41 @@ export function FpsGame() {
       const campLight = new THREE.PointLight(0xffb45c, 18, 13, 2); campLight.position.set(27, 3.2, 28); scene.add(campLight);
     }
 
+    if (snowyMap) {
+      // Snowbanks define the playable base while the northern terrain rises into a climbable summit.
+      addBox(0, 3, 47.5, 96, 6, 1, 0xa9bdc5); addBox(-47.5, 4.5, 0, 1, 9, 96, 0x8298a2); addBox(47.5, 4.5, 0, 1, 9, 96, 0x8298a2);
+      const snowRock = (x:number,z:number,w:number,h:number,d:number,color=0x71828a) => addBox(x,terrainHeightAt(x,z)+h/2,z,w,h,d,color);
+      // Base camp: two open shelters, cargo, and defensive barriers.
+      [[-28,31],[28,31]].forEach(([x,z], index) => {
+        const y = terrainHeightAt(x,z);
+        addBox(x,y+.12,z,13,.24,10,0x798b91,false); addBox(x-6.3,y+2.2,z,.4,4.4,10,0x60747c); addBox(x+6.3,y+2.2,z,.4,4.4,10,0x60747c); addBox(x,y+4.3,z,13.2,.35,10.2,0x52656d,false);
+        addBox(x,y+.7,z-2.5,3.4,1.4,1.7,index ? 0x496c75 : 0x6d604c); addBox(x+3.6,y+.52,z+2.3,2.4,1.04,1.4,0x52636a);
+      });
+      [[-12,25],[0,22],[12,25],[-34,18],[34,18]].forEach(([x,z],i) => snowRock(x,z,4.5,.9,1.1,i%2?0xaab8bb:0x87979c));
+
+      // Alpine boulders and ice outcrops create cover along multiple ascent routes.
+      [[-38,5,4,2.4,3],[-24,9,5,2.8,3.5],[-8,5,3.5,2.1,3],[11,8,5,3.2,3.5],[30,4,4.2,2.5,3],[-32,-9,5,3.3,4],[-15,-11,4,2.7,3],[5,-9,5.5,3.4,4],[25,-12,4.5,2.8,3.5],[-27,-25,5,3.2,4],[-6,-24,4.2,2.6,3],[18,-27,5.4,3.5,4]].forEach(([x,z,w,h,d],i) => snowRock(x,z,w,h,d,i%3===0?0x687d88:0x7f9199));
+      // Switchback barricades provide firing positions without sealing the climb.
+      [[-28,14,7],[18,2,8],[-20,-8,7],[21,-18,8],[-10,-29,7]].forEach(([x,z,w],i) => {
+        const y=terrainHeightAt(x,z); addBox(x,y+.72,z,w,1.44,.55,i%2?0x5c6e73:0x6c6658);
+        for(let post=-1;post<=1;post++) addBox(x+post*(w/2-.45),y+.9,z,.26,1.8,.72,0x4c5353,false);
+      });
+      // Sparse, varied alpine pines frame the routes while leaving long mountain sightlines.
+      const alpineTrunk=material(0x4b4036,.95,.01), alpineNeedles=material(0x35545a,.98,0);
+      [[-42,34,.7],[-39,23,.95],[40,30,.8],[42,13,1.1],[-37,-2,.75],[37,-5,.9],[-34,-20,.65],[35,-24,.8],[-18,18,.7],[15,15,.9],[-31,-35,.65],[29,-37,.72]].forEach(([x,z,s]) => {
+        const ground=terrainHeightAt(x,z); const trunk=new THREE.Mesh(new THREE.CylinderGeometry(.28*s,.4*s,4.5*s,8),alpineTrunk); trunk.position.set(x,ground+2.25*s,z); trunk.castShadow=true; scene.add(trunk); boxes.push({minX:x-.38*s,maxX:x+.38*s,minY:ground,maxY:ground+4.5*s,minZ:z-.38*s,maxZ:z+.38*s});
+        for(let tier=0;tier<3;tier++){const crown=new THREE.Mesh(new THREE.ConeGeometry((1.8-tier*.3)*s,3*s,8),alpineNeedles); crown.position.set(x,ground+(4.2+tier*1.25)*s,z); crown.castShadow=true; crown.raycast=()=>{}; scene.add(crown);}
+      });
+      // Summit communications station rewards the climb with hard cover and a clear landmark.
+      const summitY=terrainHeightAt(0,-40);
+      addBox(0,summitY+.15,-40,14,.3,9,0x88999d,false); addBox(-6.6,summitY+1.5,-40,.4,3,9,0x65787e); addBox(6.6,summitY+1.5,-40,.4,3,9,0x65787e); addBox(0,summitY+1.5,-44.3,13.5,3,.4,0x65787e);
+      const mast=new THREE.Mesh(new THREE.CylinderGeometry(.16,.22,8,10),material(0x4d5a5f,.45,.7)); mast.position.set(0,summitY+6,-40); mast.castShadow=true; scene.add(mast);
+      const dish=new THREE.Mesh(new THREE.SphereGeometry(1.5,18,10,0,Math.PI*2,0,Math.PI*.42),material(0xd5e2e4,.35,.45)); dish.scale.z=.35; dish.rotation.x=.55; dish.position.set(0,summitY+9.4,-40); scene.add(dish);
+      const summitBeacon=new THREE.PointLight(0x77dfff,22,18,2); summitBeacon.position.set(0,summitY+8,-40); scene.add(summitBeacon);
+      const flakes=new Float32Array(700*3); for(let i=0;i<700;i++){flakes[i*3]=-48+Math.random()*96; flakes[i*3+1]=3+Math.random()*28; flakes[i*3+2]=-48+Math.random()*96;}
+      const snowGeometry=new THREE.BufferGeometry(); snowGeometry.setAttribute("position",new THREE.BufferAttribute(flakes,3)); snowParticles=new THREE.Points(snowGeometry,new THREE.PointsMaterial({color:0xffffff,size:.1,transparent:true,opacity:.8,depthWrite:false})); snowParticles.raycast=()=>{}; scene.add(snowParticles);
+    }
+
     if (selectedMap === "TEST YARD") {
     // Landmark tower and emissive arena lights
     addBox(22, 4, -20, 5, 8, 5, 0x343f43);
@@ -986,7 +1037,7 @@ export function FpsGame() {
     const updateObjectiveMarkers = (zones: ObjectiveZone[], mode: GameMode) => {
       objectiveMarkers.splice(0).forEach((marker) => { scene.remove(marker); marker.traverse((object) => { if (object instanceof THREE.Mesh) { object.geometry.dispose(); if (Array.isArray(object.material)) object.material.forEach((entry) => entry.dispose()); else object.material.dispose(); } }); });
       zones.forEach((zone) => {
-        const marker = new THREE.Group(); marker.position.set(zone.x, .075, zone.z);
+        const marker = new THREE.Group(); marker.position.set(zone.x, terrainHeightAt(zone.x,zone.z)+.075, zone.z);
         const color = zone.owner === "ALPHA" ? 0x55c9ff : zone.owner === "BRAVO" ? 0xff6559 : mode === "KOTH" ? 0xffb347 : 0xe8f3ef;
         const ring = new THREE.Mesh(new THREE.RingGeometry(zone.radius - .22, zone.radius, 64), new THREE.MeshBasicMaterial({ color, transparent:true, opacity:.72, side:THREE.DoubleSide, depthWrite:false })); ring.rotation.x = -Math.PI / 2; ring.raycast = () => {}; marker.add(ring);
         const fill = new THREE.Mesh(new THREE.CircleGeometry(zone.radius - .3, 64), new THREE.MeshBasicMaterial({ color, transparent:true, opacity:.08, side:THREE.DoubleSide, depthWrite:false })); fill.rotation.x = -Math.PI / 2; fill.raycast = () => {}; marker.add(fill);
@@ -1077,10 +1128,10 @@ export function FpsGame() {
       multiplayerSocket.addEventListener("message", (event) => {
         if (typeof event.data !== "string") return;
         try {
-          const packet = JSON.parse(event.data) as { type: string; player?: RemoteState; players?: RemoteState[]; id?: string; health?: number; score?: number; attackerId?: string; weapon?: string; headshot?: boolean; tracerEnds?: number[][]; effect?: string; duration?: number; utilityId?: string; utility?: string; position?: number[]; velocity?: number[]; yourMapVote?: Exclude<GameMap, "TEST YARD"> | null; yourModeVote?: GameMode | null; map?: Exclude<GameMap, "TEST YARD">; match?: { phase: "voting" | "playing" | "results"; phaseEndsAt: number; votes: number; mapVotes?: { "CITY BLOCK"?: number; "BLACKWOOD FOREST"?: number }; map: Exclude<GameMap, "TEST YARD">; modeVotes: number; modeVoteCounts?: { FFA?: number; TDM?: number; KOTH?: number; CTP?: number }; endVotes: number; mode: GameMode; teamScores?: { ALPHA: number; BRAVO: number }; objectiveZones?: ObjectiveZone[]; winnerId: string | null; winningTeam?: "ALPHA" | "BRAVO" | null; winningKills: number } };
+          const packet = JSON.parse(event.data) as { type: string; player?: RemoteState; players?: RemoteState[]; id?: string; health?: number; score?: number; attackerId?: string; weapon?: string; headshot?: boolean; tracerEnds?: number[][]; effect?: string; duration?: number; utilityId?: string; utility?: string; position?: number[]; velocity?: number[]; yourMapVote?: Exclude<GameMap, "TEST YARD"> | null; yourModeVote?: GameMode | null; map?: Exclude<GameMap, "TEST YARD">; match?: { phase: "voting" | "playing" | "results"; phaseEndsAt: number; votes: number; mapVotes?: { "CITY BLOCK"?: number; "BLACKWOOD FOREST"?: number; "FROSTLINE BASE"?: number }; map: Exclude<GameMap, "TEST YARD">; modeVotes: number; modeVoteCounts?: { FFA?: number; TDM?: number; KOTH?: number; CTP?: number }; endVotes: number; mode: GameMode; teamScores?: { ALPHA: number; BRAVO: number }; objectiveZones?: ObjectiveZone[]; winnerId: string | null; winningTeam?: "ALPHA" | "BRAVO" | null; winningKills: number } };
           const applyMatch = (match: NonNullable<typeof packet.match>, resetVotes = false) => {
             activeNetworkMode = match.mode ?? "FFA";
-            setMatchPhase(match.phase); setMapVotes(match.votes); setCityMapVotes(match.mapVotes?.["CITY BLOCK"] ?? match.votes); setForestMapVotes(match.mapVotes?.["BLACKWOOD FOREST"] ?? 0); setModeVotes(match.modeVotes ?? 0); setFfaModeVotes(match.modeVoteCounts?.FFA ?? match.modeVotes); setTdmModeVotes(match.modeVoteCounts?.TDM ?? 0); setKothModeVotes(match.modeVoteCounts?.KOTH ?? 0); setCtpModeVotes(match.modeVoteCounts?.CTP ?? 0); setEndGameVotes(match.endVotes ?? 0); setMatchEndsAt(match.phaseEndsAt);
+            setMatchPhase(match.phase); setMapVotes(match.votes); setCityMapVotes(match.mapVotes?.["CITY BLOCK"] ?? match.votes); setForestMapVotes(match.mapVotes?.["BLACKWOOD FOREST"] ?? 0); setFrostMapVotes(match.mapVotes?.["FROSTLINE BASE"] ?? 0); setModeVotes(match.modeVotes ?? 0); setFfaModeVotes(match.modeVoteCounts?.FFA ?? match.modeVotes); setTdmModeVotes(match.modeVoteCounts?.TDM ?? 0); setKothModeVotes(match.modeVoteCounts?.KOTH ?? 0); setCtpModeVotes(match.modeVoteCounts?.CTP ?? 0); setEndGameVotes(match.endVotes ?? 0); setMatchEndsAt(match.phaseEndsAt);
             setMatchMode(match.mode ?? "FFA"); setTeamScores(match.teamScores ?? { ALPHA: 0, BRAVO: 0 }); setObjectiveZones(match.objectiveZones ?? []); updateObjectiveMarkers(match.objectiveZones ?? [], match.mode ?? "FFA"); setMatchWinnerId(match.winnerId ?? null); setWinningTeam(match.winningTeam ?? null); setWinningKills(match.winningKills ?? 0);
             if (match.phase === "playing" && match.map !== selectedMap) setSelectedMap(match.map);
             if ((match.endVotes ?? 0) === 0) setEndGameRequested(false);
@@ -1843,7 +1894,7 @@ export function FpsGame() {
       }
 
       const standingInCreek = forestMap && Math.abs((playerPosition.x + 10) + playerPosition.z * .08) < 3.5 && Math.abs(playerPosition.z) < 42;
-      const groundHeight = standingInCreek ? PLAYER_HEIGHT - .7 : PLAYER_HEIGHT;
+      const groundHeight = snowyMap ? PLAYER_HEIGHT + terrainHeightAt(playerPosition.x,playerPosition.z) : standingInCreek ? PLAYER_HEIGHT - .7 : PLAYER_HEIGHT;
       const adminFlyingActive = adminAuthorizedRef.current && adminControlsRef.current.flying;
       if (adminFlyingActive) {
         verticalVelocity = 0; grounded = false;
@@ -1858,9 +1909,10 @@ export function FpsGame() {
       const moving = input.lengthSq() > 0 && grounded;
       movementSpread = input.lengthSq() > 0 ? 1.55 : 1;
       const t = clock.getElapsedTime();
+      if(snowParticles){const positions=snowParticles.geometry.attributes.position; for(let i=0;i<positions.count;i++){let y=positions.getY(i)-dt*(2.8+(i%7)*.22); const x=positions.getX(i),z=positions.getZ(i); if(y<terrainHeightAt(x,z)) y=terrainHeightAt(x,z)+18+(i%9); positions.setY(i,y);} positions.needsUpdate=true;}
       supplyDrops.forEach(({ drop }) => {
         if (!drop.visible) return;
-        drop.position.y = .68 + Math.sin(t * 2.2 + drop.userData.floatPhase) * .16;
+        drop.position.y = (drop.userData.groundY ?? 0) + .68 + Math.sin(t * 2.2 + drop.userData.floatPhase) * .16;
         drop.rotation.y += dt * 1.55;
         drop.rotation.z = Math.sin(t * 1.1 + drop.userData.floatPhase) * .045;
       });
@@ -2020,8 +2072,9 @@ export function FpsGame() {
         projectile.age += dt; projectile.velocity.y -= 14.5 * dt;
         projectile.mesh.position.addScaledVector(projectile.velocity, dt);
         projectile.mesh.rotation.x += dt * 8; projectile.mesh.rotation.z += dt * 6;
-        if (projectile.mesh.position.y <= .12) {
-          projectile.mesh.position.y = .12; projectile.velocity.y = Math.abs(projectile.velocity.y) * .42;
+        const projectileGround = terrainHeightAt(projectile.mesh.position.x,projectile.mesh.position.z)+.12;
+        if (projectile.mesh.position.y <= projectileGround) {
+          projectile.mesh.position.y = projectileGround; projectile.velocity.y = Math.abs(projectile.velocity.y) * .42;
           projectile.velocity.x *= .82; projectile.velocity.z *= .82;
         }
         if ((projectile.type === "C4 CHARGE" || projectile.type === "LANDMINE") && projectile.age > .75) projectile.velocity.set(0, 0, 0);
@@ -2040,13 +2093,14 @@ export function FpsGame() {
           if (landedOnTop) { projectile.mesh.position.y = wallHit.height + .12; projectile.velocity.y = Math.abs(projectile.velocity.y) * .42; projectile.velocity.x *= .82; projectile.velocity.z *= .82; }
           else { if (enteredOnX) projectile.velocity.x *= -.48; else projectile.velocity.z *= -.48; projectile.velocity.y *= .82; }
         }
-        if (projectile.mesh.position.y <= 0.12) {
-          projectile.mesh.position.y = 0.12;
+        const projectileGround = terrainHeightAt(projectile.mesh.position.x,projectile.mesh.position.z)+.12;
+        if (projectile.mesh.position.y <= projectileGround) {
+          projectile.mesh.position.y = projectileGround;
           projectile.velocity.y = Math.abs(projectile.velocity.y) * 0.42;
           projectile.velocity.x *= 0.82; projectile.velocity.z *= 0.82;
         }
         if ((projectile.type === "C4 CHARGE" || projectile.type === "LANDMINE") && projectile.age > .75) {
-          projectile.velocity.set(0, 0, 0); projectile.mesh.position.y = .12;
+          projectile.velocity.set(0, 0, 0); projectile.mesh.position.y = projectileGround;
         }
         if (projectile.type === "LANDMINE" && projectile.age > 1.2 && [...dummies, ...remotePlayers.values()].some((target) => target.visible && target.position.distanceTo(projectile.mesh.position) < 2.1)) {
           detonate(projectile); projectiles.splice(i, 1); continue;
@@ -2361,6 +2415,10 @@ export function FpsGame() {
             <i>02</i><span><b>BLACKWOOD FOREST</b><small>WOODLAND COMBAT · CREEK CROSSING · RANGER OUTPOST</small></span><em>{selectedMapVote === "BLACKWOOD FOREST" ? "YOUR VOTE" : hasVoted ? "LOCKED" : multiplayerStatus !== "ONLINE" ? "CONNECTING" : "VOTE"}</em>
           </button>
           <div className="vote-total"><i style={{ width: mapVotes ? `${forestMapVotes / mapVotes * 100}%` : "0%" }} /><span>{forestMapVotes} VOTE{forestMapVotes === 1 ? "" : "S"}</span></div>
+          <button className={selectedMapVote === "FROSTLINE BASE" ? "voted selected-vote" : hasVoted ? "voted" : ""} disabled={hasVoted || multiplayerStatus !== "ONLINE"} onClick={() => { multiplayerSendRef.current({ type: "vote", category: "map", map: "FROSTLINE BASE" }); setSelectedMapVote("FROSTLINE BASE"); setHasVoted(true); }}>
+            <i>03</i><span><b>FROSTLINE BASE</b><small>SNOWY MOUNTAIN · CLIMBABLE SUMMIT · HIGH-GROUND COMBAT</small></span><em>{selectedMapVote === "FROSTLINE BASE" ? "YOUR VOTE" : hasVoted ? "LOCKED" : multiplayerStatus !== "ONLINE" ? "CONNECTING" : "VOTE"}</em>
+          </button>
+          <div className="vote-total"><i style={{ width: mapVotes ? `${frostMapVotes / mapVotes * 100}%` : "0%" }} /><span>{frostMapVotes} VOTE{frostMapVotes === 1 ? "" : "S"}</span></div>
           <h3>GAMEMODE</h3>
           <button className={selectedModeVote === "FFA" ? "voted selected-vote" : hasModeVoted ? "voted" : ""} disabled={hasModeVoted || multiplayerStatus !== "ONLINE"} onClick={() => { multiplayerSendRef.current({ type: "vote", category: "mode", mode: "FFA" }); setSelectedModeVote("FFA"); setHasModeVoted(true); }}>
             <i>01</i><span><b>FREE FOR ALL</b><small>10 MINUTES · EVERY OPERATOR FOR THEMSELVES</small></span><em>{selectedModeVote === "FFA" ? "YOUR VOTE" : hasModeVoted ? "LOCKED" : "VOTE"}</em>
@@ -2394,7 +2452,7 @@ export function FpsGame() {
         <div className="death-code">KIA</div><h2>OPERATOR DOWN</h2><p>TEST CONDITION: FATAL DAMAGE</p>
         <button onClick={() => {
           respawnRef.current(); setHealth(100); setDead(false);
-          multiplayerSendRef.current({ type: "respawn", x: 0, z: selectedMap === "CITY BLOCK" ? 38 : selectedMap === "BLACKWOOD FOREST" ? 36 : 15 });
+          multiplayerSendRef.current({ type: "respawn", x: 0, z: selectedMap === "CITY BLOCK" ? 38 : selectedMap === "BLACKWOOD FOREST" || selectedMap === "FROSTLINE BASE" ? 36 : 15 });
           mountRef.current?.querySelector("canvas")?.requestPointerLock();
         }}>RESPAWN AT TEST YARD</button>
       </div>}
