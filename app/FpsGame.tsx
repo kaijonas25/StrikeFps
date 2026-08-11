@@ -11,7 +11,7 @@ type FireMode = "SEMI" | "BURST" | "AUTO";
 type GameMode = "FFA" | "TDM" | "KOTH" | "CTP";
 type ObjectiveZone = { id: string; x: number; z: number; radius: number; owner: "ALPHA" | "BRAVO" | null; progress: number };
 type MenuPage = "HOME" | "LOADOUT" | "CHARACTER" | "SETTINGS";
-type GameMap = "TEST YARD" | "CITY BLOCK" | "BLACKWOOD FOREST" | "FROSTLINE BASE";
+type GameMap = "TEST YARD" | "CITY BLOCK" | "BLACKWOOD FOREST" | "FROSTLINE BASE" | "TIDEBREAK BEACH";
 type GameSector = "TRAINING SECTOR" | "SECTOR 1" | "SECTOR 2" | "SECTOR 3" | "SECTOR 4";
 type MultiplayerSector = Exclude<GameSector, "TRAINING SECTOR">;
 type KillFeedEntry = { id: number; killer: string; victim: string; weapon: string; headshot: boolean };
@@ -123,6 +123,7 @@ export function FpsGame() {
   const [cityMapVotes, setCityMapVotes] = useState(0);
   const [forestMapVotes, setForestMapVotes] = useState(0);
   const [frostMapVotes, setFrostMapVotes] = useState(0);
+  const [beachMapVotes, setBeachMapVotes] = useState(0);
   const [selectedMapVote, setSelectedMapVote] = useState<Exclude<GameMap, "TEST YARD"> | null>(null);
   const [modeVotes, setModeVotes] = useState(0);
   const [ffaModeVotes, setFfaModeVotes] = useState(0);
@@ -332,14 +333,15 @@ export function FpsGame() {
     const scene = new THREE.Scene();
     const forestMap = selectedMap === "BLACKWOOD FOREST";
     const snowyMap = selectedMap === "FROSTLINE BASE";
+    const beachMap = selectedMap === "TIDEBREAK BEACH";
     const terrainHeightAt = (x: number, z: number) => {
       if (!snowyMap) return 0;
       const climb = THREE.MathUtils.clamp((-z + 5) / 43, 0, 1);
       const ridge = .34 + .66 * THREE.MathUtils.clamp(1 - Math.abs(x) / 49, 0, 1);
       return Math.pow(climb, 1.12) * ridge * 13;
     };
-    scene.background = new THREE.Color(snowyMap ? 0xb8cbd3 : forestMap ? 0x18271f : 0x111b21);
-    scene.fog = new THREE.Fog(snowyMap ? 0xb8cbd3 : forestMap ? 0x18271f : 0x111b21, snowyMap ? 24 : forestMap ? 18 : 25, snowyMap ? 92 : forestMap ? 68 : 72);
+    scene.background = new THREE.Color(snowyMap ? 0xb8cbd3 : beachMap ? 0x77c8df : forestMap ? 0x18271f : 0x111b21);
+    scene.fog = new THREE.Fog(snowyMap ? 0xb8cbd3 : beachMap ? 0xa8dae5 : forestMap ? 0x18271f : 0x111b21, snowyMap ? 24 : beachMap ? 42 : forestMap ? 18 : 25, snowyMap ? 92 : beachMap ? 118 : forestMap ? 68 : 72);
 
     const camera = new THREE.PerspectiveCamera(78, mount.clientWidth / mount.clientHeight, 0.05, 120);
     camera.position.set(0, PLAYER_HEIGHT, 15);
@@ -352,7 +354,7 @@ export function FpsGame() {
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     mount.appendChild(renderer.domElement);
 
-    scene.add(new THREE.HemisphereLight(snowyMap ? 0xe9f7ff : forestMap ? 0xa8c5a5 : 0x9dc6d8, snowyMap ? 0x52616a : forestMap ? 0x10180d : 0x162017, snowyMap ? 2.15 : forestMap ? 1.45 : 1.8));
+    scene.add(new THREE.HemisphereLight(snowyMap ? 0xe9f7ff : beachMap ? 0xfff3cf : forestMap ? 0xa8c5a5 : 0x9dc6d8, snowyMap ? 0x52616a : beachMap ? 0x477f88 : forestMap ? 0x10180d : 0x162017, snowyMap ? 2.15 : beachMap ? 2.35 : forestMap ? 1.45 : 1.8));
     const sun = new THREE.DirectionalLight(0xffd6a0, 3.5);
     sun.position.set(-18, 28, 12);
     sun.castShadow = true;
@@ -366,7 +368,7 @@ export function FpsGame() {
     const material = (color: THREE.ColorRepresentation, roughness = 0.82, metalness = 0.05) =>
       new THREE.MeshStandardMaterial({ color, roughness, metalness });
 
-    const mapSize = selectedMap === "CITY BLOCK" || snowyMap ? 96 : forestMap ? 88 : 64;
+    const mapSize = selectedMap === "CITY BLOCK" || snowyMap || beachMap ? 96 : forestMap ? 88 : 64;
     const floorGeometry = new THREE.PlaneGeometry(mapSize, mapSize, snowyMap ? 64 : 1, snowyMap ? 64 : 1);
     let snowParticles: THREE.Points | undefined;
     if (snowyMap) {
@@ -374,7 +376,7 @@ export function FpsGame() {
       for (let index = 0; index < positions.count; index++) positions.setZ(index, terrainHeightAt(positions.getX(index), -positions.getY(index)));
       positions.needsUpdate = true; floorGeometry.computeVertexNormals();
     }
-    const floor = new THREE.Mesh(floorGeometry, material(selectedMap === "CITY BLOCK" ? 0x252b2d : snowyMap ? 0xd8e5e8 : forestMap ? 0x263522 : 0x364044));
+    const floor = new THREE.Mesh(floorGeometry, material(selectedMap === "CITY BLOCK" ? 0x252b2d : snowyMap ? 0xd8e5e8 : beachMap ? 0xd8bd79 : forestMap ? 0x263522 : 0x364044));
     floor.rotation.x = -Math.PI / 2;
     floor.receiveShadow = true;
     scene.add(floor);
@@ -382,7 +384,7 @@ export function FpsGame() {
 
     const grid = new THREE.GridHelper(mapSize, selectedMap === "CITY BLOCK" ? 48 : 32, forestMap ? 0x33452f : 0x516166, forestMap ? 0x2b3b28 : 0x465358);
     grid.position.y = 0.008;
-    if (!snowyMap) scene.add(grid);
+    if (!snowyMap && !beachMap) scene.add(grid);
 
     function addBox(x: number, y: number, z: number, w: number, h: number, d: number, color: number, collide = true) {
       const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material(color));
@@ -419,6 +421,7 @@ export function FpsGame() {
       ? [[-5, -14], [5, 14], [-5, 35], [5, -35], [-23, -14], [23, -14], [-23, 14], [23, 14], [-7, -40], [7, 40], [-40, -7], [40, 7]]
       : forestMap ? [[-31, -24], [29, -26], [-27, 21], [30, 24], [-8, -12], [12, 17], [2, -31], [-16, 32]]
       : snowyMap ? [[-35,30],[35,30],[-28,8],[28,8],[-22,-12],[22,-12],[-12,-30],[12,-30]]
+      : beachMap ? [[-36,30],[34,31],[-28,10],[26,13],[-20,-12],[22,-10],[-9,-31],[13,-29]]
       : [[-25, 23], [25, 23], [-22, -18], [22, -18], [-14, 14], [14, 14]];
     const clearSupplyDrops = () => {
       supplyDrops.splice(0).forEach(({ drop }) => {
@@ -433,7 +436,7 @@ export function FpsGame() {
     const spawnSupplyWave = () => {
       clearSupplyDrops();
       const locations = [...supplySpawnLocations].sort(() => Math.random() - .5);
-      locations.slice(0, selectedMap === "CITY BLOCK" ? 6 : forestMap || snowyMap ? 4 : 2).forEach(([x, z], index) => {
+      locations.slice(0, selectedMap === "CITY BLOCK" ? 6 : forestMap || snowyMap || beachMap ? 4 : 2).forEach(([x, z], index) => {
         const medicalDrop = index % 2 === 0;
         addSupplyDrop(x, z, medicalDrop ? 0x2c9b67 : 0x397f9e, medicalDrop);
       });
@@ -561,7 +564,7 @@ export function FpsGame() {
       namedDummy(addDummy(-7, -14, 0x4d7182), "TARGET ALPHA"); namedDummy(addDummy(0, -14, 0x706347), "TARGET BRAVO"); namedDummy(addDummy(7, -14, 0x754b4b), "TARGET CHARLIE");
       namedDummy(addDummy(15, -15, 0x38785d, "walk"), "WALKER ONE"); namedDummy(addDummy(26, -15, 0x804f32, "sprint"), "RUNNER ONE");
     }
-    const spawnZ = selectedMap === "CITY BLOCK" ? 38 : forestMap || snowyMap ? 36 : 15;
+    const spawnZ = selectedMap === "CITY BLOCK" ? 38 : forestMap || snowyMap || beachMap ? 36 : 15;
     const localPlayer = addDummy(0, spawnZ, 0x435e70, "static", false);
     localPlayer.rotation.order = "YXZ";
     localPlayer.visible = false;
@@ -874,6 +877,48 @@ export function FpsGame() {
       const snowGeometry=new THREE.BufferGeometry(); snowGeometry.setAttribute("position",new THREE.BufferAttribute(flakes,3)); snowParticles=new THREE.Points(snowGeometry,new THREE.PointsMaterial({color:0xffffff,size:.1,transparent:true,opacity:.8,depthWrite:false})); snowParticles.raycast=()=>{}; scene.add(snowParticles);
     }
 
+    if (beachMap) {
+      // The surf closes the northern edge while dunes and sea walls frame the combat space.
+      addBox(0,2.5,47.5,96,5,1,0x8e805f); addBox(-47.5,2.5,0,1,5,96,0x7d7358); addBox(47.5,2.5,0,1,5,96,0x7d7358);
+      addBox(0,.04,-38,95,.08,19,0x269bb5,false); addBox(0,.075,-30,95,.06,3.2,0x68c6cf,false);
+      for(let wave=0;wave<6;wave++) addBox(-39+wave*16,.115,-30+(wave%2)*.35,8,.035,.42,0xe7fbf5,false);
+      addBox(0,1.3,-47.5,96,2.6,1.2,0x426f77);
+
+      // Sandbag lines, driftwood barricades, and cargo give the open beach layered cover.
+      [[-31,31,7],[0,29,8],[31,32,7],[-23,15,6],[20,16,7],[-11,-2,6],[13,-6,6],[-27,-18,7],[28,-19,7]].forEach(([x,z,w],i)=>{
+        addBox(x,.52,z,w,1.04,1.05,i%2?0x9b8b63:0xaa9468);
+        addBox(x-w*.28,.9,z,.24,1.8,1.2,0x69543a,false); addBox(x+w*.28,.9,z,.24,1.8,1.2,0x69543a,false);
+      });
+      [[-38,24],[37,22],[-18,28],[18,27],[-35,3],[34,4],[-18,-14],[18,-20]].forEach(([x,z],i)=>{
+        addBox(x,.65,z,2.8,1.3,2.3,i%3===0?0x3f6870:0x6f765e); addBox(x+(i%2?.7:-.7),1.62,z+.15,1.25,.65,1.15,0x59634f);
+      });
+
+      // Beach huts and a lifeguard tower create recognizable strongpoints.
+      [[-34,11],[34,10]].forEach(([x,z],i)=>{
+        addBox(x,.18,z,11,.36,8,0x8e714d,false); addBox(x-5.2,2.25,z,.35,4.5,8,0x765538); addBox(x+5.2,2.25,z,.35,4.5,8,0x765538); addBox(x,4.45,z,11,.35,8.4,i?0x4f7779:0xa95b45,false); addBox(x,2.2,z+3.8,10.5,4.4,.35,0x8a6845);
+      });
+      addBox(0,2.1,9,7,.35,6,0x8b6d47,false); [-3,3].forEach(x=>[-2.5,2.5].forEach(z=>addBox(x,1.05,9+z,.3,2.1,.3,0x72583b)));
+      addBox(0,3.3,9,7.5,2.2,.35,0xe9d8a5); addBox(0,4.55,9,8,.3,6.5,0xd95d43,false);
+
+      // A broken pier and grounded patrol boat make the shoreline tactically useful.
+      [-5,5].forEach(x=>{for(let z=-27;z>=-45;z-=4)addBox(x,.65,z,.35,1.3,.35,0x604936);});
+      for(let z=-27;z>=-45;z-=2)addBox(0,1.25,z,11,.28,1.7,0x76583c,false);
+      const hull=new THREE.Mesh(new THREE.CylinderGeometry(2.1,3.5,10,8,1,false),material(0x3f5960)); hull.rotation.z=Math.PI/2; hull.scale.z=.55; hull.position.set(25,.75,-32); hull.rotation.y=-.18; hull.castShadow=true; scene.add(hull); boxes.push({minX:20,maxX:30,minY:0,maxY:2.4,minZ:-35,maxZ:-29});
+      addBox(25,2.35,-32,3.4,2.4,3,0xd8d2b6); addBox(25,3.8,-32,.18,3,.18,0x495559,false);
+
+      // Dark volcanic rocks punctuate the sand and protect the shoreline approaches.
+      [[-42,-8,5,3,4],[-31,-27,5.5,3.3,4.5],[-7,-20,4.2,2.5,3.5],[7,20,4.5,2.7,3.7],[24,-2,5,3.1,4],[41,-14,5.5,3.4,4.4],[-15,19,3.8,2.3,3.2],[16,-27,4,2.5,3.3]].forEach(([x,z,w,h,d],i)=>{
+        const rock=new THREE.Mesh(new THREE.DodecahedronGeometry(1,0),material(i%2?0x4f5752:0x64665b)); rock.position.set(x,h*.46,z); rock.scale.set(w*.5,h*.5,d*.5); rock.rotation.set(.1*i,.33*i,.06*(i%3)); rock.castShadow=rock.receiveShadow=true; scene.add(rock); boxes.push({minX:x-w*.45,maxX:x+w*.45,minY:0,maxY:h,minZ:z-d*.45,maxZ:z+d*.45});
+      });
+
+      // Palm groves provide visual density and narrow concealment along both flanks.
+      const palmTrunk=material(0x7e5c37),palmLeaf=material(0x2f744b,.86,0);
+      [[-43,39,.8],[-38,34,1],[-44,27,.9],[-39,20,.75],[-44,10,1.05],[-39,1,.82],[-43,-12,.92],[-37,-22,.78],[-24,38,.72],[-28,24,.85],[-29,5,.75],[-20,-7,.8],[-20,-25,.72],[43,39,.82],[38,34,1.02],[44,27,.88],[39,19,.78],[44,9,1.04],[39,0,.84],[43,-11,.95],[37,-23,.76],[24,38,.7],[28,25,.86],[29,5,.74],[20,-8,.82],[20,-25,.7]].forEach(([x,z,s],i)=>{
+        const trunk=new THREE.Mesh(new THREE.CylinderGeometry(.24*s,.45*s,6.2*s,8),palmTrunk); trunk.position.set(x,3.1*s,z); trunk.rotation.z=(i%3-1)*.05; trunk.castShadow=true; scene.add(trunk); boxes.push({minX:x-.4*s,maxX:x+.4*s,minY:0,maxY:6.2*s,minZ:z-.4*s,maxZ:z+.4*s});
+        for(let leaf=0;leaf<7;leaf++){const frond=new THREE.Mesh(new THREE.ConeGeometry(.72*s,4.2*s,5),palmLeaf); frond.position.set(x,6.3*s,z); frond.rotation.set(Math.PI/2.55,leaf*Math.PI*2/7,0); frond.castShadow=true; frond.raycast=()=>{}; scene.add(frond);}
+      });
+    }
+
     if (selectedMap === "TEST YARD") {
     // Landmark tower and emissive arena lights
     addBox(22, 4, -20, 5, 8, 5, 0x343f43);
@@ -1177,10 +1222,10 @@ export function FpsGame() {
       multiplayerSocket.addEventListener("message", (event) => {
         if (typeof event.data !== "string") return;
         try {
-          const packet = JSON.parse(event.data) as { type: string; player?: RemoteState; players?: RemoteState[]; id?: string; health?: number; score?: number; attackerId?: string; weapon?: string; headshot?: boolean; tracerEnds?: number[][]; effect?: string; duration?: number; utilityId?: string; utility?: string; position?: number[]; velocity?: number[]; yourMapVote?: Exclude<GameMap, "TEST YARD"> | null; yourModeVote?: GameMode | null; map?: Exclude<GameMap, "TEST YARD">; match?: { phase: "voting" | "playing" | "results"; phaseEndsAt: number; votes: number; mapVotes?: { "CITY BLOCK"?: number; "BLACKWOOD FOREST"?: number; "FROSTLINE BASE"?: number }; map: Exclude<GameMap, "TEST YARD">; modeVotes: number; modeVoteCounts?: { FFA?: number; TDM?: number; KOTH?: number; CTP?: number }; endVotes: number; mode: GameMode; teamScores?: { ALPHA: number; BRAVO: number }; objectiveZones?: ObjectiveZone[]; winnerId: string | null; winningTeam?: "ALPHA" | "BRAVO" | null; winningKills: number } };
+          const packet = JSON.parse(event.data) as { type: string; player?: RemoteState; players?: RemoteState[]; id?: string; health?: number; score?: number; attackerId?: string; weapon?: string; headshot?: boolean; tracerEnds?: number[][]; effect?: string; duration?: number; utilityId?: string; utility?: string; position?: number[]; velocity?: number[]; yourMapVote?: Exclude<GameMap, "TEST YARD"> | null; yourModeVote?: GameMode | null; map?: Exclude<GameMap, "TEST YARD">; match?: { phase: "voting" | "playing" | "results"; phaseEndsAt: number; votes: number; mapVotes?: { "CITY BLOCK"?: number; "BLACKWOOD FOREST"?: number; "FROSTLINE BASE"?: number; "TIDEBREAK BEACH"?: number }; map: Exclude<GameMap, "TEST YARD">; modeVotes: number; modeVoteCounts?: { FFA?: number; TDM?: number; KOTH?: number; CTP?: number }; endVotes: number; mode: GameMode; teamScores?: { ALPHA: number; BRAVO: number }; objectiveZones?: ObjectiveZone[]; winnerId: string | null; winningTeam?: "ALPHA" | "BRAVO" | null; winningKills: number } };
           const applyMatch = (match: NonNullable<typeof packet.match>, resetVotes = false) => {
             activeNetworkMode = match.mode ?? "FFA";
-            setMatchPhase(match.phase); setMapVotes(match.votes); setCityMapVotes(match.mapVotes?.["CITY BLOCK"] ?? match.votes); setForestMapVotes(match.mapVotes?.["BLACKWOOD FOREST"] ?? 0); setFrostMapVotes(match.mapVotes?.["FROSTLINE BASE"] ?? 0); setModeVotes(match.modeVotes ?? 0); setFfaModeVotes(match.modeVoteCounts?.FFA ?? match.modeVotes); setTdmModeVotes(match.modeVoteCounts?.TDM ?? 0); setKothModeVotes(match.modeVoteCounts?.KOTH ?? 0); setCtpModeVotes(match.modeVoteCounts?.CTP ?? 0); setEndGameVotes(match.endVotes ?? 0); setMatchEndsAt(match.phaseEndsAt);
+            setMatchPhase(match.phase); setMapVotes(match.votes); setCityMapVotes(match.mapVotes?.["CITY BLOCK"] ?? match.votes); setForestMapVotes(match.mapVotes?.["BLACKWOOD FOREST"] ?? 0); setFrostMapVotes(match.mapVotes?.["FROSTLINE BASE"] ?? 0); setBeachMapVotes(match.mapVotes?.["TIDEBREAK BEACH"] ?? 0); setModeVotes(match.modeVotes ?? 0); setFfaModeVotes(match.modeVoteCounts?.FFA ?? match.modeVotes); setTdmModeVotes(match.modeVoteCounts?.TDM ?? 0); setKothModeVotes(match.modeVoteCounts?.KOTH ?? 0); setCtpModeVotes(match.modeVoteCounts?.CTP ?? 0); setEndGameVotes(match.endVotes ?? 0); setMatchEndsAt(match.phaseEndsAt);
             setMatchMode(match.mode ?? "FFA"); setTeamScores(match.teamScores ?? { ALPHA: 0, BRAVO: 0 }); setObjectiveZones(match.objectiveZones ?? []); updateObjectiveMarkers(match.objectiveZones ?? [], match.mode ?? "FFA"); setMatchWinnerId(match.winnerId ?? null); setWinningTeam(match.winningTeam ?? null); setWinningKills(match.winningKills ?? 0);
             if (match.phase === "playing" && match.map !== selectedMap) setSelectedMap(match.map);
             if ((match.endVotes ?? 0) === 0) setEndGameRequested(false);
@@ -2468,6 +2513,10 @@ export function FpsGame() {
             <i>03</i><span><b>FROSTLINE BASE</b><small>SNOWY MOUNTAIN · CLIMBABLE SUMMIT · HIGH-GROUND COMBAT</small></span><em>{selectedMapVote === "FROSTLINE BASE" ? "YOUR VOTE" : hasVoted ? "LOCKED" : multiplayerStatus !== "ONLINE" ? "CONNECTING" : "VOTE"}</em>
           </button>
           <div className="vote-total"><i style={{ width: mapVotes ? `${frostMapVotes / mapVotes * 100}%` : "0%" }} /><span>{frostMapVotes} VOTE{frostMapVotes === 1 ? "" : "S"}</span></div>
+          <button className={selectedMapVote === "TIDEBREAK BEACH" ? "voted selected-vote" : hasVoted ? "voted" : ""} disabled={hasVoted || multiplayerStatus !== "ONLINE"} onClick={() => { multiplayerSendRef.current({ type: "vote", category: "map", map: "TIDEBREAK BEACH" }); setSelectedMapVote("TIDEBREAK BEACH"); setHasVoted(true); }}>
+            <i>04</i><span><b>TIDEBREAK BEACH</b><small>TROPICAL SHORE · PALM GROVES · HUTS · BROKEN PIER</small></span><em>{selectedMapVote === "TIDEBREAK BEACH" ? "YOUR VOTE" : hasVoted ? "LOCKED" : multiplayerStatus !== "ONLINE" ? "CONNECTING" : "VOTE"}</em>
+          </button>
+          <div className="vote-total"><i style={{ width: mapVotes ? `${beachMapVotes / mapVotes * 100}%` : "0%" }} /><span>{beachMapVotes} VOTE{beachMapVotes === 1 ? "" : "S"}</span></div>
           <h3>GAMEMODE</h3>
           <button className={selectedModeVote === "FFA" ? "voted selected-vote" : hasModeVoted ? "voted" : ""} disabled={hasModeVoted || multiplayerStatus !== "ONLINE"} onClick={() => { multiplayerSendRef.current({ type: "vote", category: "mode", mode: "FFA" }); setSelectedModeVote("FFA"); setHasModeVoted(true); }}>
             <i>01</i><span><b>FREE FOR ALL</b><small>10 MINUTES · EVERY OPERATOR FOR THEMSELVES</small></span><em>{selectedModeVote === "FFA" ? "YOUR VOTE" : hasModeVoted ? "LOCKED" : "VOTE"}</em>
@@ -2501,7 +2550,7 @@ export function FpsGame() {
         <div className="death-code">KIA</div><h2>OPERATOR DOWN</h2><p>TEST CONDITION: FATAL DAMAGE</p>
         <button onClick={() => {
           respawnRef.current(); setHealth(100); setDead(false);
-          multiplayerSendRef.current({ type: "respawn", x: 0, z: selectedMap === "CITY BLOCK" ? 38 : selectedMap === "BLACKWOOD FOREST" || selectedMap === "FROSTLINE BASE" ? 36 : 15 });
+          multiplayerSendRef.current({ type: "respawn", x: 0, z: selectedMap === "CITY BLOCK" ? 38 : selectedMap === "BLACKWOOD FOREST" || selectedMap === "FROSTLINE BASE" || selectedMap === "TIDEBREAK BEACH" ? 36 : 15 });
           mountRef.current?.querySelector("canvas")?.requestPointerLock();
         }}>RESPAWN AT TEST YARD</button>
       </div>}

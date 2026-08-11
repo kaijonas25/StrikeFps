@@ -32,7 +32,7 @@ type PlayerState = {
   callsign: string;
 };
 
-type MultiplayerMap = "CITY BLOCK" | "BLACKWOOD FOREST" | "FROSTLINE BASE";
+type MultiplayerMap = "CITY BLOCK" | "BLACKWOOD FOREST" | "FROSTLINE BASE" | "TIDEBREAK BEACH";
 type GameMode = "FFA" | "TDM" | "KOTH" | "CTP";
 type ObjectiveZone = { id: string; x: number; z: number; radius: number; owner: PlayerState["team"] | null; progress: number };
 type SocketAttachment = { id: string; state: PlayerState; votedMapPhase?: number; votedMap?: MultiplayerMap; votedModePhase?: number; votedMode?: GameMode; endGamePhase?: number; lastChatAt?: number };
@@ -64,6 +64,11 @@ const SPAWNS: Record<MultiplayerMap, { free: [number,number][]; ALPHA: [number,n
     free: [[-38,32],[-22,38],[0,38],[22,38],[38,28],[-35,5],[35,5],[-28,-18],[28,-18],[0,-34]],
     ALPHA: [[-38,34],[-24,38],[-8,39],[8,39],[24,38],[38,34]],
     BRAVO: [[-38,-26],[-24,-32],[-8,-38],[8,-38],[24,-32],[38,-26]],
+  },
+  "TIDEBREAK BEACH": {
+    free: [[-39,34],[-22,37],[0,36],[22,37],[39,32],[-37,4],[37,3],[-27,-23],[27,-23],[0,-25]],
+    ALPHA: [[-39,36],[-25,39],[-9,39],[9,39],[25,39],[39,36]],
+    BRAVO: [[-38,-22],[-25,-25],[-9,-27],[9,-27],[25,-25],[38,-22]],
   },
 };
 
@@ -213,7 +218,7 @@ export class GameRoom extends DurableObject {
         meta.modeVoteCounts[mode] += 1;
       } else {
         if (attachment.votedMapPhase === meta.phaseEndsAt) return;
-        const map: MultiplayerMap = packet.map === "BLACKWOOD FOREST" || packet.map === "FROSTLINE BASE" ? packet.map : "CITY BLOCK";
+        const map: MultiplayerMap = packet.map === "BLACKWOOD FOREST" || packet.map === "FROSTLINE BASE" || packet.map === "TIDEBREAK BEACH" ? packet.map : "CITY BLOCK";
         attachment.votedMapPhase = meta.phaseEndsAt;
         attachment.votedMap = map;
         meta.votes += 1;
@@ -349,12 +354,13 @@ export class GameRoom extends DurableObject {
     const day = new Date().toISOString().slice(0, 10);
     let meta = await this.ctx.storage.get<MatchMeta>("match");
     if (!meta || meta.day !== day) {
-      meta = { day, phase: "voting", phaseEndsAt: Date.now() + VOTE_DURATION, votes: 0, mapVotes: { "CITY BLOCK": 0, "BLACKWOOD FOREST": 0, "FROSTLINE BASE": 0 }, modeVotes: 0, modeVoteCounts: { FFA: 0, TDM: 0, KOTH: 0, CTP: 0 }, endVotes: 0, map: "CITY BLOCK", mode: "FFA", teamScores: { ALPHA: 0, BRAVO: 0 }, objectiveZones: [], lastObjectiveTick: Date.now(), winnerId: null, winningTeam: null, winningKills: 0 };
+      meta = { day, phase: "voting", phaseEndsAt: Date.now() + VOTE_DURATION, votes: 0, mapVotes: { "CITY BLOCK": 0, "BLACKWOOD FOREST": 0, "FROSTLINE BASE": 0, "TIDEBREAK BEACH": 0 }, modeVotes: 0, modeVoteCounts: { FFA: 0, TDM: 0, KOTH: 0, CTP: 0 }, endVotes: 0, map: "CITY BLOCK", mode: "FFA", teamScores: { ALPHA: 0, BRAVO: 0 }, objectiveZones: [], lastObjectiveTick: Date.now(), winnerId: null, winningTeam: null, winningKills: 0 };
       await this.ctx.storage.put("match", meta); await this.ctx.storage.setAlarm(meta.phaseEndsAt);
     } else {
       meta.modeVotes ??= 0;
-      meta.mapVotes ??= { "CITY BLOCK": meta.votes ?? 0, "BLACKWOOD FOREST": 0, "FROSTLINE BASE": 0 };
+      meta.mapVotes ??= { "CITY BLOCK": meta.votes ?? 0, "BLACKWOOD FOREST": 0, "FROSTLINE BASE": 0, "TIDEBREAK BEACH": 0 };
       meta.mapVotes["FROSTLINE BASE"] ??= 0;
+      meta.mapVotes["TIDEBREAK BEACH"] ??= 0;
       meta.modeVoteCounts ??= { FFA: meta.modeVotes ?? 0, TDM: 0, KOTH: 0, CTP: 0 };
       meta.modeVoteCounts.KOTH ??= 0; meta.modeVoteCounts.CTP ??= 0;
       meta.teamScores ??= { ALPHA: 0, BRAVO: 0 };
@@ -373,7 +379,7 @@ export class GameRoom extends DurableObject {
     let phase: MatchMeta["phase"], duration: number, winnerId: string | null = null, winningTeam: PlayerState["team"] | null = null, winningKills = 0;
     if (meta.phase === "voting") {
       phase = "playing"; duration = MATCH_DURATION;
-      const maps: MultiplayerMap[] = ["CITY BLOCK", "BLACKWOOD FOREST", "FROSTLINE BASE"];
+      const maps: MultiplayerMap[] = ["CITY BLOCK", "BLACKWOOD FOREST", "FROSTLINE BASE", "TIDEBREAK BEACH"];
       const topMapVotes = Math.max(...maps.map((map) => meta.mapVotes[map]));
       const tiedMaps = maps.filter((map) => meta.mapVotes[map] === topMapVotes);
       meta.map = tiedMaps[Math.floor(Math.random() * tiedMaps.length)];
@@ -385,7 +391,8 @@ export class GameRoom extends DurableObject {
       const citySpots = [[0,0],[-24,0],[24,0],[0,-25],[0,25],[-18,-18],[18,18]];
       const forestSpots = [[5,0],[-25,-15],[22,15],[-26,24],[25,-24],[8,-23],[-18,10]];
       const frostSpots = [[0,22],[-28,18],[28,18],[-22,-5],[22,-5],[-12,-24],[12,-24]];
-      const spots = [...(meta.map === "CITY BLOCK" ? citySpots : meta.map === "BLACKWOOD FOREST" ? forestSpots : frostSpots)].sort(() => Math.random() - .5);
+      const beachSpots = [[0,12],[-29,17],[29,17],[-22,-6],[23,-8],[-13,-22],[14,-23]];
+      const spots = [...(meta.map === "CITY BLOCK" ? citySpots : meta.map === "BLACKWOOD FOREST" ? forestSpots : meta.map === "FROSTLINE BASE" ? frostSpots : beachSpots)].sort(() => Math.random() - .5);
       meta.objectiveZones = meta.mode === "KOTH" ? [{ id:"HILL", x:spots[0][0], z:spots[0][1], radius:7.5, owner:null, progress:0 }] : meta.mode === "CTP" ? spots.slice(0,3).map(([x,z], index) => ({ id:String.fromCharCode(65 + index), x, z, radius:4.25, owner:null, progress:0 })) : [];
       meta.lastObjectiveTick = Date.now();
       const roundSockets = this.ctx.getWebSockets().filter((socket) => socket.readyState === WebSocket.OPEN);
@@ -418,7 +425,7 @@ export class GameRoom extends DurableObject {
       winningKills = players.length ? Math.floor(Math.max(...players.map((player) => player.objectiveScore))) : 0;
       const leaders = players.filter((player) => Math.floor(player.objectiveScore) === winningKills); winnerId = leaders.length === 1 ? leaders[0].id : null;
     }
-    const next: MatchMeta = { ...meta, phase, phaseEndsAt: Date.now() + duration, votes: 0, mapVotes: { "CITY BLOCK": 0, "BLACKWOOD FOREST": 0, "FROSTLINE BASE": 0 }, modeVotes: 0, modeVoteCounts: { FFA: 0, TDM: 0, KOTH: 0, CTP: 0 }, endVotes: 0, winnerId, winningTeam, winningKills };
+    const next: MatchMeta = { ...meta, phase, phaseEndsAt: Date.now() + duration, votes: 0, mapVotes: { "CITY BLOCK": 0, "BLACKWOOD FOREST": 0, "FROSTLINE BASE": 0, "TIDEBREAK BEACH": 0 }, modeVotes: 0, modeVoteCounts: { FFA: 0, TDM: 0, KOTH: 0, CTP: 0 }, endVotes: 0, winnerId, winningTeam, winningKills };
     await this.ctx.storage.put("match", next); await this.ctx.storage.setAlarm(next.phaseEndsAt); this.broadcast({ type: "match", match: next });
     if (phase === "playing") this.ctx.getWebSockets().forEach((socket) => {
       const attachment = socket.deserializeAttachment() as SocketAttachment;
