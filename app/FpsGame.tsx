@@ -104,7 +104,8 @@ export function FpsGame() {
   const chatOpenRef = useRef(false);
   const chatInputRef = useRef<HTMLInputElement>(null);
   const damageNumbersEnabledRef = useRef(true);
-  const adminControlsRef = useRef({ flying: false, noclip: false, damageMultiplier: 1 });
+  const adminControlsRef = useRef({ flying: false, noclip: false, godMode: false, damageMultiplier: 1 });
+  const firebaseTokenRef = useRef("");
   const adminCommandRef = useRef<(command: AdminCommand) => void>(() => {});
   const [locked, setLocked] = useState(false);
   const [touchControls, setTouchControls] = useState(false);
@@ -203,19 +204,23 @@ export function FpsGame() {
   const [adminPanelOpen, setAdminPanelOpen] = useState(false);
   const [adminFlying, setAdminFlying] = useState(false);
   const [adminNoclip, setAdminNoclip] = useState(false);
+  const [adminGodMode, setAdminGodMode] = useState(false);
   const [adminDamageMultiplier, setAdminDamageMultiplier] = useState(1);
 
-  const updateAdminControls = (next: Partial<{ flying: boolean; noclip: boolean; damageMultiplier: number }>) => {
+  const updateAdminControls = (next: Partial<{ flying: boolean; noclip: boolean; godMode: boolean; damageMultiplier: number }>) => {
     adminControlsRef.current = { ...adminControlsRef.current, ...next };
     if (typeof next.flying === "boolean") setAdminFlying(next.flying);
     if (typeof next.noclip === "boolean") setAdminNoclip(next.noclip);
+    if (typeof next.godMode === "boolean") setAdminGodMode(next.godMode);
     if (typeof next.damageMultiplier === "number") setAdminDamageMultiplier(next.damageMultiplier);
+    multiplayerSendRef.current({ type: "admin_config", godMode: adminControlsRef.current.godMode, damageMultiplier: adminControlsRef.current.damageMultiplier });
   };
 
   useEffect(() => onAuthStateChanged(auth, async (user) => {
-    if (!user) { playerCallsignRef.current = "OPERATOR"; setAccountCallsign("OPERATOR"); adminAuthorizedRef.current = false; setAdminAuthorized(false); setAdminPanelOpen(false); setAccountSaveStatus("idle"); return; }
+    if (!user) { firebaseTokenRef.current = ""; playerCallsignRef.current = "OPERATOR"; setAccountCallsign("OPERATOR"); adminAuthorizedRef.current = false; setAdminAuthorized(false); setAdminPanelOpen(false); setAccountSaveStatus("idle"); return; }
     try {
       const token = await user.getIdToken();
+      firebaseTokenRef.current = token;
       const response = await fetch("/api/player", { headers: { Authorization: `Bearer ${token}` } });
       if (!response.ok) throw new Error("Unable to load preferences");
       const data = await response.json() as { isAdmin?: boolean; player?: { callsign?: string; loadout?: Partial<SavedLoadout>; operator?: Partial<SavedOperator> } };
@@ -1245,14 +1250,17 @@ export function FpsGame() {
       const serverUrl = MULTIPLAYER_SERVER.replace(/^http/, "ws").replace(/\/$/, "");
       multiplayerSocket = new WebSocket(`${serverUrl}/room/${selectedSector.toLowerCase().replace(" ", "-")}`);
       multiplayerSendRef.current = (packet) => { if (multiplayerSocket?.readyState === WebSocket.OPEN) multiplayerSocket.send(JSON.stringify(packet)); };
-      multiplayerSocket.addEventListener("open", () => setMultiplayerStatus("ONLINE"));
+      multiplayerSocket.addEventListener("open", () => {
+        setMultiplayerStatus("ONLINE");
+        if (firebaseTokenRef.current) multiplayerSocket?.send(JSON.stringify({ type: "admin_auth", idToken: firebaseTokenRef.current }));
+      });
       multiplayerSocket.addEventListener("close", () => setMultiplayerStatus("OFFLINE"));
       multiplayerSocket.addEventListener("error", () => setMultiplayerStatus("OFFLINE"));
       let lastVotingPhase = 0;
       multiplayerSocket.addEventListener("message", (event) => {
         if (typeof event.data !== "string") return;
         try {
-          const packet = JSON.parse(event.data) as { type: string; player?: RemoteState; players?: RemoteState[]; id?: string; health?: number; score?: number; attackerId?: string; weapon?: string; headshot?: boolean; tracerEnds?: number[][]; effect?: string; duration?: number; utilityId?: string; utility?: string; position?: number[]; velocity?: number[]; yourMapVote?: Exclude<GameMap, "TEST YARD"> | null; yourModeVote?: GameMode | null; map?: Exclude<GameMap, "TEST YARD">; match?: { phase: "voting" | "playing" | "results"; phaseEndsAt: number; votes: number; mapVotes?: { "CITY BLOCK"?: number; "BLACKWOOD FOREST"?: number; "FROSTLINE BASE"?: number; "TIDEBREAK BEACH"?: number }; map: Exclude<GameMap, "TEST YARD">; modeVotes: number; modeVoteCounts?: { FFA?: number; TDM?: number; KOTH?: number; CTP?: number }; endVotes: number; mode: GameMode; teamScores?: { ALPHA: number; BRAVO: number }; objectiveZones?: ObjectiveZone[]; winnerId: string | null; winningTeam?: "ALPHA" | "BRAVO" | null; winningKills: number } };
+          const packet = JSON.parse(event.data) as { type: string; authorized?: boolean; player?: RemoteState; players?: RemoteState[]; id?: string; health?: number; score?: number; attackerId?: string; weapon?: string; headshot?: boolean; tracerEnds?: number[][]; effect?: string; duration?: number; utilityId?: string; utility?: string; position?: number[]; velocity?: number[]; yourMapVote?: Exclude<GameMap, "TEST YARD"> | null; yourModeVote?: GameMode | null; map?: Exclude<GameMap, "TEST YARD">; match?: { phase: "voting" | "playing" | "results"; phaseEndsAt: number; votes: number; mapVotes?: { "CITY BLOCK"?: number; "BLACKWOOD FOREST"?: number; "FROSTLINE BASE"?: number; "TIDEBREAK BEACH"?: number }; map: Exclude<GameMap, "TEST YARD">; modeVotes: number; modeVoteCounts?: { FFA?: number; TDM?: number; KOTH?: number; CTP?: number }; endVotes: number; mode: GameMode; teamScores?: { ALPHA: number; BRAVO: number }; objectiveZones?: ObjectiveZone[]; winnerId: string | null; winningTeam?: "ALPHA" | "BRAVO" | null; winningKills: number } };
           const applyMatch = (match: NonNullable<typeof packet.match>, resetVotes = false) => {
             activeNetworkMode = match.mode ?? "FFA";
             setMatchPhase(match.phase); setMapVotes(match.votes); setCityMapVotes(match.mapVotes?.["CITY BLOCK"] ?? match.votes); setForestMapVotes(match.mapVotes?.["BLACKWOOD FOREST"] ?? 0); setFrostMapVotes(match.mapVotes?.["FROSTLINE BASE"] ?? 0); setBeachMapVotes(match.mapVotes?.["TIDEBREAK BEACH"] ?? 0); setModeVotes(match.modeVotes ?? 0); setFfaModeVotes(match.modeVoteCounts?.FFA ?? match.modeVotes); setTdmModeVotes(match.modeVoteCounts?.TDM ?? 0); setKothModeVotes(match.modeVoteCounts?.KOTH ?? 0); setCtpModeVotes(match.modeVoteCounts?.CTP ?? 0); setEndGameVotes(match.endVotes ?? 0); setMatchEndsAt(match.phaseEndsAt);
@@ -1276,6 +1284,9 @@ export function FpsGame() {
               if (packet.yourModeVote) { setSelectedModeVote(packet.yourModeVote); setHasModeVoted(true); }
             }
             otherPlayers.forEach((player) => { rememberPlayer(player); upsertRemotePlayer(player); }); refreshTeammateMarkers();
+          }
+          else if (packet.type === "admin_authenticated" && packet.authorized) {
+            multiplayerSendRef.current({ type: "admin_config", godMode: adminControlsRef.current.godMode, damageMultiplier: adminControlsRef.current.damageMultiplier });
           }
           else if ((packet.type === "joined" || packet.type === "state") && packet.player) {
             rememberPlayer(packet.player);
@@ -1644,7 +1655,7 @@ export function FpsGame() {
       const remotePlayerId = hit.object.userData.remotePlayerId as string | undefined;
       if (remotePlayerId) {
         const dealtDamage = damage * multiplier * adminDamage;
-        multiplayerSendRef.current({ type: "hit", targetId: remotePlayerId, damage: dealtDamage, weapon, headshot: multiplier >= 2 });
+        multiplayerSendRef.current({ type: "hit", targetId: remotePlayerId, damage: damage * multiplier, weapon, headshot: multiplier >= 2 });
         showDamageNumber(hit.point, dealtDamage, multiplier >= 2);
         return;
       }
@@ -1754,7 +1765,7 @@ export function FpsGame() {
         dummies.forEach((dummy) => { const distance = dummy.position.distanceTo(position); if (distance < radius) damageDummyGroup(dummy, Math.round(maxDamage * (1 - distance / radius)), weapon); });
         damageRemotePlayers(radius, maxDamage, weapon);
         const distance = playerPosition.distanceTo(position);
-        if (distance < radius) { playerHealth = Math.max(0, playerHealth - Math.round(maxDamage * (1 - distance / radius))); setHealth(playerHealth); if (playerHealth <= 0) { setDead(true); document.exitPointerLock(); } }
+        if (distance < radius && !(adminAuthorizedRef.current && adminControlsRef.current.godMode)) { playerHealth = Math.max(0, playerHealth - Math.round(maxDamage * (1 - distance / radius))); setHealth(playerHealth); if (playerHealth <= 0) { setDead(true); document.exitPointerLock(); } }
       };
       if (projectile.type === "SMOKE GRENADE" || projectile.type === "GAS BOMB") {
         const gas = projectile.type === "GAS BOMB";
@@ -1767,7 +1778,7 @@ export function FpsGame() {
           const gasTick = window.setInterval(() => {
             dummies.forEach((dummy) => { if (dummy.position.distanceTo(position) < 5) damageDummyGroup(dummy, 5, "GAS BOMB"); });
             damageRemotePlayers(5, 5, "GAS BOMB", false);
-            if (playerPosition.distanceTo(position) < 5) { playerHealth = Math.max(0, playerHealth - 4); setHealth(playerHealth); if (playerHealth <= 0) { setDead(true); document.exitPointerLock(); } }
+            if (playerPosition.distanceTo(position) < 5 && !(adminAuthorizedRef.current && adminControlsRef.current.godMode)) { playerHealth = Math.max(0, playerHealth - 4); setHealth(playerHealth); if (playerHealth <= 0) { setDead(true); document.exitPointerLock(); } }
           }, 500);
           window.setTimeout(() => window.clearInterval(gasTick), 9000);
         }
@@ -2009,8 +2020,9 @@ export function FpsGame() {
         nextPadTick = now + 250;
         if (selectedMap === "TEST YARD") {
           const onPad = (x: number) => Math.abs(playerPosition.x - x) < 2 && Math.abs(playerPosition.z - 23) < 2;
-          if (onPad(-8)) playerHealth = Math.max(0, playerHealth - 8);
-          if (onPad(0)) playerHealth = 0;
+          const adminGodModeActive = adminAuthorizedRef.current && adminControlsRef.current.godMode;
+          if (onPad(-8) && !adminGodModeActive) playerHealth = Math.max(0, playerHealth - 8);
+          if (onPad(0) && !adminGodModeActive) playerHealth = 0;
           if (onPad(8)) playerHealth = Math.min(100, playerHealth + 12);
         }
         supplyDrops.forEach(({ drop, medical: medicalDrop }) => {
@@ -2480,6 +2492,7 @@ export function FpsGame() {
             </article>
             <article><h3>COMBAT</h3>
               <label><span>DAMAGE MULTIPLIER</span><select value={adminDamageMultiplier} onChange={(event) => updateAdminControls({ damageMultiplier: Number(event.target.value) })}><option value={1}>1× NORMAL</option><option value={2}>2× DAMAGE</option><option value={5}>5× DAMAGE</option><option value={10}>10× DAMAGE</option><option value={100}>100× INSTANT</option></select></label>
+              <button className={adminGodMode ? "active" : ""} onClick={() => updateAdminControls({ godMode: !adminGodMode })}><span>GOD MODE</span><b>{adminGodMode ? "ON" : "OFF"}</b></button>
               <button onClick={() => adminCommandRef.current("restore_health")}><span>RESTORE HEALTH</span><b>100 HP</b></button>
               <button onClick={() => adminCommandRef.current("refill_ammo")}><span>SPAWN AMMO</span><b>FULL</b></button>
             </article>

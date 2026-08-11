@@ -35,13 +35,15 @@ type PlayerState = {
 type MultiplayerMap = "CITY BLOCK" | "BLACKWOOD FOREST" | "FROSTLINE BASE" | "TIDEBREAK BEACH";
 type GameMode = "FFA" | "TDM" | "KOTH" | "CTP";
 type ObjectiveZone = { id: string; x: number; z: number; radius: number; owner: PlayerState["team"] | null; progress: number };
-type SocketAttachment = { id: string; state: PlayerState; votedMapPhase?: number; votedMap?: MultiplayerMap; votedModePhase?: number; votedMode?: GameMode; endGamePhase?: number; lastChatAt?: number };
+type SocketAttachment = { id: string; state: PlayerState; isAdmin?: boolean; godMode?: boolean; damageMultiplier?: number; votedMapPhase?: number; votedMap?: MultiplayerMap; votedModePhase?: number; votedMode?: GameMode; endGamePhase?: number; lastChatAt?: number };
 type MatchMeta = { day: string; phase: "voting" | "playing" | "results"; phaseEndsAt: number; votes: number; mapVotes: Record<MultiplayerMap, number>; modeVotes: number; modeVoteCounts: Record<GameMode, number>; endVotes: number; map: MultiplayerMap; mode: GameMode; teamScores: Record<PlayerState["team"], number>; objectiveZones: ObjectiveZone[]; lastObjectiveTick: number; winnerId: string | null; winningTeam: PlayerState["team"] | null; winningKills: number };
 const VOTE_DURATION = 30_000;
 const MATCH_DURATION = 10 * 60_000;
 const RESULTS_DURATION = 5_000;
 const FINAL_VOTE_DISPLAY_DURATION = 1_500;
 const EMPTY_ROOM_GRACE = 10_000;
+const FIREBASE_API_KEY = "AIzaSyBblKzSnl4XD7afgjqXETtVEhZyADn4-3s";
+const ADMIN_EMAIL = "kaigarcia2510@gmail.com";
 const safeString = (value: unknown, fallback: string, maxLength: number) =>
   typeof value === "string" ? value.slice(0, maxLength) : fallback;
 
@@ -49,6 +51,16 @@ const json = (value: unknown, status = 200) => new Response(JSON.stringify(value
   status,
   headers: { "content-type": "application/json", "access-control-allow-origin": "*" },
 });
+
+const verifiedAdminToken = async (idToken: unknown) => {
+  if (typeof idToken !== "string" || idToken.length < 20 || idToken.length > 4096) return false;
+  const response = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${FIREBASE_API_KEY}`, {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ idToken }),
+  });
+  if (!response.ok) return false;
+  const payload = await response.json() as { users?: { email?: string }[] };
+  return payload.users?.[0]?.email?.toLowerCase() === ADMIN_EMAIL;
+};
 
 const SPAWNS: Record<MultiplayerMap, { free: [number,number][]; ALPHA: [number,number][]; BRAVO: [number,number][] }> = {
   "CITY BLOCK": {
@@ -109,7 +121,7 @@ export class GameRoom extends DurableObject {
     const spawnX = spawn.x, spawnZ = spawn.z;
     const initial: PlayerState = { id, x: spawnX, y: 1.7, z: spawnZ, yaw: spawnZ > 0 ? 0 : Math.PI, movement: "static", crouching: false, prone: false, slot: 1, primary: "VXR-4 CARBINE", secondary: "P9 SIDEARM", skin: "#a9795e", uniform: "#303a3b", armor: "#20292b", helmet: "TACTICAL", faceGear: "GOGGLES", headAccessory: "HEADSET", chestRig: "PLATE CARRIER", backpack: "ASSAULT PACK", pants: "#303a3b", gloves: "#20292b", boots: "#151b1d", kills: 0, deaths: 0, health: 100, team, objectiveScore: 0, spawnProtectedUntil: Date.now() + 3000, callsign:`OPERATOR ${id.slice(0,4).toUpperCase()}` };
     this.ctx.acceptWebSocket(server);
-    server.serializeAttachment({ id, state: initial } satisfies SocketAttachment);
+    server.serializeAttachment({ id, state: initial, isAdmin: false, godMode: false, damageMultiplier: 1 } satisfies SocketAttachment);
 
     const players = existingPlayers;
     const joiningAttachment = server.deserializeAttachment() as SocketAttachment;
@@ -120,9 +132,25 @@ export class GameRoom extends DurableObject {
 
   async webSocketMessage(socket: WebSocket, message: string | ArrayBuffer) {
     if (typeof message !== "string" || message.length > 4096) return;
-    let packet: Partial<PlayerState> & { type?: string; category?: "map" | "mode"; map?: MultiplayerMap; mode?: GameMode; targetId?: string; damage?: number; weapon?: string; headshot?: boolean; tracerEnds?: unknown; effect?: string; duration?: number; text?: string; utilityId?: string; utility?: string; position?: unknown; velocity?: unknown };
+    let packet: Partial<PlayerState> & { type?: string; category?: "map" | "mode"; map?: MultiplayerMap; mode?: GameMode; targetId?: string; damage?: number; weapon?: string; headshot?: boolean; tracerEnds?: unknown; effect?: string; duration?: number; text?: string; utilityId?: string; utility?: string; position?: unknown; velocity?: unknown; idToken?: string; godMode?: boolean; damageMultiplier?: number };
     try { packet = JSON.parse(message); } catch { return; }
     const attachment = socket.deserializeAttachment() as SocketAttachment;
+    if (packet.type === "admin_auth") {
+      attachment.isAdmin = await verifiedAdminToken(packet.idToken);
+      attachment.godMode = false;
+      attachment.damageMultiplier = 1;
+      socket.serializeAttachment(attachment);
+      socket.send(JSON.stringify({ type: "admin_authenticated", authorized: attachment.isAdmin }));
+      return;
+    }
+    if (packet.type === "admin_config") {
+      if (!attachment.isAdmin) return;
+      const allowedMultipliers = [1, 2, 5, 10, 100];
+      attachment.godMode = Boolean(packet.godMode);
+      attachment.damageMultiplier = allowedMultipliers.includes(packet.damageMultiplier ?? 1) ? packet.damageMultiplier : 1;
+      socket.serializeAttachment(attachment);
+      return;
+    }
     if (packet.type === "chat") {
       const now = Date.now();
       const text = typeof packet.text === "string" ? packet.text.replace(/\s+/g, " ").trim().slice(0, 160) : "";
@@ -167,8 +195,11 @@ export class GameRoom extends DurableObject {
       const target = targetSocket.deserializeAttachment() as SocketAttachment;
       if ((meta.mode === "TDM" || meta.mode === "CTP") && target.state.team === attachment.state.team) return;
       if ((target.state.spawnProtectedUntil ?? 0) > Date.now()) return;
+      if (target.isAdmin && target.godMode) return;
       if (target.state.health <= 0) return;
-      const damage = Math.min(100, Math.max(0, typeof packet.damage === "number" && Number.isFinite(packet.damage) ? packet.damage : 0));
+      const baseDamage = Math.max(0, typeof packet.damage === "number" && Number.isFinite(packet.damage) ? packet.damage : 0);
+      const attackerMultiplier = attachment.isAdmin ? attachment.damageMultiplier ?? 1 : 1;
+      const damage = Math.min(100, baseDamage * attackerMultiplier);
       if (damage === 0) return;
       target.state.health = Math.max(0, target.state.health - damage);
       const killed = target.state.health === 0;
