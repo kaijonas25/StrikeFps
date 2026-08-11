@@ -23,10 +23,11 @@ type MuzzleAttachment = "STANDARD BARREL" | "SUPPRESSOR";
 type TacticalAttachment = "NONE" | "RED LASER" | "WHITE LIGHT";
 type MagazineAttachment = "STANDARD MAG" | "EXTENDED MAG" | "DRUM MAG";
 type FireControlAttachment = "STANDARD TRIGGER" | "BURST TRIGGER";
+type CamoPattern = "SOLID" | "WOODLAND" | "MULTICAM" | "DIGITAL" | "URBAN CAMO";
 type WeaponAttachments = { sight: SightAttachment; muzzle: MuzzleAttachment; tactical: TacticalAttachment; magazine: MagazineAttachment; fireControl: FireControlAttachment };
-type PlayerAppearance = { skin: string; uniform: string; armor: string; helmet: string; faceGear: string; headAccessory: string; chestRig: string; backpack: string; pants: string; gloves: string; boots: string };
+type PlayerAppearance = { skin: string; uniform: string; camo: CamoPattern; armor: string; helmet: string; faceGear: string; headAccessory: string; chestRig: string; backpack: string; pants: string; gloves: string; boots: string };
 type SavedLoadout = { primary: string; secondary: string; medical: string; utility: string; weaponSight: SightAttachment; muzzleAttachment: MuzzleAttachment; tacticalAttachment: TacticalAttachment; magazineAttachment: MagazineAttachment; fireControlAttachment: FireControlAttachment; secondarySight: SightAttachment; secondaryMuzzle: MuzzleAttachment; secondaryTactical: TacticalAttachment; secondaryMagazine: MagazineAttachment; secondaryFireControl: FireControlAttachment };
-type SavedOperator = { characterSkin: string; characterUniform: string; characterArmor: string; characterHelmet: "TACTICAL" | "LIGHT" | "HEAVY"; faceGear: "NONE" | "GOGGLES" | "MASK"; headAccessory: "NONE" | "HEADSET" | "NVG"; chestRig: "LIGHT" | "PLATE CARRIER" | "HEAVY"; backpack: "NONE" | "ASSAULT PACK" | "RADIO PACK"; pantsColor: string; gloveColor: string; bootColor: string };
+type SavedOperator = { characterSkin: string; characterUniform: string; camoPattern?: CamoPattern; characterArmor: string; characterHelmet: "TACTICAL" | "LIGHT" | "HEAVY"; faceGear: "NONE" | "GOGGLES" | "MASK"; headAccessory: "NONE" | "HEADSET" | "NVG"; chestRig: "LIGHT" | "PLATE CARRIER" | "HEAVY"; backpack: "NONE" | "ASSAULT PACK" | "RADIO PACK"; pantsColor: string; gloveColor: string; bootColor: string };
 type AdminCommand = "refill_ammo" | "refill_medical" | "refill_utility" | "restore_health" | "kill_targets";
 
 const attachmentMobilityPenalty = (attachments: WeaponAttachments) =>
@@ -37,6 +38,26 @@ const attachmentMobilityPenalty = (attachments: WeaponAttachments) =>
 
 const attachmentItemPenalty = (attachment: string) =>
   attachment === "BURST TRIGGER" ? 25 : attachment === "SUPPRESSOR" ? 4 : attachment === "EXTENDED MAG" ? 5 : attachment === "DRUM MAG" ? 14 : attachment === "WHITE LIGHT" ? 3 : 0;
+
+const createCamoTexture = (pattern: CamoPattern, baseColor: string) => {
+  if (pattern === "SOLID" || typeof document === "undefined") return null;
+  const canvas = document.createElement("canvas"); canvas.width = 128; canvas.height = 128;
+  const ctx = canvas.getContext("2d"); if (!ctx) return null;
+  const base = new THREE.Color(baseColor);
+  const color = (offset: number, saturation = 1) => {
+    const c = base.clone(); c.offsetHSL(0, (saturation - 1) * .08, offset); return `#${c.getHexString()}`;
+  };
+  ctx.fillStyle = pattern === "URBAN CAMO" ? "#4a5153" : color(-.02); ctx.fillRect(0, 0, 128, 128);
+  const palette = pattern === "URBAN CAMO" ? ["#202729", "#72797a", "#a0a5a2"] : pattern === "MULTICAM" ? [color(.18, .75), color(-.18, 1.1), "#75684b"] : [color(.15), color(-.2), "#202b25"];
+  for (let i = 0; i < 34; i++) {
+    const x = (i * 47 + 11) % 136 - 8, y = (i * 73 + 19) % 136 - 8;
+    ctx.fillStyle = palette[i % palette.length];
+    if (pattern === "DIGITAL" || pattern === "URBAN CAMO") ctx.fillRect(x, y, 8 + (i % 4) * 5, 6 + ((i + 2) % 4) * 4);
+    else { ctx.beginPath(); ctx.ellipse(x, y, 10 + (i % 5) * 4, pattern === "MULTICAM" ? 5 + (i % 3) * 3 : 8 + (i % 4) * 3, (i % 6) * .42, 0, Math.PI * 2); ctx.fill(); }
+  }
+  const texture = new THREE.CanvasTexture(canvas); texture.colorSpace = THREE.SRGBColorSpace;
+  texture.wrapS = texture.wrapT = THREE.RepeatWrapping; texture.repeat.set(2.4, 3.2); return texture;
+};
 
 const magazineCapacity = (capacity: number, magazine: MagazineAttachment) =>
   magazine === "DRUM MAG" ? capacity * 2 : magazine === "EXTENDED MAG" ? Math.ceil(capacity * 1.35) : capacity;
@@ -180,6 +201,7 @@ export function FpsGame() {
   const [prone, setProne] = useState(false);
   const [characterSkin, setCharacterSkin] = useState("#a9795e");
   const [characterUniform, setCharacterUniform] = useState("#303a3b");
+  const [camoPattern, setCamoPattern] = useState<CamoPattern>("SOLID");
   const [characterArmor, setCharacterArmor] = useState("#20292b");
   const [characterHelmet, setCharacterHelmet] = useState<"TACTICAL" | "LIGHT" | "HEAVY">("TACTICAL");
   const [faceGear, setFaceGear] = useState<"NONE" | "GOGGLES" | "MASK">("GOGGLES");
@@ -241,6 +263,7 @@ export function FpsGame() {
       const operator = data.player?.operator;
       if (operator) {
         if (operator.characterSkin) setCharacterSkin(operator.characterSkin); if (operator.characterUniform) setCharacterUniform(operator.characterUniform);
+        if (operator.camoPattern) setCamoPattern(operator.camoPattern);
         if (operator.characterArmor) setCharacterArmor(operator.characterArmor); if (operator.characterHelmet) setCharacterHelmet(operator.characterHelmet);
         if (operator.faceGear) setFaceGear(operator.faceGear); if (operator.headAccessory) setHeadAccessory(operator.headAccessory);
         if (operator.chestRig) setChestRig(operator.chestRig); if (operator.backpack) setBackpack(operator.backpack);
@@ -289,7 +312,7 @@ export function FpsGame() {
     if (!user) { setAccountSaveStatus("idle"); return; }
     setAccountSaveStatus("saving");
     const loadout: SavedLoadout = { primary, secondary, medical, utility, weaponSight, muzzleAttachment, tacticalAttachment, magazineAttachment, fireControlAttachment, secondarySight, secondaryMuzzle, secondaryTactical, secondaryMagazine, secondaryFireControl };
-    const operator: SavedOperator = { characterSkin, characterUniform, characterArmor, characterHelmet, faceGear, headAccessory, chestRig, backpack, pantsColor, gloveColor, bootColor };
+    const operator: SavedOperator = { characterSkin, characterUniform, camoPattern, characterArmor, characterHelmet, faceGear, headAccessory, chestRig, backpack, pantsColor, gloveColor, bootColor };
     try {
       const token = await user.getIdToken();
       const response = await fetch("/api/player", { method: "PUT", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify(kind === "loadout" ? { loadout } : { operator }) });
@@ -492,7 +515,7 @@ export function FpsGame() {
 
     // Human-shaped test dummies with separate head and body hit zones.
     const dummies: THREE.Group[] = [];
-    const localAppearance: PlayerAppearance = { skin: characterSkin, uniform: characterUniform, armor: characterArmor, helmet: characterHelmet, faceGear, headAccessory, chestRig, backpack, pants: pantsColor, gloves: gloveColor, boots: bootColor };
+    const localAppearance: PlayerAppearance = { skin: characterSkin, uniform: characterUniform, camo: camoPattern, armor: characterArmor, helmet: characterHelmet, faceGear, headAccessory, chestRig, backpack, pants: pantsColor, gloves: gloveColor, boots: bootColor };
     const addDummy = (x: number, z: number, color: number, movement: "static" | "walk" | "sprint" = "static", targetable = true, appearance: PlayerAppearance = localAppearance) => {
       const dummy = new THREE.Group(); dummy.position.set(x, 0, z);
       dummy.userData.health = 150; dummy.userData.maxHealth = 150;
@@ -500,12 +523,15 @@ export function FpsGame() {
       dummy.userData.rig = [] as { kind: "arm" | "leg"; side: number; upper: THREE.Mesh; lower: THREE.Mesh; joint?: THREE.Mesh; end: THREE.Mesh }[];
       const dummyMat = material(targetable ? color : new THREE.Color(appearance.skin), 0.55, 0.15);
       const armorMat = material(targetable ? 0x20292b : new THREE.Color(appearance.armor), 0.7, 0.28);
-      const fabricMat = material(targetable ? 0x303a3b : new THREE.Color(appearance.uniform), 0.92, 0.02);
-      const pantsMat = material(targetable ? 0x303a3b : new THREE.Color(appearance.pants), 0.92, 0.02);
+      const uniformCamo = !targetable ? createCamoTexture(appearance.camo, appearance.uniform) : null;
+      const pantsCamo = !targetable ? createCamoTexture(appearance.camo, appearance.pants) : null;
+      const fabricMat = new THREE.MeshStandardMaterial({ color: uniformCamo ? 0xffffff : targetable ? 0x303a3b : appearance.uniform, map: uniformCamo, roughness: .92, metalness: .02 });
+      const pantsMat = new THREE.MeshStandardMaterial({ color: pantsCamo ? 0xffffff : targetable ? 0x303a3b : appearance.pants, map: pantsCamo, roughness: .92, metalness: .02 });
       const gloveMat = material(targetable ? 0x20292b : new THREE.Color(appearance.gloves), 0.72, 0.18);
       const bootMat = material(targetable ? 0x171d1f : new THREE.Color(appearance.boots), 0.8, 0.12);
       const darkMat = material(0x111719, .62, .38);
       const visorMat = new THREE.MeshStandardMaterial({ color: 0x76b9c7, emissive: 0x173b43, emissiveIntensity: 0.8, metalness: 0.65, roughness: 0.18 });
+      const nvgLensMat = new THREE.MeshStandardMaterial({ color: 0x18221d, emissive: 0x4f8b62, emissiveIntensity: .65, metalness: .45, roughness: .16 });
       const addLimb = (geometry: THREE.BufferGeometry, px: number, py: number, pz: number, multiplier = 1, partMaterial: THREE.Material = dummyMat) => {
         const mesh = new THREE.Mesh(geometry, partMaterial); mesh.position.set(px, py, pz); mesh.castShadow = true;
         if (targetable) { mesh.userData.dummy = dummy; mesh.userData.damageMultiplier = multiplier; }
@@ -538,13 +564,25 @@ export function FpsGame() {
       const helmetScale = !targetable && appearance.helmet === "LIGHT" ? 0.92 : !targetable && appearance.helmet === "HEAVY" ? 1.1 : 1;
       const helmet = addHeadLimb(new THREE.SphereGeometry(0.265, 16, 8, 0, Math.PI * 2, 0, Math.PI * 0.54), 0, .34, .01, 2, armorMat);
       helmet.scale.set(helmetScale, !targetable && appearance.helmet === "HEAVY" ? 1.08 : 1, helmetScale);
-      if (targetable || appearance.faceGear === "GOGGLES") addHeadLimb(new THREE.BoxGeometry(0.34, 0.095, 0.04), 0, .26, -.222, 2, visorMat);
+      if (targetable || appearance.faceGear === "GOGGLES") {
+        addHeadLimb(new THREE.BoxGeometry(.38, .115, .035), 0, .26, -.225, 2, darkMat);
+        [-.1, .1].forEach((side) => addHeadLimb(new THREE.BoxGeometry(.16, .075, .018), side, .26, -.248, 2, visorMat));
+      }
       if (!targetable && appearance.faceGear === "MASK") addHeadLimb(new THREE.BoxGeometry(.29, .2, .08), 0, .16, -.22, 2, fabricMat);
-      if (targetable || appearance.headAccessory === "HEADSET") addHeadLimb(new THREE.BoxGeometry(0.055, 0.18, 0.08), -.255, .26, 0, 2, armorMat);
+      if (targetable || appearance.headAccessory === "HEADSET") {
+        [-1, 1].forEach((side) => addHeadLimb(new THREE.BoxGeometry(.065, .18, .11), side * .255, .25, 0, 2, darkMat));
+        const band = addHeadLimb(new THREE.TorusGeometry(.265, .018, 7, 18, Math.PI), 0, .32, 0, 2, darkMat); band.rotation.z = Math.PI;
+        const mic = addHeadLimb(new THREE.CylinderGeometry(.012, .012, .24, 7), -.28, .16, -.08, 2, darkMat); mic.rotation.x = -.7;
+        addHeadLimb(new THREE.SphereGeometry(.025, 8, 6), -.28, .08, -.16, 2, darkMat);
+      }
       if (!targetable && appearance.headAccessory === "NVG") {
-        addHeadLimb(new THREE.BoxGeometry(.24, .07, .09), 0, .36, -.23, 2, armorMat);
-        addHeadLimb(new THREE.CylinderGeometry(.045, .055, .16, 9), -.075, .31, -.31, 2, darkMat).rotation.x = Math.PI / 2;
-        addHeadLimb(new THREE.CylinderGeometry(.045, .055, .16, 9), .075, .31, -.31, 2, darkMat).rotation.x = Math.PI / 2;
+        addHeadLimb(new THREE.BoxGeometry(.22, .075, .055), 0, .38, -.245, 2, armorMat);
+        const hinge = addHeadLimb(new THREE.CylinderGeometry(.035, .035, .16, 10), 0, .34, -.29, 2, darkMat); hinge.rotation.z = Math.PI / 2;
+        addHeadLimb(new THREE.BoxGeometry(.27, .055, .09), 0, .29, -.33, 2, darkMat);
+        [-.115, .115].forEach((side) => {
+          const tube = addHeadLimb(new THREE.CylinderGeometry(.052, .065, .2, 12), side, .27, -.405, 2, darkMat); tube.rotation.x = Math.PI / 2;
+          const lens = addHeadLimb(new THREE.CylinderGeometry(.043, .043, .012, 12), side, .27, -.51, 2, nvgLensMat); lens.rotation.x = Math.PI / 2;
+        });
       }
       // Segmented arms, shoulder armor and gloves.
       [-1, 1].forEach((side) => {
@@ -1187,7 +1225,7 @@ export function FpsGame() {
     };
     const refreshTeammateMarkers = () => remotePlayers.forEach((avatar) => { const marker = avatar.userData.teammateMarker as THREE.Sprite | undefined; if (marker) marker.visible = teamModeActive() && avatar.userData.remoteTeam === localNetworkTeam && avatar.visible; });
     const upsertRemotePlayer = (state: RemoteState) => {
-      const appearance: PlayerAppearance = { ...localAppearance, skin: state.skin ?? localAppearance.skin, uniform: state.uniform ?? localAppearance.uniform, armor: state.armor ?? localAppearance.armor, helmet: state.helmet ?? localAppearance.helmet, faceGear: state.faceGear ?? localAppearance.faceGear, headAccessory: state.headAccessory ?? localAppearance.headAccessory, chestRig: state.chestRig ?? localAppearance.chestRig, backpack: state.backpack ?? localAppearance.backpack, pants: state.pants ?? localAppearance.pants, gloves: state.gloves ?? localAppearance.gloves, boots: state.boots ?? localAppearance.boots };
+      const appearance: PlayerAppearance = { ...localAppearance, skin: state.skin ?? localAppearance.skin, uniform: state.uniform ?? localAppearance.uniform, camo: state.camo ?? localAppearance.camo, armor: state.armor ?? localAppearance.armor, helmet: state.helmet ?? localAppearance.helmet, faceGear: state.faceGear ?? localAppearance.faceGear, headAccessory: state.headAccessory ?? localAppearance.headAccessory, chestRig: state.chestRig ?? localAppearance.chestRig, backpack: state.backpack ?? localAppearance.backpack, pants: state.pants ?? localAppearance.pants, gloves: state.gloves ?? localAppearance.gloves, boots: state.boots ?? localAppearance.boots };
       const avatarSignature = JSON.stringify([appearance, state.primary ?? "VXR-4 CARBINE", state.secondary ?? "P9 SIDEARM", state.callsign ?? `OPERATOR ${state.id.slice(0,4).toUpperCase()}`]);
       let avatar = remotePlayers.get(state.id);
       if (avatar && avatar.userData.avatarSignature !== avatarSignature) {
@@ -2327,7 +2365,7 @@ export function FpsGame() {
       localPlayer.scale.set(1, 1, 1);
       if (multiplayerSocket?.readyState === WebSocket.OPEN && now - lastMultiplayerSend >= 66) {
         lastMultiplayerSend = now;
-        multiplayerSocket.send(JSON.stringify({ type: "state", x: playerPosition.x, y: playerPosition.y, z: playerPosition.z, yaw, movement: localPlayer.userData.movement, crouching: isCrouching, prone: isProne, slot: currentSlot, primary, secondary, skin: characterSkin, uniform: characterUniform, armor: characterArmor, helmet: characterHelmet, faceGear, headAccessory, chestRig, backpack, pants: pantsColor, gloves: gloveColor, boots: bootColor, callsign:playerCallsignRef.current }));
+        multiplayerSocket.send(JSON.stringify({ type: "state", x: playerPosition.x, y: playerPosition.y, z: playerPosition.z, yaw, movement: localPlayer.userData.movement, crouching: isCrouching, prone: isProne, slot: currentSlot, primary, secondary, skin: characterSkin, uniform: characterUniform, camo: camoPattern, armor: characterArmor, helmet: characterHelmet, faceGear, headAccessory, chestRig, backpack, pants: pantsColor, gloves: gloveColor, boots: bootColor, callsign:playerCallsignRef.current }));
       }
       if (isThirdPerson) {
         const orbitDistance = 4.2;
@@ -2397,7 +2435,7 @@ export function FpsGame() {
       renderer.dispose();
       mount.removeChild(renderer.domElement);
     };
-  }, [sessionId, started, selectedSector, selectedMap, primary, secondary, medical, utility, characterSkin, characterUniform, characterArmor, characterHelmet, faceGear, headAccessory, chestRig, backpack, pantsColor, gloveColor, bootColor, weaponSight, muzzleAttachment, tacticalAttachment, magazineAttachment, fireControlAttachment, secondarySight, secondaryMuzzle, secondaryTactical, secondaryMagazine, secondaryFireControl]);
+  }, [sessionId, started, selectedSector, selectedMap, primary, secondary, medical, utility, characterSkin, characterUniform, camoPattern, characterArmor, characterHelmet, faceGear, headAccessory, chestRig, backpack, pantsColor, gloveColor, bootColor, weaponSight, muzzleAttachment, tacticalAttachment, magazineAttachment, fireControlAttachment, secondarySight, secondaryMuzzle, secondaryTactical, secondaryMagazine, secondaryFireControl]);
 
   const equippedItems = [primary, secondary, medical, utility];
   const activeIsMelee = activeSlot === 2 && secondary === "COMBAT KNIFE";
@@ -2619,7 +2657,7 @@ export function FpsGame() {
         <div className="menu-rule" />
         {!started && (menuPage === "HOME" || menuPage === "CHARACTER") && <button className="character-preview" onClick={() => setMenuPage("CHARACTER")} aria-label="Customize character">
           <div className="preview-glow" />
-          <OperatorPreview3D skin={characterSkin} uniform={characterUniform} armor={characterArmor} helmet={characterHelmet} faceGear={faceGear} headAccessory={headAccessory} chestRig={chestRig} backpack={backpack} pants={pantsColor} gloves={gloveColor} boots={bootColor} />
+          <OperatorPreview3D skin={characterSkin} uniform={characterUniform} camo={camoPattern} armor={characterArmor} helmet={characterHelmet} faceGear={faceGear} headAccessory={headAccessory} chestRig={chestRig} backpack={backpack} pants={pantsColor} gloves={gloveColor} boots={bootColor} />
           <span>{menuPage === "CHARACTER" ? "OPERATOR PREVIEW" : "CLICK OPERATOR TO CUSTOMIZE"}</span>
         </button>}
         <section className="menu-card">
@@ -2729,6 +2767,7 @@ export function FpsGame() {
             <CharacterOption label="UNIFORM" value={characterUniform} options={[
               ["#303a3b", "URBAN"], ["#394331", "FOREST"], ["#514839", "DESERT"], ["#26374a", "NAVY"]
             ]} onSelect={setCharacterUniform} />
+            <GearOption label="CAMOUFLAGE PATTERN" value={camoPattern} options={["SOLID", "WOODLAND", "MULTICAM", "DIGITAL", "URBAN CAMO"]} onSelect={(value) => setCamoPattern(value as CamoPattern)} />
             <CharacterOption label="PANTS" value={pantsColor} options={[
               ["#303a3b", "URBAN"], ["#35422e", "WOODLAND"], ["#665944", "DESERT"], ["#242c35", "BLACK"]
             ]} onSelect={setPantsColor} />
@@ -2804,7 +2843,7 @@ export function FpsGame() {
   );
 }
 
-function OperatorPreview3D({ skin, uniform, armor, helmet, faceGear, headAccessory, chestRig, backpack, pants, gloves, boots }: { skin: string; uniform: string; armor: string; helmet: string; faceGear: string; headAccessory: string; chestRig: string; backpack: string; pants: string; gloves: string; boots: string }) {
+function OperatorPreview3D({ skin, uniform, camo, armor, helmet, faceGear, headAccessory, chestRig, backpack, pants, gloves, boots }: { skin: string; uniform: string; camo: CamoPattern; armor: string; helmet: string; faceGear: string; headAccessory: string; chestRig: string; backpack: string; pants: string; gloves: string; boots: string }) {
   const previewRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const mount = previewRef.current;
@@ -2821,7 +2860,12 @@ function OperatorPreview3D({ skin, uniform, armor, helmet, faceGear, headAccesso
     const rim = new THREE.PointLight(0x54cce8, 14, 8); rim.position.set(3, 2.5, -2); scene.add(rim);
     const operator = new THREE.Group(); operator.position.y = -1.2; scene.add(operator);
     const mat = (color: string | number, roughness = .72, metalness = .08) => new THREE.MeshStandardMaterial({ color, roughness, metalness });
-    const skinMat = mat(skin, .62), uniformMat = mat(uniform, .9), armorMat = mat(armor, .55, .28), pantsMat = mat(pants, .9), gloveMat = mat(gloves, .7, .16), bootMat = mat(boots, .78, .14), darkMat = mat(0x111719, .65, .35);
+    const skinMat = mat(skin, .62);
+    const previewUniformCamo = createCamoTexture(camo, uniform), previewPantsCamo = createCamoTexture(camo, pants);
+    const uniformMat = new THREE.MeshStandardMaterial({ color: previewUniformCamo ? 0xffffff : uniform, map: previewUniformCamo, roughness: .9 });
+    const pantsMat = new THREE.MeshStandardMaterial({ color: previewPantsCamo ? 0xffffff : pants, map: previewPantsCamo, roughness: .9 });
+    const armorMat = mat(armor, .55, .28), gloveMat = mat(gloves, .7, .16), bootMat = mat(boots, .78, .14), darkMat = mat(0x111719, .65, .35);
+    const nvgLensMat = new THREE.MeshStandardMaterial({ color: 0x17251d, emissive: 0x65a775, emissiveIntensity: .85, roughness: .14, metalness: .5 });
     const add = (geometry: THREE.BufferGeometry, material: THREE.Material, x: number, y: number, z: number) => {
       const mesh = new THREE.Mesh(geometry, material); mesh.position.set(x, y, z); mesh.castShadow = true; operator.add(mesh); return mesh;
     };
@@ -2836,10 +2880,26 @@ function OperatorPreview3D({ skin, uniform, armor, helmet, faceGear, headAccesso
     const helmetSize = helmet === "LIGHT" ? .29 : helmet === "HEAVY" ? .36 : .33;
     const helmetMesh = add(new THREE.SphereGeometry(helmetSize, 20, 10, 0, Math.PI * 2, 0, Math.PI * .55), armorMat, 0, 2.57, 0);
     if (helmet === "HEAVY") helmetMesh.scale.y = 1.08;
-    if (faceGear === "GOGGLES") add(new THREE.BoxGeometry(helmet === "HEAVY" ? .48 : .4, .105, .055), mat(0x5ca8b5, .18, .65), 0, 2.48, .275);
+    if (faceGear === "GOGGLES") {
+      add(new THREE.BoxGeometry(helmet === "HEAVY" ? .5 : .43, .13, .045), darkMat, 0, 2.48, .276);
+      [-.11, .11].forEach((side) => add(new THREE.BoxGeometry(.18, .085, .02), mat(0x5ca8b5, .18, .65), side, 2.48, .307));
+    }
     if (faceGear === "MASK") add(new THREE.BoxGeometry(.34, .22, .09), uniformMat, 0, 2.36, .265);
-    if (headAccessory === "HEADSET") add(new THREE.BoxGeometry(.07, .22, .1), armorMat, -.3, 2.49, 0);
-    if (headAccessory === "NVG") { add(new THREE.BoxGeometry(.28, .08, .1), armorMat, 0, 2.62, .25); add(new THREE.CylinderGeometry(.05, .06, .18, 9), darkMat, -.08, 2.55, .34).rotation.x = Math.PI / 2; add(new THREE.CylinderGeometry(.05, .06, .18, 9), darkMat, .08, 2.55, .34).rotation.x = Math.PI / 2; }
+    if (headAccessory === "HEADSET") {
+      [-1, 1].forEach((side) => add(new THREE.BoxGeometry(.08, .24, .12), darkMat, side * .31, 2.48, 0));
+      const band = add(new THREE.TorusGeometry(.32, .022, 8, 22, Math.PI), darkMat, 0, 2.57, 0); band.rotation.z = Math.PI;
+      const mic = add(new THREE.CylinderGeometry(.014, .014, .3, 8), darkMat, -.34, 2.34, .13); mic.rotation.x = .85; mic.rotation.z = -.18;
+      add(new THREE.SphereGeometry(.032, 9, 7), darkMat, -.34, 2.23, .23);
+    }
+    if (headAccessory === "NVG") {
+      add(new THREE.BoxGeometry(.25, .085, .065), armorMat, 0, 2.64, .285);
+      const hinge = add(new THREE.CylinderGeometry(.04, .04, .18, 12), darkMat, 0, 2.6, .34); hinge.rotation.z = Math.PI / 2;
+      add(new THREE.BoxGeometry(.31, .07, .1), darkMat, 0, 2.54, .39);
+      [-.13, .13].forEach((side) => {
+        const tube = add(new THREE.CylinderGeometry(.06, .075, .24, 14), darkMat, side, 2.5, .5); tube.rotation.x = Math.PI / 2;
+        const lens = add(new THREE.CylinderGeometry(.052, .052, .016, 14), nvgLensMat, side, 2.5, .628); lens.rotation.x = Math.PI / 2;
+      });
+    }
     [-1, 1].forEach((side) => {
       if (chestRig !== "LIGHT") add(new THREE.SphereGeometry(.19, 12, 9), armorMat, side * .49, 1.9, 0);
       const upper = add(new THREE.CylinderGeometry(.12, .105, .5, 10), uniformMat, side * .53, 1.62, 0); upper.rotation.z = side * -.07;
@@ -2859,7 +2919,7 @@ function OperatorPreview3D({ skin, uniform, armor, helmet, faceGear, headAccesso
     const resize = () => { if (!mount.clientWidth || !mount.clientHeight) return; camera.aspect = mount.clientWidth / mount.clientHeight; camera.updateProjectionMatrix(); renderer.setSize(mount.clientWidth, mount.clientHeight); };
     window.addEventListener("resize", resize);
     return () => { cancelAnimationFrame(frame); window.removeEventListener("resize", resize); renderer.dispose(); scene.traverse((object) => { if (object instanceof THREE.Mesh) { object.geometry.dispose(); if (Array.isArray(object.material)) object.material.forEach((m) => m.dispose()); else object.material.dispose(); } }); if (renderer.domElement.parentElement === mount) mount.removeChild(renderer.domElement); };
-  }, [skin, uniform, armor, helmet, faceGear, headAccessory, chestRig, backpack, pants, gloves, boots]);
+  }, [skin, uniform, camo, armor, helmet, faceGear, headAccessory, chestRig, backpack, pants, gloves, boots]);
   return <div ref={previewRef} className="operator-preview-3d" />;
 }
 
