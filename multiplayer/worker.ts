@@ -15,6 +15,7 @@ type PlayerState = {
   skin: string;
   uniform: string;
   camo: string;
+  accessories: string[];
   armor: string;
   helmet: string;
   faceGear: string;
@@ -120,7 +121,7 @@ export class GameRoom extends DurableObject {
     const team: PlayerState["team"] = playerNumber % 2 === 0 ? "ALPHA" : "BRAVO";
     const spawn = chooseSpawn(meta, team, existingPlayers);
     const spawnX = spawn.x, spawnZ = spawn.z;
-    const initial: PlayerState = { id, x: spawnX, y: 1.7, z: spawnZ, yaw: spawnZ > 0 ? 0 : Math.PI, movement: "static", crouching: false, prone: false, slot: 1, primary: "VXR-4 CARBINE", secondary: "P9 SIDEARM", skin: "#a9795e", uniform: "#303a3b", camo: "SOLID", armor: "#20292b", helmet: "TACTICAL", faceGear: "GOGGLES", headAccessory: "HEADSET", chestRig: "PLATE CARRIER", backpack: "ASSAULT PACK", pants: "#303a3b", gloves: "#20292b", boots: "#151b1d", kills: 0, deaths: 0, health: 100, team, objectiveScore: 0, spawnProtectedUntil: Date.now() + 3000, callsign:`OPERATOR ${id.slice(0,4).toUpperCase()}` };
+    const initial: PlayerState = { id, x: spawnX, y: 1.7, z: spawnZ, yaw: spawnZ > 0 ? 0 : Math.PI, movement: "static", crouching: false, prone: false, slot: 1, primary: "VXR-4 CARBINE", secondary: "P9 SIDEARM", skin: "#a9795e", uniform: "#303a3b", camo: "SOLID", accessories: ["GOGGLES", "HEADSET"], armor: "#20292b", helmet: "TACTICAL", faceGear: "GOGGLES", headAccessory: "HEADSET", chestRig: "PLATE CARRIER", backpack: "ASSAULT PACK", pants: "#303a3b", gloves: "#20292b", boots: "#151b1d", kills: 0, deaths: 0, health: 100, team, objectiveScore: 0, spawnProtectedUntil: Date.now() + 3000, callsign:`OPERATOR ${id.slice(0,4).toUpperCase()}` };
     this.ctx.acceptWebSocket(server);
     server.serializeAttachment({ id, state: initial, isAdmin: false, godMode: false, damageMultiplier: 1 } satisfies SocketAttachment);
 
@@ -283,7 +284,9 @@ export class GameRoom extends DurableObject {
       slot: typeof packet.slot === "number" && packet.slot >= 1 && packet.slot <= 4 ? packet.slot : attachment.state.slot,
       primary: typeof packet.primary === "string" ? packet.primary.slice(0, 40) : attachment.state.primary,
       secondary: typeof packet.secondary === "string" ? packet.secondary.slice(0, 40) : attachment.state.secondary,
-      skin: safeString(packet.skin, attachment.state.skin, 16), uniform: safeString(packet.uniform, attachment.state.uniform, 16), camo: safeString(packet.camo, attachment.state.camo, 24), armor: safeString(packet.armor, attachment.state.armor, 16),
+      skin: safeString(packet.skin, attachment.state.skin, 16), uniform: safeString(packet.uniform, attachment.state.uniform, 16), camo: safeString(packet.camo, attachment.state.camo, 24),
+      accessories: Array.isArray(packet.accessories) ? packet.accessories.filter((item): item is string => typeof item === "string" && ["GOGGLES", "MASK", "HEADSET", "NVG"].includes(item)).slice(0, 4) : attachment.state.accessories,
+      armor: safeString(packet.armor, attachment.state.armor, 16),
       helmet: safeString(packet.helmet, attachment.state.helmet, 24), faceGear: safeString(packet.faceGear, attachment.state.faceGear, 24), headAccessory: safeString(packet.headAccessory, attachment.state.headAccessory, 24),
       chestRig: safeString(packet.chestRig, attachment.state.chestRig, 24), backpack: safeString(packet.backpack, attachment.state.backpack, 24),
       pants: safeString(packet.pants, attachment.state.pants, 16), gloves: safeString(packet.gloves, attachment.state.gloves, 16), boots: safeString(packet.boots, attachment.state.boots, 16),

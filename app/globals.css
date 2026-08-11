@@ -175,6 +175,7 @@ kbd:first-child { margin-left: 0; }
 .swatch-options button span { display:block; }.swatch-options button.selected,.helmet-options button.selected { color:#fff; border-color:#ff6336; background:rgba(255,99,54,.12); }
 .helmet-options { grid-template-columns:repeat(3,1fr); }.helmet-options button { height:45px; }
 .gear-editor-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }.gear-editor-grid .character-option { margin:0; }.gear-editor-grid .helmet-options { grid-template-columns:repeat(3,minmax(0,1fr)); }.gear-editor-grid .helmet-options button { min-width:0; padding:4px; font-size:6px; }
+.gear-editor-grid .accessory-option { grid-column:1 / -1; }.gear-editor-grid .accessory-option .helmet-options { grid-template-columns:repeat(4,minmax(0,1fr)); }.accessory-option button small { display:block; margin-top:5px; color:#617477; font-size:5px; letter-spacing:.08em; }.accessory-option button.selected small { color:#ff9a7c; }
 .loadout-panel { position:relative; z-index:2; width:min(920px,84vw); }
 .main-menu-screen:has(.loadout-panel) { align-items:flex-start; padding-top:5vh; overflow-y:auto; }
 .main-menu-screen:has(.loadout-panel) .menu-card { width:min(920px,88vw); }

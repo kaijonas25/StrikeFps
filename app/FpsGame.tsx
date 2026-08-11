@@ -24,10 +24,11 @@ type TacticalAttachment = "NONE" | "RED LASER" | "WHITE LIGHT";
 type MagazineAttachment = "STANDARD MAG" | "EXTENDED MAG" | "DRUM MAG";
 type FireControlAttachment = "STANDARD TRIGGER" | "BURST TRIGGER";
 type CamoPattern = "SOLID" | "WOODLAND" | "MULTICAM" | "DIGITAL" | "URBAN CAMO";
+type OperatorAccessory = "GOGGLES" | "MASK" | "HEADSET" | "NVG";
 type WeaponAttachments = { sight: SightAttachment; muzzle: MuzzleAttachment; tactical: TacticalAttachment; magazine: MagazineAttachment; fireControl: FireControlAttachment };
-type PlayerAppearance = { skin: string; uniform: string; camo: CamoPattern; armor: string; helmet: string; faceGear: string; headAccessory: string; chestRig: string; backpack: string; pants: string; gloves: string; boots: string };
+type PlayerAppearance = { skin: string; uniform: string; camo: CamoPattern; accessories: OperatorAccessory[]; armor: string; helmet: string; faceGear: string; headAccessory: string; chestRig: string; backpack: string; pants: string; gloves: string; boots: string };
 type SavedLoadout = { primary: string; secondary: string; medical: string; utility: string; weaponSight: SightAttachment; muzzleAttachment: MuzzleAttachment; tacticalAttachment: TacticalAttachment; magazineAttachment: MagazineAttachment; fireControlAttachment: FireControlAttachment; secondarySight: SightAttachment; secondaryMuzzle: MuzzleAttachment; secondaryTactical: TacticalAttachment; secondaryMagazine: MagazineAttachment; secondaryFireControl: FireControlAttachment };
-type SavedOperator = { characterSkin: string; characterUniform: string; camoPattern?: CamoPattern; characterArmor: string; characterHelmet: "TACTICAL" | "LIGHT" | "HEAVY"; faceGear: "NONE" | "GOGGLES" | "MASK"; headAccessory: "NONE" | "HEADSET" | "NVG"; chestRig: "LIGHT" | "PLATE CARRIER" | "HEAVY"; backpack: "NONE" | "ASSAULT PACK" | "RADIO PACK"; pantsColor: string; gloveColor: string; bootColor: string };
+type SavedOperator = { characterSkin: string; characterUniform: string; camoPattern?: CamoPattern; accessories?: OperatorAccessory[]; characterArmor: string; characterHelmet: "TACTICAL" | "LIGHT" | "HEAVY"; faceGear: "NONE" | "GOGGLES" | "MASK"; headAccessory: "NONE" | "HEADSET" | "NVG"; chestRig: "LIGHT" | "PLATE CARRIER" | "HEAVY"; backpack: "NONE" | "ASSAULT PACK" | "RADIO PACK"; pantsColor: string; gloveColor: string; bootColor: string };
 type AdminCommand = "refill_ammo" | "refill_medical" | "refill_utility" | "restore_health" | "kill_targets";
 
 const attachmentMobilityPenalty = (attachments: WeaponAttachments) =>
@@ -204,8 +205,7 @@ export function FpsGame() {
   const [camoPattern, setCamoPattern] = useState<CamoPattern>("SOLID");
   const [characterArmor, setCharacterArmor] = useState("#20292b");
   const [characterHelmet, setCharacterHelmet] = useState<"TACTICAL" | "LIGHT" | "HEAVY">("TACTICAL");
-  const [faceGear, setFaceGear] = useState<"NONE" | "GOGGLES" | "MASK">("GOGGLES");
-  const [headAccessory, setHeadAccessory] = useState<"NONE" | "HEADSET" | "NVG">("HEADSET");
+  const [equippedAccessories, setEquippedAccessories] = useState<OperatorAccessory[]>(["GOGGLES", "HEADSET"]);
   const [chestRig, setChestRig] = useState<"LIGHT" | "PLATE CARRIER" | "HEAVY">("PLATE CARRIER");
   const [backpack, setBackpack] = useState<"NONE" | "ASSAULT PACK" | "RADIO PACK">("ASSAULT PACK");
   const [pantsColor, setPantsColor] = useState("#303a3b");
@@ -265,7 +265,8 @@ export function FpsGame() {
         if (operator.characterSkin) setCharacterSkin(operator.characterSkin); if (operator.characterUniform) setCharacterUniform(operator.characterUniform);
         if (operator.camoPattern) setCamoPattern(operator.camoPattern);
         if (operator.characterArmor) setCharacterArmor(operator.characterArmor); if (operator.characterHelmet) setCharacterHelmet(operator.characterHelmet);
-        if (operator.faceGear) setFaceGear(operator.faceGear); if (operator.headAccessory) setHeadAccessory(operator.headAccessory);
+        if (operator.accessories) setEquippedAccessories(operator.accessories);
+        else setEquippedAccessories([operator.faceGear, operator.headAccessory].filter((item): item is OperatorAccessory => item && item !== "NONE"));
         if (operator.chestRig) setChestRig(operator.chestRig); if (operator.backpack) setBackpack(operator.backpack);
         if (operator.pantsColor) setPantsColor(operator.pantsColor); if (operator.gloveColor) setGloveColor(operator.gloveColor); if (operator.bootColor) setBootColor(operator.bootColor);
       }
@@ -312,7 +313,9 @@ export function FpsGame() {
     if (!user) { setAccountSaveStatus("idle"); return; }
     setAccountSaveStatus("saving");
     const loadout: SavedLoadout = { primary, secondary, medical, utility, weaponSight, muzzleAttachment, tacticalAttachment, magazineAttachment, fireControlAttachment, secondarySight, secondaryMuzzle, secondaryTactical, secondaryMagazine, secondaryFireControl };
-    const operator: SavedOperator = { characterSkin, characterUniform, camoPattern, characterArmor, characterHelmet, faceGear, headAccessory, chestRig, backpack, pantsColor, gloveColor, bootColor };
+    const savedFaceGear: SavedOperator["faceGear"] = equippedAccessories.includes("MASK") ? "MASK" : equippedAccessories.includes("GOGGLES") ? "GOGGLES" : "NONE";
+    const savedHeadAccessory: SavedOperator["headAccessory"] = equippedAccessories.includes("NVG") ? "NVG" : equippedAccessories.includes("HEADSET") ? "HEADSET" : "NONE";
+    const operator: SavedOperator = { characterSkin, characterUniform, camoPattern, accessories: equippedAccessories, characterArmor, characterHelmet, faceGear: savedFaceGear, headAccessory: savedHeadAccessory, chestRig, backpack, pantsColor, gloveColor, bootColor };
     try {
       const token = await user.getIdToken();
       const response = await fetch("/api/player", { method: "PUT", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify(kind === "loadout" ? { loadout } : { operator }) });
@@ -515,7 +518,9 @@ export function FpsGame() {
 
     // Human-shaped test dummies with separate head and body hit zones.
     const dummies: THREE.Group[] = [];
-    const localAppearance: PlayerAppearance = { skin: characterSkin, uniform: characterUniform, camo: camoPattern, armor: characterArmor, helmet: characterHelmet, faceGear, headAccessory, chestRig, backpack, pants: pantsColor, gloves: gloveColor, boots: bootColor };
+    const localFaceGear = equippedAccessories.includes("MASK") ? "MASK" : equippedAccessories.includes("GOGGLES") ? "GOGGLES" : "NONE";
+    const localHeadAccessory = equippedAccessories.includes("NVG") ? "NVG" : equippedAccessories.includes("HEADSET") ? "HEADSET" : "NONE";
+    const localAppearance: PlayerAppearance = { skin: characterSkin, uniform: characterUniform, camo: camoPattern, accessories: equippedAccessories, armor: characterArmor, helmet: characterHelmet, faceGear: localFaceGear, headAccessory: localHeadAccessory, chestRig, backpack, pants: pantsColor, gloves: gloveColor, boots: bootColor };
     const addDummy = (x: number, z: number, color: number, movement: "static" | "walk" | "sprint" = "static", targetable = true, appearance: PlayerAppearance = localAppearance) => {
       const dummy = new THREE.Group(); dummy.position.set(x, 0, z);
       dummy.userData.health = 150; dummy.userData.maxHealth = 150;
@@ -564,18 +569,23 @@ export function FpsGame() {
       const helmetScale = !targetable && appearance.helmet === "LIGHT" ? 0.92 : !targetable && appearance.helmet === "HEAVY" ? 1.1 : 1;
       const helmet = addHeadLimb(new THREE.SphereGeometry(0.265, 16, 8, 0, Math.PI * 2, 0, Math.PI * 0.54), 0, .34, .01, 2, armorMat);
       helmet.scale.set(helmetScale, !targetable && appearance.helmet === "HEAVY" ? 1.08 : 1, helmetScale);
-      if (targetable || appearance.faceGear === "GOGGLES") {
+      if (targetable || appearance.accessories.includes("GOGGLES")) {
         addHeadLimb(new THREE.BoxGeometry(.38, .115, .035), 0, .26, -.225, 2, darkMat);
         [-.1, .1].forEach((side) => addHeadLimb(new THREE.BoxGeometry(.16, .075, .018), side, .26, -.248, 2, visorMat));
       }
-      if (!targetable && appearance.faceGear === "MASK") addHeadLimb(new THREE.BoxGeometry(.29, .2, .08), 0, .16, -.22, 2, fabricMat);
-      if (targetable || appearance.headAccessory === "HEADSET") {
+      if (!targetable && appearance.accessories.includes("MASK")) {
+        const mask = addHeadLimb(new THREE.SphereGeometry(.244, 16, 10, 0, Math.PI * 2, Math.PI * .28, Math.PI * .54), 0, .24, 0, 2, fabricMat);
+        mask.scale.set(1.02, 1.02, 1.05);
+        addHeadLimb(new THREE.BoxGeometry(.3, .2, .045), 0, .15, -.235, 2, fabricMat);
+        [-1, 1].forEach((side) => { const strap = addHeadLimb(new THREE.BoxGeometry(.025, .16, .37), side * .19, .2, -.02, 2, darkMat); strap.rotation.z = side * .08; });
+      }
+      if (targetable || appearance.accessories.includes("HEADSET")) {
         [-1, 1].forEach((side) => addHeadLimb(new THREE.BoxGeometry(.065, .18, .11), side * .255, .25, 0, 2, darkMat));
         const band = addHeadLimb(new THREE.TorusGeometry(.265, .018, 7, 18, Math.PI), 0, .32, 0, 2, darkMat); band.rotation.z = Math.PI;
         const mic = addHeadLimb(new THREE.CylinderGeometry(.012, .012, .24, 7), -.28, .16, -.08, 2, darkMat); mic.rotation.x = -.7;
         addHeadLimb(new THREE.SphereGeometry(.025, 8, 6), -.28, .08, -.16, 2, darkMat);
       }
-      if (!targetable && appearance.headAccessory === "NVG") {
+      if (!targetable && appearance.accessories.includes("NVG")) {
         addHeadLimb(new THREE.BoxGeometry(.22, .075, .055), 0, .38, -.245, 2, armorMat);
         const hinge = addHeadLimb(new THREE.CylinderGeometry(.035, .035, .16, 10), 0, .34, -.29, 2, darkMat); hinge.rotation.z = Math.PI / 2;
         addHeadLimb(new THREE.BoxGeometry(.27, .055, .09), 0, .29, -.33, 2, darkMat);
@@ -1225,7 +1235,11 @@ export function FpsGame() {
     };
     const refreshTeammateMarkers = () => remotePlayers.forEach((avatar) => { const marker = avatar.userData.teammateMarker as THREE.Sprite | undefined; if (marker) marker.visible = teamModeActive() && avatar.userData.remoteTeam === localNetworkTeam && avatar.visible; });
     const upsertRemotePlayer = (state: RemoteState) => {
-      const appearance: PlayerAppearance = { ...localAppearance, skin: state.skin ?? localAppearance.skin, uniform: state.uniform ?? localAppearance.uniform, camo: state.camo ?? localAppearance.camo, armor: state.armor ?? localAppearance.armor, helmet: state.helmet ?? localAppearance.helmet, faceGear: state.faceGear ?? localAppearance.faceGear, headAccessory: state.headAccessory ?? localAppearance.headAccessory, chestRig: state.chestRig ?? localAppearance.chestRig, backpack: state.backpack ?? localAppearance.backpack, pants: state.pants ?? localAppearance.pants, gloves: state.gloves ?? localAppearance.gloves, boots: state.boots ?? localAppearance.boots };
+      const legacyAccessories = [state.faceGear, state.headAccessory].filter((item): item is OperatorAccessory => item === "GOGGLES" || item === "MASK" || item === "HEADSET" || item === "NVG");
+      const remoteAccessories = Array.isArray(state.accessories)
+        ? state.accessories.filter((item): item is OperatorAccessory => item === "GOGGLES" || item === "MASK" || item === "HEADSET" || item === "NVG")
+        : legacyAccessories.length ? legacyAccessories : localAppearance.accessories;
+      const appearance: PlayerAppearance = { ...localAppearance, skin: state.skin ?? localAppearance.skin, uniform: state.uniform ?? localAppearance.uniform, camo: state.camo ?? localAppearance.camo, accessories: remoteAccessories, armor: state.armor ?? localAppearance.armor, helmet: state.helmet ?? localAppearance.helmet, faceGear: state.faceGear ?? localAppearance.faceGear, headAccessory: state.headAccessory ?? localAppearance.headAccessory, chestRig: state.chestRig ?? localAppearance.chestRig, backpack: state.backpack ?? localAppearance.backpack, pants: state.pants ?? localAppearance.pants, gloves: state.gloves ?? localAppearance.gloves, boots: state.boots ?? localAppearance.boots };
       const avatarSignature = JSON.stringify([appearance, state.primary ?? "VXR-4 CARBINE", state.secondary ?? "P9 SIDEARM", state.callsign ?? `OPERATOR ${state.id.slice(0,4).toUpperCase()}`]);
       let avatar = remotePlayers.get(state.id);
       if (avatar && avatar.userData.avatarSignature !== avatarSignature) {
@@ -2365,7 +2379,7 @@ export function FpsGame() {
       localPlayer.scale.set(1, 1, 1);
       if (multiplayerSocket?.readyState === WebSocket.OPEN && now - lastMultiplayerSend >= 66) {
         lastMultiplayerSend = now;
-        multiplayerSocket.send(JSON.stringify({ type: "state", x: playerPosition.x, y: playerPosition.y, z: playerPosition.z, yaw, movement: localPlayer.userData.movement, crouching: isCrouching, prone: isProne, slot: currentSlot, primary, secondary, skin: characterSkin, uniform: characterUniform, camo: camoPattern, armor: characterArmor, helmet: characterHelmet, faceGear, headAccessory, chestRig, backpack, pants: pantsColor, gloves: gloveColor, boots: bootColor, callsign:playerCallsignRef.current }));
+        multiplayerSocket.send(JSON.stringify({ type: "state", x: playerPosition.x, y: playerPosition.y, z: playerPosition.z, yaw, movement: localPlayer.userData.movement, crouching: isCrouching, prone: isProne, slot: currentSlot, primary, secondary, skin: characterSkin, uniform: characterUniform, camo: camoPattern, accessories: equippedAccessories, armor: characterArmor, helmet: characterHelmet, faceGear: localFaceGear, headAccessory: localHeadAccessory, chestRig, backpack, pants: pantsColor, gloves: gloveColor, boots: bootColor, callsign:playerCallsignRef.current }));
       }
       if (isThirdPerson) {
         const orbitDistance = 4.2;
@@ -2435,7 +2449,7 @@ export function FpsGame() {
       renderer.dispose();
       mount.removeChild(renderer.domElement);
     };
-  }, [sessionId, started, selectedSector, selectedMap, primary, secondary, medical, utility, characterSkin, characterUniform, camoPattern, characterArmor, characterHelmet, faceGear, headAccessory, chestRig, backpack, pantsColor, gloveColor, bootColor, weaponSight, muzzleAttachment, tacticalAttachment, magazineAttachment, fireControlAttachment, secondarySight, secondaryMuzzle, secondaryTactical, secondaryMagazine, secondaryFireControl]);
+  }, [sessionId, started, selectedSector, selectedMap, primary, secondary, medical, utility, characterSkin, characterUniform, camoPattern, equippedAccessories, characterArmor, characterHelmet, chestRig, backpack, pantsColor, gloveColor, bootColor, weaponSight, muzzleAttachment, tacticalAttachment, magazineAttachment, fireControlAttachment, secondarySight, secondaryMuzzle, secondaryTactical, secondaryMagazine, secondaryFireControl]);
 
   const equippedItems = [primary, secondary, medical, utility];
   const activeIsMelee = activeSlot === 2 && secondary === "COMBAT KNIFE";
@@ -2657,7 +2671,7 @@ export function FpsGame() {
         <div className="menu-rule" />
         {!started && (menuPage === "HOME" || menuPage === "CHARACTER") && <button className="character-preview" onClick={() => setMenuPage("CHARACTER")} aria-label="Customize character">
           <div className="preview-glow" />
-          <OperatorPreview3D skin={characterSkin} uniform={characterUniform} camo={camoPattern} armor={characterArmor} helmet={characterHelmet} faceGear={faceGear} headAccessory={headAccessory} chestRig={chestRig} backpack={backpack} pants={pantsColor} gloves={gloveColor} boots={bootColor} />
+          <OperatorPreview3D skin={characterSkin} uniform={characterUniform} camo={camoPattern} accessories={equippedAccessories} armor={characterArmor} helmet={characterHelmet} chestRig={chestRig} backpack={backpack} pants={pantsColor} gloves={gloveColor} boots={bootColor} />
           <span>{menuPage === "CHARACTER" ? "OPERATOR PREVIEW" : "CLICK OPERATOR TO CUSTOMIZE"}</span>
         </button>}
         <section className="menu-card">
@@ -2778,8 +2792,7 @@ export function FpsGame() {
             <CharacterOption label="BOOTS" value={bootColor} options={[["#151b1d", "BLACK"], ["#493d31", "BROWN"], ["#555142", "FIELD"]]} onSelect={setBootColor} />
             <div className="gear-editor-grid">
               <GearOption label="HELMET" value={characterHelmet} options={["LIGHT", "TACTICAL", "HEAVY"]} onSelect={(value) => setCharacterHelmet(value as typeof characterHelmet)} />
-              <GearOption label="FACE GEAR" value={faceGear} options={["NONE", "GOGGLES", "MASK"]} onSelect={(value) => setFaceGear(value as typeof faceGear)} />
-              <GearOption label="HEAD ACCESSORY" value={headAccessory} options={["NONE", "HEADSET", "NVG"]} onSelect={(value) => setHeadAccessory(value as typeof headAccessory)} />
+              <AccessoryOption value={equippedAccessories} onToggle={(accessory) => setEquippedAccessories((current) => current.includes(accessory) ? current.filter((item) => item !== accessory) : [...current, accessory])} />
               <GearOption label="CHEST RIG" value={chestRig} options={["LIGHT", "PLATE CARRIER", "HEAVY"]} onSelect={(value) => setChestRig(value as typeof chestRig)} />
               <GearOption label="BACKPACK" value={backpack} options={["NONE", "ASSAULT PACK", "RADIO PACK"]} onSelect={(value) => setBackpack(value as typeof backpack)} />
             </div>
@@ -2843,7 +2856,7 @@ export function FpsGame() {
   );
 }
 
-function OperatorPreview3D({ skin, uniform, camo, armor, helmet, faceGear, headAccessory, chestRig, backpack, pants, gloves, boots }: { skin: string; uniform: string; camo: CamoPattern; armor: string; helmet: string; faceGear: string; headAccessory: string; chestRig: string; backpack: string; pants: string; gloves: string; boots: string }) {
+function OperatorPreview3D({ skin, uniform, camo, accessories, armor, helmet, chestRig, backpack, pants, gloves, boots }: { skin: string; uniform: string; camo: CamoPattern; accessories: OperatorAccessory[]; armor: string; helmet: string; chestRig: string; backpack: string; pants: string; gloves: string; boots: string }) {
   const previewRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const mount = previewRef.current;
@@ -2880,18 +2893,23 @@ function OperatorPreview3D({ skin, uniform, camo, armor, helmet, faceGear, headA
     const helmetSize = helmet === "LIGHT" ? .29 : helmet === "HEAVY" ? .36 : .33;
     const helmetMesh = add(new THREE.SphereGeometry(helmetSize, 20, 10, 0, Math.PI * 2, 0, Math.PI * .55), armorMat, 0, 2.57, 0);
     if (helmet === "HEAVY") helmetMesh.scale.y = 1.08;
-    if (faceGear === "GOGGLES") {
+    if (accessories.includes("GOGGLES")) {
       add(new THREE.BoxGeometry(helmet === "HEAVY" ? .5 : .43, .13, .045), darkMat, 0, 2.48, .276);
       [-.11, .11].forEach((side) => add(new THREE.BoxGeometry(.18, .085, .02), mat(0x5ca8b5, .18, .65), side, 2.48, .307));
     }
-    if (faceGear === "MASK") add(new THREE.BoxGeometry(.34, .22, .09), uniformMat, 0, 2.36, .265);
-    if (headAccessory === "HEADSET") {
+    if (accessories.includes("MASK")) {
+      const mask = add(new THREE.SphereGeometry(.288, 20, 14, 0, Math.PI * 2, Math.PI * .28, Math.PI * .54), uniformMat, 0, 2.46, 0);
+      mask.scale.set(1.02, 1.02, 1.06);
+      add(new THREE.BoxGeometry(.35, .23, .05), uniformMat, 0, 2.35, .275);
+      [-1, 1].forEach((side) => { const strap = add(new THREE.BoxGeometry(.03, .2, .43), darkMat, side * .225, 2.4, .01); strap.rotation.z = side * .08; });
+    }
+    if (accessories.includes("HEADSET")) {
       [-1, 1].forEach((side) => add(new THREE.BoxGeometry(.08, .24, .12), darkMat, side * .31, 2.48, 0));
       const band = add(new THREE.TorusGeometry(.32, .022, 8, 22, Math.PI), darkMat, 0, 2.57, 0); band.rotation.z = Math.PI;
       const mic = add(new THREE.CylinderGeometry(.014, .014, .3, 8), darkMat, -.34, 2.34, .13); mic.rotation.x = .85; mic.rotation.z = -.18;
       add(new THREE.SphereGeometry(.032, 9, 7), darkMat, -.34, 2.23, .23);
     }
-    if (headAccessory === "NVG") {
+    if (accessories.includes("NVG")) {
       add(new THREE.BoxGeometry(.25, .085, .065), armorMat, 0, 2.64, .285);
       const hinge = add(new THREE.CylinderGeometry(.04, .04, .18, 12), darkMat, 0, 2.6, .34); hinge.rotation.z = Math.PI / 2;
       add(new THREE.BoxGeometry(.31, .07, .1), darkMat, 0, 2.54, .39);
@@ -2919,7 +2937,7 @@ function OperatorPreview3D({ skin, uniform, camo, armor, helmet, faceGear, headA
     const resize = () => { if (!mount.clientWidth || !mount.clientHeight) return; camera.aspect = mount.clientWidth / mount.clientHeight; camera.updateProjectionMatrix(); renderer.setSize(mount.clientWidth, mount.clientHeight); };
     window.addEventListener("resize", resize);
     return () => { cancelAnimationFrame(frame); window.removeEventListener("resize", resize); renderer.dispose(); scene.traverse((object) => { if (object instanceof THREE.Mesh) { object.geometry.dispose(); if (Array.isArray(object.material)) object.material.forEach((m) => m.dispose()); else object.material.dispose(); } }); if (renderer.domElement.parentElement === mount) mount.removeChild(renderer.domElement); };
-  }, [skin, uniform, camo, armor, helmet, faceGear, headAccessory, chestRig, backpack, pants, gloves, boots]);
+  }, [skin, uniform, camo, accessories, armor, helmet, chestRig, backpack, pants, gloves, boots]);
   return <div ref={previewRef} className="operator-preview-3d" />;
 }
 
@@ -2934,6 +2952,15 @@ function CharacterOption({ label, value, options, onSelect }: { label: string; v
 function GearOption({ label, value, options, onSelect }: { label: string; value: string; options: string[]; onSelect: (value: string) => void }) {
   return <div className="character-option gear-option"><h2>{label}</h2><div className="helmet-options">
     {options.map((option) => <button key={option} className={value === option ? "selected" : ""} onClick={() => onSelect(option)}>{option}</button>)}
+  </div></div>;
+}
+
+function AccessoryOption({ value, onToggle }: { value: OperatorAccessory[]; onToggle: (accessory: OperatorAccessory) => void }) {
+  const options: OperatorAccessory[] = ["GOGGLES", "MASK", "HEADSET", "NVG"];
+  return <div className="character-option gear-option accessory-option"><h2>ACCESSORIES · SELECT ANY</h2><div className="helmet-options">
+    {options.map((accessory) => <button key={accessory} className={value.includes(accessory) ? "selected" : ""} aria-pressed={value.includes(accessory)} onClick={() => onToggle(accessory)}>
+      {accessory}<small>{value.includes(accessory) ? " EQUIPPED" : " OFF"}</small>
+    </button>)}
   </div></div>;
 }
 
