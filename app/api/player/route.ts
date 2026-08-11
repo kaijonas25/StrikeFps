@@ -5,6 +5,11 @@ import { playerMatchResults, players } from "../../../db/schema";
 const FIREBASE_API_KEY = "AIzaSyBblKzSnl4XD7afgjqXETtVEhZyADn4-3s";
 const ADMIN_EMAIL = "kaigarcia2510@gmail.com";
 type FirebaseAccount = { localId: string; email: string; displayName?: string };
+type AdminStats = { level: number; experience: number; matchesPlayed: number; wins: number; kills: number; deaths: number };
+
+function validInteger(value: unknown, minimum: number, maximum: number) {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= minimum && value <= maximum;
+}
 
 async function verifiedAccount(request: Request): Promise<FirebaseAccount | null> {
   const authorization = request.headers.get("authorization");
@@ -40,7 +45,28 @@ export async function GET(request: Request) {
 export async function PUT(request: Request) {
   const account = await verifiedAccount(request);
   if (!account) return Response.json({ error: "Unauthorized" }, { status: 401 });
-  const payload = await request.json() as { loadout?: unknown; operator?: unknown };
+  const payload = await request.json() as { loadout?: unknown; operator?: unknown; adminStats?: Partial<AdminStats> };
+  if (payload.adminStats) {
+    if (account.email.toLowerCase() !== ADMIN_EMAIL) return Response.json({ error: "Admin access required" }, { status: 403 });
+    const stats: AdminStats = {
+      level: payload.adminStats.level as number,
+      experience: payload.adminStats.experience as number,
+      matchesPlayed: payload.adminStats.matchesPlayed as number,
+      wins: payload.adminStats.wins as number,
+      kills: payload.adminStats.kills as number,
+      deaths: payload.adminStats.deaths as number,
+    };
+    if (!validInteger(stats.level, 1, 1000)) return Response.json({ error: "Level must be between 1 and 1,000." }, { status: 400 });
+    if (!validInteger(stats.experience, 0, 100_000_000)) return Response.json({ error: "Experience must be between 0 and 100,000,000." }, { status: 400 });
+    if (!validInteger(stats.matchesPlayed, 0, 10_000_000)) return Response.json({ error: "Matches must be between 0 and 10,000,000." }, { status: 400 });
+    if (!validInteger(stats.wins, 0, stats.matchesPlayed)) return Response.json({ error: "Wins cannot exceed matches played." }, { status: 400 });
+    if (!validInteger(stats.kills, 0, 100_000_000) || !validInteger(stats.deaths, 0, 100_000_000)) return Response.json({ error: "Kills and deaths must be valid positive totals." }, { status: 400 });
+    const db = getDb();
+    const existing = await db.select({ id: players.id }).from(players).where(eq(players.id, account.localId)).limit(1);
+    if (!existing.length) return Response.json({ error: "Player record not found" }, { status: 404 });
+    await db.update(players).set({ ...stats, updatedAt: new Date().toISOString() }).where(eq(players.id, account.localId));
+    return Response.json({ saved: true, player: stats });
+  }
   const updates: { loadoutJson?: string; operatorJson?: string; updatedAt: string } = { updatedAt: new Date().toISOString() };
   if (payload.loadout && typeof payload.loadout === "object") updates.loadoutJson = JSON.stringify(payload.loadout);
   if (payload.operator && typeof payload.operator === "object") updates.operatorJson = JSON.stringify(payload.operator);

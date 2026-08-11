@@ -34,7 +34,7 @@ export default function AccountPage() {
 
   const setStat = (field: Exclude<keyof Player, "callsign">, value: string) => {
     const parsed = Number(value);
-    setPlayer((current) => current ? { ...current, [field]: Number.isFinite(parsed) ? Math.max(0, Math.trunc(parsed)) : 0 } : current);
+    setPlayer((current) => current ? { ...current, [field]: Number.isFinite(parsed) ? Math.max(field === "level" ? 1 : 0, Math.trunc(parsed)) : field === "level" ? 1 : 0 } : current);
     setAdminStatus("idle");
   };
 
@@ -44,8 +44,11 @@ export default function AccountPage() {
     setAdminError("");
     try {
       const token = await user.getIdToken();
-      const response = await fetch("/api/admin/player", {
-        method: "PUT", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify(stats),
+      const response = await fetch("/api/player", {
+        method: "PUT", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({ adminStats: {
+          level: stats.level, experience: stats.experience, matchesPlayed: stats.matchesPlayed,
+          wins: stats.wins, kills: stats.kills, deaths: stats.deaths,
+        } }),
       });
       const data = await response.json() as { error?: string; player?: Partial<Player> };
       if (!response.ok) throw new Error(data.error || "Unable to save admin changes");
