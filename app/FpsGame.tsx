@@ -115,6 +115,7 @@ export function FpsGame() {
   const mountRef = useRef<HTMLDivElement>(null);
   const respawnRef = useRef<() => void>(() => {});
   const multiplayerSendRef = useRef<(packet: unknown) => void>(() => {});
+  const multiplayerSocketRef = useRef<WebSocket | null>(null);
   const playerCallsignRef = useRef("OPERATOR");
   const playerSummariesRef = useRef<Record<string, NetworkPlayerSummary>>({});
   const recordedMatchesRef = useRef(new Set<string>());
@@ -1301,16 +1302,19 @@ export function FpsGame() {
       setMultiplayerStatus("CONNECTING");
       const serverUrl = MULTIPLAYER_SERVER.replace(/^http/, "ws").replace(/\/$/, "");
       multiplayerSocket = new WebSocket(`${serverUrl}/room/${selectedSector.toLowerCase().replace(" ", "-")}`);
+      multiplayerSocketRef.current = multiplayerSocket;
       multiplayerSendRef.current = (packet) => { if (multiplayerSocket?.readyState === WebSocket.OPEN) multiplayerSocket.send(JSON.stringify(packet)); };
       multiplayerSocket.addEventListener("open", () => {
+        if (multiplayerSocketRef.current !== multiplayerSocket) return;
         setMultiplayerStatus("ONLINE");
         if (firebaseTokenRef.current) multiplayerSocket?.send(JSON.stringify({ type: "admin_auth", idToken: firebaseTokenRef.current }));
       });
-      multiplayerSocket.addEventListener("close", () => setMultiplayerStatus("OFFLINE"));
-      multiplayerSocket.addEventListener("error", () => setMultiplayerStatus("OFFLINE"));
+      multiplayerSocket.addEventListener("close", () => { if (multiplayerSocketRef.current === multiplayerSocket) setMultiplayerStatus("OFFLINE"); });
+      multiplayerSocket.addEventListener("error", () => { if (multiplayerSocketRef.current === multiplayerSocket) setMultiplayerStatus("OFFLINE"); });
       let lastVotingPhase = 0;
       multiplayerSocket.addEventListener("message", (event) => {
         if (typeof event.data !== "string") return;
+        if (multiplayerSocketRef.current === multiplayerSocket) setMultiplayerStatus("ONLINE");
         try {
           const packet = JSON.parse(event.data) as { type: string; authorized?: boolean; player?: RemoteState; players?: RemoteState[]; id?: string; health?: number; score?: number; attackerId?: string; weapon?: string; headshot?: boolean; tracerEnds?: number[][]; effect?: string; duration?: number; utilityId?: string; utility?: string; position?: number[]; velocity?: number[]; yourMapVote?: Exclude<GameMap, "TEST YARD"> | null; yourModeVote?: GameMode | null; map?: Exclude<GameMap, "TEST YARD">; match?: { phase: "voting" | "playing" | "results"; phaseEndsAt: number; votes: number; mapVotes?: { "CITY BLOCK"?: number; "BLACKWOOD FOREST"?: number; "FROSTLINE BASE"?: number; "TIDEBREAK BEACH"?: number }; map: Exclude<GameMap, "TEST YARD">; modeVotes: number; modeVoteCounts?: { FFA?: number; TDM?: number; KOTH?: number; CTP?: number }; endVotes: number; mode: GameMode; teamScores?: { ALPHA: number; BRAVO: number }; objectiveZones?: ObjectiveZone[]; winnerId: string | null; winningTeam?: "ALPHA" | "BRAVO" | null; winningKills: number } };
           const applyMatch = (match: NonNullable<typeof packet.match>, resetVotes = false) => {
@@ -2515,6 +2519,7 @@ export function FpsGame() {
       window.removeEventListener("mobile-fire-end", onMobileFireEnd);
       window.removeEventListener("mobile-aim", onMobileAim);
       [...suppressedShotPool, ...unsuppressedShotPool].forEach((audio) => { audio.pause(); audio.src = ""; });
+      if (multiplayerSocketRef.current === multiplayerSocket) multiplayerSocketRef.current = null;
       multiplayerSocket?.close(1000, "leaving sector");
       adminCommandRef.current = () => {};
       multiplayerSendRef.current = () => {};
