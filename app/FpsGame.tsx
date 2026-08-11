@@ -1316,7 +1316,7 @@ export function FpsGame() {
         if (typeof event.data !== "string") return;
         if (multiplayerSocketRef.current === multiplayerSocket) setMultiplayerStatus("ONLINE");
         try {
-          const packet = JSON.parse(event.data) as { type: string; authorized?: boolean; player?: RemoteState; players?: RemoteState[]; id?: string; health?: number; score?: number; attackerId?: string; weapon?: string; headshot?: boolean; tracerEnds?: number[][]; effect?: string; duration?: number; utilityId?: string; utility?: string; position?: number[]; velocity?: number[]; yourMapVote?: Exclude<GameMap, "TEST YARD"> | null; yourModeVote?: GameMode | null; map?: Exclude<GameMap, "TEST YARD">; match?: { phase: "voting" | "playing" | "results"; phaseEndsAt: number; votes: number; mapVotes?: { "CITY BLOCK"?: number; "BLACKWOOD FOREST"?: number; "FROSTLINE BASE"?: number; "TIDEBREAK BEACH"?: number }; map: Exclude<GameMap, "TEST YARD">; modeVotes: number; modeVoteCounts?: { FFA?: number; TDM?: number; KOTH?: number; CTP?: number }; endVotes: number; mode: GameMode; teamScores?: { ALPHA: number; BRAVO: number }; objectiveZones?: ObjectiveZone[]; winnerId: string | null; winningTeam?: "ALPHA" | "BRAVO" | null; winningKills: number } };
+          const packet = JSON.parse(event.data) as { type: string; authorized?: boolean; reason?: string; player?: RemoteState; players?: RemoteState[]; id?: string; health?: number; score?: number; attackerId?: string; weapon?: string; headshot?: boolean; tracerEnds?: number[][]; effect?: string; duration?: number; utilityId?: string; utility?: string; position?: number[]; velocity?: number[]; yourMapVote?: Exclude<GameMap, "TEST YARD"> | null; yourModeVote?: GameMode | null; map?: Exclude<GameMap, "TEST YARD">; match?: { phase: "voting" | "playing" | "results"; phaseEndsAt: number; votes: number; mapVotes?: { "CITY BLOCK"?: number; "BLACKWOOD FOREST"?: number; "FROSTLINE BASE"?: number; "TIDEBREAK BEACH"?: number }; map: Exclude<GameMap, "TEST YARD">; modeVotes: number; modeVoteCounts?: { FFA?: number; TDM?: number; KOTH?: number; CTP?: number }; endVotes: number; mode: GameMode; teamScores?: { ALPHA: number; BRAVO: number }; objectiveZones?: ObjectiveZone[]; winnerId: string | null; winningTeam?: "ALPHA" | "BRAVO" | null; winningKills: number } };
           const applyMatch = (match: NonNullable<typeof packet.match>, resetVotes = false) => {
             activeNetworkMode = match.mode ?? "FFA";
             setMatchPhase(match.phase); setMapVotes(match.votes); setCityMapVotes(match.mapVotes?.["CITY BLOCK"] ?? match.votes); setForestMapVotes(match.mapVotes?.["BLACKWOOD FOREST"] ?? 0); setFrostMapVotes(match.mapVotes?.["FROSTLINE BASE"] ?? 0); setBeachMapVotes(match.mapVotes?.["TIDEBREAK BEACH"] ?? 0); setModeVotes(match.modeVotes ?? 0); setFfaModeVotes(match.modeVoteCounts?.FFA ?? match.modeVotes); setTdmModeVotes(match.modeVoteCounts?.TDM ?? 0); setKothModeVotes(match.modeVoteCounts?.KOTH ?? 0); setCtpModeVotes(match.modeVoteCounts?.CTP ?? 0); setEndGameVotes(match.endVotes ?? 0); setMatchEndsAt(match.phaseEndsAt);
@@ -1343,6 +1343,11 @@ export function FpsGame() {
           }
           else if (packet.type === "admin_authenticated" && packet.authorized) {
             multiplayerSendRef.current({ type: "admin_config", godMode: adminControlsRef.current.godMode, damageMultiplier: adminControlsRef.current.damageMultiplier });
+          }
+          else if (packet.type === "kicked") {
+            window.alert(packet.reason ?? "You were removed by a server administrator.");
+            setStarted(false); setLocked(false); setServerBrowserOpen(true);
+            if (document.pointerLockElement) document.exitPointerLock();
           }
           else if ((packet.type === "joined" || packet.type === "state") && packet.player) {
             rememberPlayer(packet.player);
@@ -2634,7 +2639,7 @@ export function FpsGame() {
             </article>
             <article className="admin-kill-panel"><h3>KILL PANEL</h3>
               <button className="danger" onClick={() => adminCommandRef.current("kill_targets")}><span>ALL TRAINING TARGETS</span><b>ELIMINATE</b></button>
-              {connectedPlayerIds.filter((id) => id !== localPlayerId).map((id, index) => <button className="danger" key={id} onClick={() => multiplayerSendRef.current({ type: "hit", targetId: id, damage: 100, weapon: "ADMIN", headshot: false })}><span>{playerSummaries[id]?.callsign || `OPERATOR ${String(index + 1).padStart(2, "0")}`}</span><b>KILL</b></button>)}
+              {connectedPlayerIds.filter((id) => id !== localPlayerId).map((id, index) => <div className="admin-player-actions" key={id}><span>{playerSummaries[id]?.callsign || `OPERATOR ${String(index + 1).padStart(2, "0")}`}</span><button className="danger" onClick={() => multiplayerSendRef.current({ type: "hit", targetId: id, damage: 100, weapon: "ADMIN", headshot: false })}>KILL</button><button className="danger" onClick={() => multiplayerSendRef.current({ type: "admin_kick", targetId: id })}>KICK</button></div>)}
               {!connectedPlayerIds.some((id) => id !== localPlayerId) && <p>NO REMOTE OPERATORS CONNECTED</p>}
             </article>
           </div>

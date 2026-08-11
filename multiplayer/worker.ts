@@ -37,7 +37,7 @@ type PlayerState = {
 type MultiplayerMap = "CITY BLOCK" | "BLACKWOOD FOREST" | "FROSTLINE BASE" | "TIDEBREAK BEACH";
 type GameMode = "FFA" | "TDM" | "KOTH" | "CTP";
 type ObjectiveZone = { id: string; x: number; z: number; radius: number; owner: PlayerState["team"] | null; progress: number };
-type SocketAttachment = { id: string; state: PlayerState; isAdmin?: boolean; godMode?: boolean; damageMultiplier?: number; votedMapPhase?: number; votedMap?: MultiplayerMap; votedModePhase?: number; votedMode?: GameMode; endGamePhase?: number; lastChatAt?: number };
+type SocketAttachment = { id: string; state: PlayerState; isAdmin?: boolean; godMode?: boolean; damageMultiplier?: number; lastSeenAt?: number; votedMapPhase?: number; votedMap?: MultiplayerMap; votedModePhase?: number; votedMode?: GameMode; endGamePhase?: number; lastChatAt?: number };
 type MatchMeta = { day: string; phase: "voting" | "playing" | "results"; phaseEndsAt: number; votes: number; mapVotes: Record<MultiplayerMap, number>; modeVotes: number; modeVoteCounts: Record<GameMode, number>; endVotes: number; map: MultiplayerMap; mode: GameMode; teamScores: Record<PlayerState["team"], number>; objectiveZones: ObjectiveZone[]; lastObjectiveTick: number; winnerId: string | null; winningTeam: PlayerState["team"] | null; winningKills: number };
 const VOTE_DURATION = 30_000;
 const MATCH_DURATION = 10 * 60_000;
@@ -105,6 +105,19 @@ export class GameRoom extends DurableObject {
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname === "/status") {
+      const now = Date.now();
+      const cleanupKey = "cleanup-operator-4204-v1";
+      const removeNamedGhost = !(await this.ctx.storage.get<boolean>(cleanupKey));
+      this.ctx.getWebSockets().forEach((socket) => {
+        const attachment = socket.deserializeAttachment() as SocketAttachment | null;
+        if (!attachment) return;
+        const stale = typeof attachment.lastSeenAt === "number" && now - attachment.lastSeenAt > 15_000;
+        const namedGhost = removeNamedGhost && attachment.state.callsign.toUpperCase() === "OPERATOR 4204";
+        if (!stale && !namedGhost) return;
+        this.broadcast({ type: "left", id: attachment.id }, socket);
+        try { socket.close(4001, namedGhost ? "Removed stale operator" : "Connection timed out"); } catch {}
+      });
+      if (removeNamedGhost) await this.ctx.storage.put(cleanupKey, true);
       const players = this.ctx.getWebSockets().filter((socket) => socket.readyState === WebSocket.OPEN).length;
       return json({ players });
     }
@@ -123,7 +136,7 @@ export class GameRoom extends DurableObject {
     const spawnX = spawn.x, spawnZ = spawn.z;
     const initial: PlayerState = { id, x: spawnX, y: 1.7, z: spawnZ, yaw: spawnZ > 0 ? 0 : Math.PI, movement: "static", crouching: false, prone: false, slot: 1, primary: "VXR-4 CARBINE", secondary: "P9 SIDEARM", skin: "#a9795e", uniform: "#303a3b", camo: "SOLID", accessories: ["GOGGLES", "HEADSET"], armor: "#20292b", helmet: "TACTICAL", faceGear: "GOGGLES", headAccessory: "HEADSET", chestRig: "PLATE CARRIER", backpack: "ASSAULT PACK", pants: "#303a3b", gloves: "#20292b", boots: "#151b1d", kills: 0, deaths: 0, health: 100, team, objectiveScore: 0, spawnProtectedUntil: Date.now() + 3000, callsign:`OPERATOR ${id.slice(0,4).toUpperCase()}` };
     this.ctx.acceptWebSocket(server);
-    server.serializeAttachment({ id, state: initial, isAdmin: false, godMode: false, damageMultiplier: 1 } satisfies SocketAttachment);
+    server.serializeAttachment({ id, state: initial, isAdmin: false, godMode: false, damageMultiplier: 1, lastSeenAt: Date.now() } satisfies SocketAttachment);
 
     const players = existingPlayers;
     const joiningAttachment = server.deserializeAttachment() as SocketAttachment;
@@ -137,6 +150,7 @@ export class GameRoom extends DurableObject {
     let packet: Partial<PlayerState> & { type?: string; category?: "map" | "mode"; map?: MultiplayerMap; mode?: GameMode; targetId?: string; damage?: number; weapon?: string; headshot?: boolean; tracerEnds?: unknown; effect?: string; duration?: number; text?: string; utilityId?: string; utility?: string; position?: unknown; velocity?: unknown; idToken?: string; godMode?: boolean; damageMultiplier?: number };
     try { packet = JSON.parse(message); } catch { return; }
     const attachment = socket.deserializeAttachment() as SocketAttachment;
+    attachment.lastSeenAt = Date.now();
     if (packet.type === "admin_auth") {
       attachment.isAdmin = await verifiedAdminToken(packet.idToken);
       attachment.godMode = false;
@@ -151,6 +165,16 @@ export class GameRoom extends DurableObject {
       attachment.godMode = Boolean(packet.godMode);
       attachment.damageMultiplier = allowedMultipliers.includes(packet.damageMultiplier ?? 1) ? packet.damageMultiplier : 1;
       socket.serializeAttachment(attachment);
+      return;
+    }
+    if (packet.type === "admin_kick") {
+      if (!attachment.isAdmin || !packet.targetId || packet.targetId === attachment.id) return;
+      const targetSocket = this.ctx.getWebSockets().find((candidate) => (candidate.deserializeAttachment() as SocketAttachment).id === packet.targetId);
+      if (!targetSocket) return;
+      const target = targetSocket.deserializeAttachment() as SocketAttachment;
+      this.broadcast({ type: "left", id: target.id }, targetSocket);
+      try { targetSocket.send(JSON.stringify({ type: "kicked", reason: "Removed by server administrator" })); } catch {}
+      try { targetSocket.close(4001, "Kicked by admin"); } catch {}
       return;
     }
     if (packet.type === "chat") {
