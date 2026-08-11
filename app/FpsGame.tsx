@@ -800,7 +800,15 @@ export function FpsGame() {
         addBox(x,height+.22,-46.4,11,.44,1.35,0xd7e5e8,false);
       }
       [[-31,25,13],[0,31,16],[33,23,12]].forEach(([x,height,radius])=>{const distantPeak=new THREE.Mesh(new THREE.ConeGeometry(radius,height,7),material(0x8498a1,.95,0)); distantPeak.position.set(x,8+height/2,-67); distantPeak.raycast=()=>{}; scene.add(distantPeak); const cap=new THREE.Mesh(new THREE.ConeGeometry(radius*.48,height*.42,7),material(0xe1eaec,.98,0)); cap.position.set(x,8+height*.79,-67); cap.raycast=()=>{}; scene.add(cap);});
-      const snowRock = (x:number,z:number,w:number,h:number,d:number,color=0x71828a) => addBox(x,terrainHeightAt(x,z)+h/2,z,w,h,d,color);
+      const snowRock = (x:number,z:number,w:number,h:number,d:number,color=0x71828a) => {
+        const ground=terrainHeightAt(x,z), group=new THREE.Group(); group.position.set(x,ground,z); scene.add(group);
+        const rockMat=material(color,.94,.03), snowMat=material(0xe4edef,.98,0);
+        const core=new THREE.Mesh(new THREE.DodecahedronGeometry(1,0),rockMat); core.scale.set(w*.5,h*.52,d*.5); core.position.y=h*.48; core.rotation.set((x+z)*.017,(x-z)*.041,.08*((Math.abs(x)%3)-1)); core.castShadow=core.receiveShadow=true; group.add(core);
+        const shoulder=new THREE.Mesh(new THREE.DodecahedronGeometry(1,0),rockMat); shoulder.scale.set(w*.28,h*.34,d*.34); shoulder.position.set(w*.28,h*.3,-d*.12); shoulder.rotation.set(.2,-.45,.15); shoulder.castShadow=shoulder.receiveShadow=true; group.add(shoulder);
+        const snowCap=new THREE.Mesh(new THREE.DodecahedronGeometry(1,1),snowMat); snowCap.scale.set(w*.38,h*.12,d*.38); snowCap.position.set(-w*.04,h*.88,0); snowCap.rotation.y=(x-z)*.03; snowCap.castShadow=true; group.add(snowCap);
+        boxes.push({minX:x-w*.48,maxX:x+w*.48,minY:ground,maxY:ground+h,minZ:z-d*.48,maxZ:z+d*.48});
+        return group;
+      };
       // Base camp: two open shelters, cargo, and defensive barriers.
       [[-28,31],[28,31]].forEach(([x,z], index) => {
         const y = terrainHeightAt(x,z);
@@ -811,10 +819,22 @@ export function FpsGame() {
 
       // Alpine boulders and ice outcrops create cover along multiple ascent routes.
       [[-38,5,4,2.4,3],[-24,9,5,2.8,3.5],[-8,5,3.5,2.1,3],[11,8,5,3.2,3.5],[30,4,4.2,2.5,3],[-32,-9,5,3.3,4],[-15,-11,4,2.7,3],[5,-9,5.5,3.4,4],[25,-12,4.5,2.8,3.5],[-27,-25,5,3.2,4],[-6,-24,4.2,2.6,3],[18,-27,5.4,3.5,4]].forEach(([x,z,w,h,d],i) => snowRock(x,z,w,h,d,i%3===0?0x687d88:0x7f9199));
+      // Small fractured stones and translucent ice shards break up the snow surface.
+      for(let shard=0;shard<28;shard++){
+        const x=-40+((shard*17.7)%80),z=30-((shard*13.9)%67),ground=terrainHeightAt(x,z);
+        const chip=new THREE.Mesh(new THREE.DodecahedronGeometry(.32+(shard%4)*.11,0),material(shard%5===0?0x9ec6d1:0x82949b,.82,shard%5===0?.18:.03)); chip.position.set(x,ground+.18,z); chip.scale.y=.45+(shard%3)*.18; chip.rotation.set(shard*.31,shard*.77,shard*.19); chip.castShadow=true; chip.raycast=()=>{}; scene.add(chip);
+      }
       // Switchback barricades provide firing positions without sealing the climb.
       [[-28,14,7],[18,2,8],[-20,-8,7],[21,-18,8],[-10,-29,7]].forEach(([x,z,w],i) => {
         const y=terrainHeightAt(x,z); addBox(x,y+.72,z,w,1.44,.55,i%2?0x5c6e73:0x6c6658);
         for(let post=-1;post<=1;post++) addBox(x+post*(w/2-.45),y+.9,z,.26,1.8,.72,0x4c5353,false);
+      });
+      // Marked climbing route with rope lines, reflective stakes, and warning lamps.
+      const route:[number,number][]=[[-6,33],[-16,22],[-7,10],[12,0],[2,-12],[17,-23],[6,-34]];
+      [-1,1].forEach((side)=>{
+        const ropePoints:THREE.Vector3[]=[];
+        route.forEach(([x,z],index)=>{const px=x+side*4.2,ground=terrainHeightAt(px,z); addBox(px,ground+.8,z,.16,1.6,.16,0x39494f,false); const reflector=new THREE.Mesh(new THREE.BoxGeometry(.22,.16,.06),new THREE.MeshBasicMaterial({color:index%2?0xff6c42:0x73dfff})); reflector.position.set(px,ground+1.35,z); reflector.raycast=()=>{}; scene.add(reflector); ropePoints.push(new THREE.Vector3(px,ground+1.12,z)); if(index===2||index===5){const lamp=new THREE.PointLight(0xff9a54,13,9,2); lamp.position.set(px,ground+1.7,z); scene.add(lamp);}});
+        const rope=new THREE.Line(new THREE.BufferGeometry().setFromPoints(ropePoints),new THREE.LineBasicMaterial({color:0x4a5557})); rope.raycast=()=>{}; scene.add(rope);
       });
       // Sparse, varied alpine pines frame the routes while leaving long mountain sightlines.
       const alpineTrunk=material(0x4b4036,.95,.01), alpineNeedles=material(0x35545a,.98,0);
@@ -827,6 +847,10 @@ export function FpsGame() {
       addBox(0,summitY+.15,-40,14,.3,9,0x88999d,false); addBox(-6.6,summitY+1.5,-40,.4,3,9,0x65787e); addBox(6.6,summitY+1.5,-40,.4,3,9,0x65787e); addBox(0,summitY+1.5,-44.3,13.5,3,.4,0x65787e);
       const mast=new THREE.Mesh(new THREE.CylinderGeometry(.16,.22,8,10),material(0x4d5a5f,.45,.7)); mast.position.set(0,summitY+6,-40); mast.castShadow=true; scene.add(mast);
       const dish=new THREE.Mesh(new THREE.SphereGeometry(1.5,18,10,0,Math.PI*2,0,Math.PI*.42),material(0xd5e2e4,.35,.45)); dish.scale.z=.35; dish.rotation.x=.55; dish.position.set(0,summitY+9.4,-40); scene.add(dish);
+      // Solar panels, equipment cases, and cable reels make the summit feel operational.
+      [-1,1].forEach((side)=>{const panel=new THREE.Mesh(new THREE.BoxGeometry(3.2,.12,1.8),material(0x284b61,.24,.55)); panel.position.set(side*4.2,summitY+1.15,-37.4); panel.rotation.x=-.42; panel.castShadow=true; scene.add(panel); addBox(side*4.2,summitY+.55,-37.4,.18,1.1,.18,0x46575c,false);});
+      addBox(-3.8,summitY+.45,-42.1,1.8,.9,1.1,0x4b5e64); addBox(3.8,summitY+.45,-42.1,1.8,.9,1.1,0x68705f);
+      const reel=new THREE.Mesh(new THREE.TorusGeometry(.62,.13,10,20),material(0x3d494d,.55,.45)); reel.position.set(0,summitY+.72,-43); reel.rotation.y=Math.PI/2; reel.castShadow=true; scene.add(reel);
       const summitBeacon=new THREE.PointLight(0x77dfff,22,18,2); summitBeacon.position.set(0,summitY+8,-40); scene.add(summitBeacon);
       const flakes=new Float32Array(700*3); for(let i=0;i<700;i++){flakes[i*3]=-48+Math.random()*96; flakes[i*3+1]=3+Math.random()*28; flakes[i*3+2]=-48+Math.random()*96;}
       const snowGeometry=new THREE.BufferGeometry(); snowGeometry.setAttribute("position",new THREE.BufferAttribute(flakes,3)); snowParticles=new THREE.Points(snowGeometry,new THREE.PointsMaterial({color:0xffffff,size:.1,transparent:true,opacity:.8,depthWrite:false})); snowParticles.raycast=()=>{}; scene.add(snowParticles);
