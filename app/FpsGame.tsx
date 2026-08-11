@@ -880,16 +880,16 @@ export function FpsGame() {
     if (beachMap) {
       // The surf closes the northern edge while dunes and sea walls frame the combat space.
       addBox(0,2.5,47.5,96,5,1,0x8e805f); addBox(-47.5,2.5,0,1,5,96,0x7d7358); addBox(47.5,2.5,0,1,5,96,0x7d7358);
-      addBox(0,.04,-38,95,.08,19,0x269bb5,false); addBox(0,.075,-30,95,.06,3.2,0x68c6cf,false);
-      for(let wave=0;wave<6;wave++) addBox(-39+wave*16,.115,-30+(wave%2)*.35,8,.035,.42,0xe7fbf5,false);
+      addBox(0,.72,-31,95,.08,33,0x269bb5,false); addBox(0,.76,-14.8,95,.06,3.2,0x68c6cf,false);
+      for(let wave=0;wave<6;wave++) addBox(-39+wave*16,.8,-14.8+(wave%2)*.35,8,.035,.42,0xe7fbf5,false);
       addBox(0,1.3,-47.5,96,2.6,1.2,0x426f77);
 
       // Sandbag lines, driftwood barricades, and cargo give the open beach layered cover.
-      [[-31,31,7],[0,29,8],[31,32,7],[-23,15,6],[20,16,7],[-11,-2,6],[13,-6,6],[-27,-18,7],[28,-19,7]].forEach(([x,z,w],i)=>{
+      [[-31,31,7],[0,29,8],[31,32,7],[-23,15,6],[20,16,7],[-11,-2,6],[13,-6,6],[-27,-10,7],[28,-11,7]].forEach(([x,z,w],i)=>{
         addBox(x,.52,z,w,1.04,1.05,i%2?0x9b8b63:0xaa9468);
         addBox(x-w*.28,.9,z,.24,1.8,1.2,0x69543a,false); addBox(x+w*.28,.9,z,.24,1.8,1.2,0x69543a,false);
       });
-      [[-38,24],[37,22],[-18,28],[18,27],[-35,3],[34,4],[-18,-14],[18,-20]].forEach(([x,z],i)=>{
+      [[-38,24],[37,22],[-18,28],[18,27],[-35,3],[34,4],[-18,-9],[18,-10]].forEach(([x,z],i)=>{
         addBox(x,.65,z,2.8,1.3,2.3,i%3===0?0x3f6870:0x6f765e); addBox(x+(i%2?.7:-.7),1.62,z+.15,1.25,.65,1.15,0x59634f);
       });
 
@@ -913,7 +913,7 @@ export function FpsGame() {
 
       // Palm groves provide visual density and narrow concealment along both flanks.
       const palmTrunk=material(0x7e5c37),palmLeaf=material(0x2f744b,.86,0);
-      [[-43,39,.8],[-38,34,1],[-44,27,.9],[-39,20,.75],[-44,10,1.05],[-39,1,.82],[-43,-12,.92],[-37,-22,.78],[-24,38,.72],[-28,24,.85],[-29,5,.75],[-20,-7,.8],[-20,-25,.72],[43,39,.82],[38,34,1.02],[44,27,.88],[39,19,.78],[44,9,1.04],[39,0,.84],[43,-11,.95],[37,-23,.76],[24,38,.7],[28,25,.86],[29,5,.74],[20,-8,.82],[20,-25,.7]].forEach(([x,z,s],i)=>{
+      [[-43,39,.8],[-38,34,1],[-44,27,.9],[-39,20,.75],[-44,10,1.05],[-39,1,.82],[-43,-10,.92],[-37,-12,.78],[-24,38,.72],[-28,24,.85],[-29,5,.75],[-20,-7,.8],[-20,-12,.72],[43,39,.82],[38,34,1.02],[44,27,.88],[39,19,.78],[44,9,1.04],[39,0,.84],[43,-10,.95],[37,-12,.76],[24,38,.7],[28,25,.86],[29,5,.74],[20,-8,.82],[20,-12,.7]].forEach(([x,z,s],i)=>{
         const trunk=new THREE.Mesh(new THREE.CylinderGeometry(.24*s,.45*s,6.2*s,8),palmTrunk); trunk.position.set(x,3.1*s,z); trunk.rotation.z=(i%3-1)*.05; trunk.castShadow=true; scene.add(trunk); boxes.push({minX:x-.4*s,maxX:x+.4*s,minY:0,maxY:6.2*s,minZ:z-.4*s,maxZ:z+.4*s});
         for(let leaf=0;leaf<7;leaf++){const frond=new THREE.Mesh(new THREE.ConeGeometry(.72*s,4.2*s,5),palmLeaf); frond.position.set(x,6.3*s,z); frond.rotation.set(Math.PI/2.55,leaf*Math.PI*2/7,0); frond.castShadow=true; frond.raycast=()=>{}; scene.add(frond);}
       });
@@ -1925,12 +1925,14 @@ export function FpsGame() {
       );
       if (input.lengthSq() > 0) input.normalize();
       if (sliding && now >= slideEnd) { sliding = false; slideEnd = 0; }
+      const inBeachWater = beachMap && playerPosition.z < -14.2;
       sprinting = !isCrouching && !isProne && !sliding && ((isTouchInput && input.length() > .82 && input.y > .25) || keys.has("ShiftLeft") || keys.has("ShiftRight")) && input.y > 0 && input.lengthSq() > 0;
+      if (inBeachWater) { sprinting = false; sliding = false; }
       if (sprinting || sliding) { aiming = false; setAdsActive(false); }
       // The creek follows a slightly diagonal north/south channel through the forest.
       const inForestCreek = forestMap && Math.abs((playerPosition.x + 10) + playerPosition.z * .08) < 3.5 && Math.abs(playerPosition.z) < 42;
       const baseSpeed = isProne ? 1.55 : isCrouching ? 2.8 : sprinting ? 8.2 : aiming ? 3.8 : 5.2;
-      const speed = baseSpeed * (1 - attachmentMobilityPenalty(activeAttachments()) / 100) * (inForestCreek ? .52 : 1);
+      const speed = baseSpeed * (1 - attachmentMobilityPenalty(activeAttachments()) / 100) * (inForestCreek ? .52 : inBeachWater ? .58 : 1);
       const movementYaw = isThirdPerson ? cameraYaw : yaw;
       const sin = Math.sin(movementYaw), cos = Math.cos(movementYaw);
       const leanRightX = Math.cos(yaw), leanRightZ = -Math.sin(yaw);
@@ -1994,13 +1996,19 @@ export function FpsGame() {
         verticalVelocity = 0; grounded = false;
         const verticalInput = Number(keys.has("Space")) - Number(keys.has("ControlLeft") || keys.has("ControlRight"));
         playerPosition.y = Math.max(.35, playerPosition.y + verticalInput * 7.5 * dt);
+      } else if (inBeachWater) {
+        verticalVelocity = 0; grounded = false;
+        if (isCrouching || isProne) { isCrouching=false; isProne=false; setCrouching(false); setProne(false); }
+        const swimInput = Number(keys.has("Space")) - Number(keys.has("ControlLeft") || keys.has("ControlRight"));
+        const swimHeight = 1.12 + swimInput * .42 + Math.sin(clock.getElapsedTime()*2.1)*.045;
+        playerPosition.y = THREE.MathUtils.lerp(playerPosition.y,swimHeight,Math.min(1,dt*4.5));
       } else {
         verticalVelocity -= 14.5 * dt;
         playerPosition.y += verticalVelocity * dt;
         if (playerPosition.y <= groundHeight) { playerPosition.y = groundHeight; verticalVelocity = 0; grounded = true; }
       }
 
-      const moving = input.lengthSq() > 0 && grounded;
+      const moving = input.lengthSq() > 0 && (grounded || inBeachWater);
       movementSpread = input.lengthSq() > 0 ? 1.55 : 1;
       const t = clock.getElapsedTime();
       if(snowParticles){const positions=snowParticles.geometry.attributes.position; for(let i=0;i<positions.count;i++){let y=positions.getY(i)-dt*(2.8+(i%7)*.22); const x=positions.getX(i),z=positions.getZ(i); if(y<terrainHeightAt(x,z)) y=terrainHeightAt(x,z)+18+(i%9); positions.setY(i,y);} positions.needsUpdate=true;}
