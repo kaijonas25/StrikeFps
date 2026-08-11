@@ -800,12 +800,11 @@ export function FpsGame() {
         addBox(x,height+.22,-46.4,11,.44,1.35,0xd7e5e8,false);
       }
       [[-31,25,13],[0,31,16],[33,23,12]].forEach(([x,height,radius])=>{const distantPeak=new THREE.Mesh(new THREE.ConeGeometry(radius,height,7),material(0x8498a1,.95,0)); distantPeak.position.set(x,8+height/2,-67); distantPeak.raycast=()=>{}; scene.add(distantPeak); const cap=new THREE.Mesh(new THREE.ConeGeometry(radius*.48,height*.42,7),material(0xe1eaec,.98,0)); cap.position.set(x,8+height*.79,-67); cap.raycast=()=>{}; scene.add(cap);});
-      const snowRock = (x:number,z:number,w:number,h:number,d:number,color=0x71828a) => {
+      const alpineRock = (x:number,z:number,w:number,h:number,d:number,color=0x71828a) => {
         const ground=terrainHeightAt(x,z), group=new THREE.Group(); group.position.set(x,ground,z); scene.add(group);
-        const rockMat=material(color,.94,.03), snowMat=material(0xe4edef,.98,0);
+        const rockMat=material(color,.94,.03);
         const core=new THREE.Mesh(new THREE.DodecahedronGeometry(1,0),rockMat); core.scale.set(w*.5,h*.52,d*.5); core.position.y=h*.48; core.rotation.set((x+z)*.017,(x-z)*.041,.08*((Math.abs(x)%3)-1)); core.castShadow=core.receiveShadow=true; group.add(core);
         const shoulder=new THREE.Mesh(new THREE.DodecahedronGeometry(1,0),rockMat); shoulder.scale.set(w*.28,h*.34,d*.34); shoulder.position.set(w*.28,h*.3,-d*.12); shoulder.rotation.set(.2,-.45,.15); shoulder.castShadow=shoulder.receiveShadow=true; group.add(shoulder);
-        const snowCap=new THREE.Mesh(new THREE.DodecahedronGeometry(1,1),snowMat); snowCap.scale.set(w*.38,h*.12,d*.38); snowCap.position.set(-w*.04,h*.88,0); snowCap.rotation.y=(x-z)*.03; snowCap.castShadow=true; group.add(snowCap);
         boxes.push({minX:x-w*.48,maxX:x+w*.48,minY:ground,maxY:ground+h,minZ:z-d*.48,maxZ:z+d*.48});
         return group;
       };
@@ -815,20 +814,20 @@ export function FpsGame() {
         addBox(x,y+.12,z,13,.24,10,0x798b91,false); addBox(x-6.3,y+2.2,z,.4,4.4,10,0x60747c); addBox(x+6.3,y+2.2,z,.4,4.4,10,0x60747c); addBox(x,y+4.3,z,13.2,.35,10.2,0x52656d,false);
         addBox(x,y+.7,z-2.5,3.4,1.4,1.7,index ? 0x496c75 : 0x6d604c); addBox(x+3.6,y+.52,z+2.3,2.4,1.04,1.4,0x52636a);
       });
-      [[-12,25],[0,22],[12,25],[-34,18],[34,18]].forEach(([x,z],i) => snowRock(x,z,4.5,.9,1.1,i%2?0xaab8bb:0x87979c));
+      [[-12,25],[0,22],[12,25],[-34,18],[34,18]].forEach(([x,z],i) => alpineRock(x,z,4.5,.9,1.1,i%2?0xaab8bb:0x87979c));
 
       // Alpine boulders and ice outcrops create cover along multiple ascent routes.
-      [[-38,5,4,2.4,3],[-24,9,5,2.8,3.5],[-8,5,3.5,2.1,3],[11,8,5,3.2,3.5],[30,4,4.2,2.5,3],[-32,-9,5,3.3,4],[-15,-11,4,2.7,3],[5,-9,5.5,3.4,4],[25,-12,4.5,2.8,3.5],[-27,-25,5,3.2,4],[-6,-24,4.2,2.6,3],[18,-27,5.4,3.5,4]].forEach(([x,z,w,h,d],i) => snowRock(x,z,w,h,d,i%3===0?0x687d88:0x7f9199));
+      [[-38,5,4,2.4,3],[-24,9,5,2.8,3.5],[-8,5,3.5,2.1,3],[11,8,5,3.2,3.5],[30,4,4.2,2.5,3],[-32,-9,5,3.3,4],[-15,-11,4,2.7,3],[5,-9,5.5,3.4,4],[25,-12,4.5,2.8,3.5],[-27,-25,5,3.2,4],[-6,-24,4.2,2.6,3],[18,-27,5.4,3.5,4]].forEach(([x,z,w,h,d],i) => alpineRock(x,z,w,h,d,i%3===0?0x687d88:0x7f9199));
       // Dense rock shelves frame the outer slopes and create additional leapfrog cover.
-      [[-43,18,5.8,3.7,4.4],[-39,10,3.8,2.2,3.1],[-42,-13,6.2,4.1,4.8],[-38,-29,5.1,3.4,4.2],[-30,-38,6.4,4.5,4.6],[42,20,5.5,3.5,4.1],[39,11,3.7,2.4,3],[43,-11,6,4,4.5],[39,-29,5.3,3.6,4.2],[30,-39,6.2,4.3,4.8]].forEach(([x,z,w,h,d],i)=>snowRock(x,z,w,h,d,i%2?0x596f79:0x72868e));
+      [[-43,18,5.8,3.7,4.4],[-39,10,3.8,2.2,3.1],[-42,-13,6.2,4.1,4.8],[-38,-29,5.1,3.4,4.2],[-30,-38,6.4,4.5,4.6],[42,20,5.5,3.5,4.1],[39,11,3.7,2.4,3],[43,-11,6,4,4.5],[39,-29,5.3,3.6,4.2],[30,-39,6.2,4.3,4.8]].forEach(([x,z,w,h,d],i)=>alpineRock(x,z,w,h,d,i%2?0x596f79:0x72868e));
       // Mid-sized clusters form natural pockets without obstructing the marked climbing route.
       [[-29,25,3.2,1.9,2.7],[-21,17,2.7,1.6,2.4],[24,20,3.5,2.1,2.8],[32,13,2.8,1.7,2.5],[-37,-1,3,1.8,2.6],[-22,-1,2.5,1.5,2.2],[22,-5,2.9,1.8,2.5],[34,-18,3.3,2,2.8],[-18,-19,2.8,1.7,2.5],[11,-20,3.1,1.9,2.7],[-20,-34,3.6,2.2,3],[25,-33,3.4,2.1,2.9]].forEach(([x,z,w,h,d],i)=>{
-        snowRock(x,z,w,h,d,i%3===1?0x8a9ba1:0x697e87);
-        const side=i%2===0?1:-1; snowRock(x+side*w*.55,z+d*.42,w*.48,h*.58,d*.52,0x627780);
+        alpineRock(x,z,w,h,d,i%3===1?0x8a9ba1:0x697e87);
+        const side=i%2===0?1:-1; alpineRock(x+side*w*.55,z+d*.42,w*.48,h*.58,d*.52,0x627780);
       });
       // Low rock chains add texture and partial cover near the base camp flanks.
       [[-42,36],[-38,32],[-19,29],[18,29],[38,34],[43,29]].forEach(([x,z],i)=>{
-        for(let stone=0;stone<3;stone++) snowRock(x+(stone-1)*1.55,z+(stone%2)*.7,1.8+stone*.35,.75+(stone%2)*.35,1.5+(stone%3)*.28,i%2?0x85969b:0x70848c);
+        for(let stone=0;stone<3;stone++) alpineRock(x+(stone-1)*1.55,z+(stone%2)*.7,1.8+stone*.35,.75+(stone%2)*.35,1.5+(stone%3)*.28,i%2?0x85969b:0x70848c);
       });
       // Small fractured stones and translucent ice shards break up the snow surface.
       for(let shard=0;shard<28;shard++){
