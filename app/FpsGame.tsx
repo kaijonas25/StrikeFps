@@ -919,11 +919,27 @@ export function FpsGame() {
         const ground=terrainHeightAt(x,z),rock=new THREE.Mesh(new THREE.DodecahedronGeometry(1,0),material(i%2?0x4f5752:0x64665b)); rock.position.set(x,ground+h*.46,z); rock.scale.set(w*.5,h*.5,d*.5); rock.rotation.set(.1*i,.33*i,.06*(i%3)); rock.castShadow=rock.receiveShadow=true; scene.add(rock); boxes.push({minX:x-w*.45,maxX:x+w*.45,minY:ground,maxY:ground+h,minZ:z-d*.45,maxZ:z+d*.45});
       });
 
-      // Palm groves provide visual density and narrow concealment along both flanks.
-      const palmTrunk=material(0x7e5c37),palmLeaf=material(0x2f744b,.86,0);
+      // Varied palms use segmented leaning trunks, layered crowns, and occasional coconuts.
+      const palmTrunks=[material(0x735033),material(0x89623b),material(0x68472f)];
+      const palmLeaves=[material(0x286b43,.88,0),material(0x347d4c,.86,0),material(0x416f3e,.9,0)];
       [[-43,39,.8],[-38,34,1],[-44,27,.9],[-39,20,.75],[-44,10,1.05],[-39,1,.82],[-43,-10,.92],[-37,-12,.78],[-24,38,.72],[-28,24,.85],[-29,5,.75],[-20,-7,.8],[-20,-12,.72],[43,39,.82],[38,34,1.02],[44,27,.88],[39,19,.78],[44,9,1.04],[39,0,.84],[43,-10,.95],[37,-12,.76],[24,38,.7],[28,25,.86],[29,5,.74],[20,-8,.82],[20,-12,.7]].forEach(([x,z,s],i)=>{
-        const ground=terrainHeightAt(x,z),trunk=new THREE.Mesh(new THREE.CylinderGeometry(.24*s,.45*s,6.2*s,8),palmTrunk); trunk.position.set(x,ground+3.1*s,z); trunk.rotation.z=(i%3-1)*.05; trunk.castShadow=true; scene.add(trunk); boxes.push({minX:x-.4*s,maxX:x+.4*s,minY:ground,maxY:ground+6.2*s,minZ:z-.4*s,maxZ:z+.4*s});
-        for(let leaf=0;leaf<7;leaf++){const frond=new THREE.Mesh(new THREE.ConeGeometry(.72*s,4.2*s,5),palmLeaf); frond.position.set(x,ground+6.3*s,z); frond.rotation.set(Math.PI/2.55,leaf*Math.PI*2/7,0); frond.castShadow=true; frond.raycast=()=>{}; scene.add(frond);}
+        const ground=terrainHeightAt(x,z),height=s*(5.5+(i%5)*.38),lean=((i*7)%5-2)*.075,grove=new THREE.Group(); grove.position.set(x,ground,z); scene.add(grove);
+        for(let section=0;section<3;section++){
+          const sectionHeight=height/3,radiusBottom=s*(.42-section*.07),radiusTop=s*(.34-section*.065);
+          const trunk=new THREE.Mesh(new THREE.CylinderGeometry(radiusTop,radiusBottom,sectionHeight,9),palmTrunks[i%palmTrunks.length]);
+          trunk.position.set(lean*height*(section+.5)/3,sectionHeight*(section+.5),Math.sin(i*.9)*section*.035); trunk.rotation.z=-lean; trunk.castShadow=trunk.receiveShadow=true; grove.add(trunk);
+          const ring=new THREE.Mesh(new THREE.TorusGeometry(radiusTop*1.02,.035*s,6,10),material(0x4e3828)); ring.position.set(lean*height*(section+1)/3,sectionHeight*(section+1)-.06,0); ring.rotation.x=Math.PI/2; ring.raycast=()=>{}; grove.add(ring);
+        }
+        const crownX=lean*height,crownY=height,frondCount=6+(i%4);
+        for(let leaf=0;leaf<frondCount;leaf++){
+          const angle=leaf*Math.PI*2/frondCount+(i%3)*.18,length=s*(3.3+(leaf%3)*.45),droop=.2+(leaf%2)*.12;
+          const frond=new THREE.Mesh(new THREE.ConeGeometry(.42*s,length,5),palmLeaves[(i+leaf)%palmLeaves.length]);
+          frond.position.set(crownX+Math.cos(angle)*length*.38,crownY-.08-Math.sin(droop)*length*.18,Math.sin(angle)*length*.38);
+          frond.rotation.order="YXZ"; frond.rotation.set(Math.PI/2+droop,-angle,0); frond.castShadow=true; frond.raycast=()=>{}; grove.add(frond);
+        }
+        for(let shoot=0;shoot<2+(i%2);shoot++){const leaf=new THREE.Mesh(new THREE.ConeGeometry(.28*s,2.2*s,5),palmLeaves[(i+shoot+1)%palmLeaves.length]); leaf.position.set(crownX,crownY+1*s,0); leaf.rotation.z=(shoot-1)*.28; leaf.raycast=()=>{}; grove.add(leaf);}
+        if(i%3!==1) for(let coconut=0;coconut<2+(i%3);coconut++){const nut=new THREE.Mesh(new THREE.SphereGeometry(.22*s,8,6),material(0x5b3d27)); const angle=coconut*Math.PI*2/(2+i%3); nut.position.set(crownX+Math.cos(angle)*.42*s,crownY-.42*s,Math.sin(angle)*.42*s); nut.castShadow=true; nut.raycast=()=>{}; grove.add(nut);}
+        boxes.push({minX:x-.48*s,maxX:x+.48*s,minY:ground,maxY:ground+height,minZ:z-.48*s,maxZ:z+.48*s});
       });
     }
 
