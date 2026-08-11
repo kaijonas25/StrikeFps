@@ -2215,6 +2215,10 @@ export function FpsGame() {
       remotePlayers.forEach((avatar) => {
         const target = avatar.userData.targetPosition as THREE.Vector3 | undefined;
         if (target) avatar.position.lerp(target, Math.min(1, dt * 12));
+        if (snowyMap) {
+          const stanceDrop = avatar.userData.remoteCrouching ? .42 : 0;
+          avatar.position.y = Math.max(avatar.position.y, terrainHeightAt(avatar.position.x, avatar.position.z) - stanceDrop);
+        }
         avatar.rotation.y = THREE.MathUtils.lerp(avatar.rotation.y, avatar.userData.targetYaw ?? avatar.rotation.y, Math.min(1, dt * 12));
         avatar.rotation.x = THREE.MathUtils.lerp(avatar.rotation.x, avatar.userData.remoteProne ? -Math.PI / 2 : 0, Math.min(1, dt * 9));
       });
@@ -2238,7 +2242,10 @@ export function FpsGame() {
         }
         const stride = movement === "static" ? 0 : Math.sin(t * (movement === "sprint" ? 12 : 6.5));
         const amplitude = movement === "static" ? 0 : movement === "sprint" ? 0.92 : 0.5;
-        if (!isLocal) dummy.position.y = Math.abs(Math.sin(t * (movement === "sprint" ? 12 : 6.5))) * (movement === "sprint" ? .075 : .035);
+        // Remote players already receive their terrain-relative elevation over
+        // the network. Only lane dummies use an absolute ground-level bob;
+        // overwriting a remote avatar's Y here made it phase through mountains.
+        if (!isLocal && !dummy.userData.isRemotePlayer) dummy.position.y = Math.abs(Math.sin(t * (movement === "sprint" ? 12 : 6.5))) * (movement === "sprint" ? .075 : .035);
         const headRig = dummy.userData.headRig as THREE.Group;
         const actorSlot = isLocal ? currentSlot : (dummy.userData.remoteSlot ?? 1);
         const actorSecondary = isLocal ? secondary : (dummy.userData.remoteSecondaryName ?? "P9 SIDEARM");
