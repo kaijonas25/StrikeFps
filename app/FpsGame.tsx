@@ -48,16 +48,19 @@ const createCamoTexture = (pattern: CamoPattern, baseColor: string) => {
   const ctx = canvas.getContext("2d"); if (!ctx) return null;
   let seed = [...`${pattern}${baseColor}`].reduce((value, letter) => Math.imul(value ^ letter.charCodeAt(0), 16777619), 2166136261) >>> 0;
   const random = () => { seed = Math.imul(seed ^ (seed >>> 15), 2246822519) >>> 0; seed = Math.imul(seed ^ (seed >>> 13), 3266489917) >>> 0; return (seed >>> 0) / 4294967296; };
-  const tint = (hex: string, mix: number) => {
-    const color = new THREE.Color(hex), base = new THREE.Color(baseColor); color.lerp(base, mix); return `#${color.getHexString()}`;
+  const base = new THREE.Color(baseColor);
+  const baseHsl = { h: 0, s: 0, l: 0 }; base.getHSL(baseHsl);
+  const shade = (lightnessOffset: number) => {
+    const color = new THREE.Color().setHSL(baseHsl.h, baseHsl.s, THREE.MathUtils.clamp(baseHsl.l + lightnessOffset, .04, .92));
+    return `#${color.getHexString()}`;
   };
   const palettes: Record<Exclude<CamoPattern, "SOLID">, string[]> = {
-    WOODLAND: ["#59633a", "#263822", "#7a6842", "#252722"],
-    MULTICAM: ["#b8aa79", "#87784e", "#64704b", "#49553a", "#d0c391", "#3f4735"],
-    DIGITAL: ["#58664c", "#394735", "#788064", "#263129"],
-    "URBAN CAMO": ["#9a9d99", "#62696b", "#353c3f", "#171d20"],
+    WOODLAND: [shade(.08), shade(-.08), shade(.17), shade(-.17)],
+    MULTICAM: [shade(.13), shade(.04), shade(-.06), shade(-.14), shade(.21), shade(-.2)],
+    DIGITAL: [shade(.07), shade(-.07), shade(.16), shade(-.16)],
+    "URBAN CAMO": [shade(.18), shade(.07), shade(-.08), shade(-.2)],
   };
-  const palette = palettes[pattern].map((color, index) => tint(color, index === 0 ? .2 : .1));
+  const palette = palettes[pattern];
   ctx.fillStyle = palette[0]; ctx.fillRect(0, 0, 256, 256);
   const organicBlob = (x: number, y: number, radius: number, color: string, points = 11) => {
     const vertices = Array.from({ length: points }, (_, index) => {
