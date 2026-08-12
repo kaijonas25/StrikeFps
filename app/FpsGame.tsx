@@ -531,7 +531,7 @@ export function FpsGame() {
     }
 
     const supplyDrops: { drop: THREE.Group; medical: boolean }[] = [];
-    const doors: { pivot: THREE.Group; box: Box; target: number; open: boolean; swing: -1 | 1 }[] = [];
+    const doors: { pivot: THREE.Group; box: Box; target: number; closedAngle: number; open: boolean; swing: -1 | 1 }[] = [];
 
     // Shared floating resupply model used by both the training yard and live maps.
     const addSupplyDrop = (x: number, z: number, color: number, medicalDrop: boolean) => {
@@ -748,7 +748,7 @@ export function FpsGame() {
         const door = new THREE.Mesh(new THREE.BoxGeometry(width, 2.65, .16), material(color, .6, .3)); door.position.set(width / 2, 1.325, 0); door.castShadow = true; pivot.add(door);
         const handle = new THREE.Mesh(new THREE.SphereGeometry(.055, 8, 6), material(0xc4a465, .3, .7)); handle.position.set(width * .82, 1.3, -.12); pivot.add(handle);
         const box: Box = { minX: x - width / 2, maxX: x + width / 2, minY: 0, maxY: 2.7, minZ: z - .18, maxZ: z + .18, active: true };
-        boxes.push(box); doors.push({ pivot, box, target: 0, open: false, swing });
+        boxes.push(box); doors.push({ pivot, box, target: 0, closedAngle: 0, open: false, swing });
       };
       const addBuilding = (cx: number, cz: number, w: number, d: number, h: number, color: number, frontSide: -1 | 1) => {
         const wall = .38, doorWidth = 1.35, doorHeight = 2.7;
@@ -1106,30 +1106,52 @@ export function FpsGame() {
       });
     }
 
+    const desertClimbSurfaces:{x:number;z:number;w:number;d:number;turn:number;baseY:number;roofY:number;stairSide:number}[]=[];
     if(desertMap){
       // Dustfall is a dense adobe settlement surrounded by dunes formed directly into the terrain.
       addBox(0,6,-60,120,12,1.4,0x805734);addBox(0,6,60,120,12,1.4,0x805734);addBox(-60,6,0,1.4,12,120,0x765033);addBox(60,6,0,1.4,12,120,0x765033);
       const adobeColors=[0xb47c48,0xa96f42,0xc18a53,0x98603c],timber=0x5a3825,darkOpening=0x251b16;
-      const addAdobeHouse=(x:number,z:number,w:number,d:number,h:number,turn=0,variant=0)=>{
+      const addAdobeHouse=(x:number,z:number,w:number,d:number,h:number,turn=0,variant=0,twoStory=false)=>{
         const ground=terrainHeightAt(x,z),group=new THREE.Group();group.position.set(x,ground,z);group.rotation.y=turn;scene.add(group);
         const houseMat=material(adobeColors[variant%adobeColors.length],.99,0);
-        const body=new THREE.Mesh(new THREE.BoxGeometry(w,h,d,2,2,2),houseMat);body.position.y=h/2;body.scale.set(1,.98,1);body.castShadow=body.receiveShadow=true;group.add(body);
-        const parapet=new THREE.Mesh(new THREE.BoxGeometry(w+.18,.36,d+.18),houseMat);parapet.position.y=h+.12;parapet.castShadow=true;group.add(parapet);
-        const door=new THREE.Mesh(new THREE.BoxGeometry(1.25,2.35,.12),material(darkOpening,.95,0));door.position.set(variant%2?w*.19:-w*.19,1.18,-d/2-.07);door.raycast=()=>{};group.add(door);
-        const doorInset=new THREE.Mesh(new THREE.BoxGeometry(.92,2.12,.08),material(0x654127,.94,0));doorInset.position.set(door.position.x,1.08,-d/2-.145);doorInset.raycast=()=>{};group.add(doorInset);
+        const totalH=twoStory?h*1.72:h,wall=.42,doorWidth=1.3,doorHeight=2.5,doorX=variant%2?w*.19:-w*.19;
+        const addLocalPart=(lw:number,lh:number,ld:number,lx:number,ly:number,lz:number,partMaterial:THREE.Material,collide=true)=>{
+          const mesh=new THREE.Mesh(new THREE.BoxGeometry(lw,lh,ld),partMaterial);mesh.position.set(lx,ly,lz);mesh.castShadow=mesh.receiveShadow=true;group.add(mesh);
+          if(collide){const wx=x+lx*Math.cos(turn)+lz*Math.sin(turn),wz=z-lx*Math.sin(turn)+lz*Math.cos(turn),halfX=Math.abs(Math.cos(turn))*lw/2+Math.abs(Math.sin(turn))*ld/2,halfZ=Math.abs(Math.sin(turn))*lw/2+Math.abs(Math.cos(turn))*ld/2;boxes.push({minX:wx-halfX,maxX:wx+halfX,minY:ground+ly-lh/2,maxY:ground+ly+lh/2,minZ:wz-halfZ,maxZ:wz+halfZ});placementSurfaces.push(mesh);}return mesh;
+        };
+        // Four separate walls replace the old solid block, leaving a genuinely playable interior.
+        addLocalPart(w,totalH,wall,0,totalH/2,d/2,houseMat);addLocalPart(wall,totalH,d,-w/2,totalH/2,0,houseMat);addLocalPart(wall,totalH,d,w/2,totalH/2,0,houseMat);
+        const leftWidth=doorX-doorWidth/2+w/2,rightStart=doorX+doorWidth/2,rightWidth=w/2-rightStart;
+        if(leftWidth>0)addLocalPart(leftWidth,totalH,wall,-w/2+leftWidth/2,totalH/2,-d/2,houseMat);
+        if(rightWidth>0)addLocalPart(rightWidth,totalH,wall,rightStart+rightWidth/2,totalH/2,-d/2,houseMat);
+        addLocalPart(doorWidth,totalH-doorHeight,wall,doorX,doorHeight+(totalH-doorHeight)/2,-d/2,houseMat,false);
+        addLocalPart(w-.45,.14,d-.45,0,.07,0,material(0x8d633e,.98,0),false);
+        const roof=addLocalPart(w,.24,d,0,totalH-.12,0,houseMat,false);placementSurfaces.push(roof);
+        if(twoStory)addLocalPart(w-.7,.22,d-.7,0,h-.05,0,material(0x8d633e,.98,0),false);
+        const parapet=new THREE.Mesh(new THREE.BoxGeometry(w+.18,.36,d+.18),houseMat);parapet.position.y=totalH+.12;parapet.castShadow=true;group.add(parapet);
+        // City Block's hinged door behavior, transformed into each house's local rotation.
+        const hingeLocalX=doorX-doorWidth/2,hingeLocalZ=-d/2-.05,hingeX=x+hingeLocalX*Math.cos(turn)+hingeLocalZ*Math.sin(turn),hingeZ=z-hingeLocalX*Math.sin(turn)+hingeLocalZ*Math.cos(turn);
+        const pivot=new THREE.Group();pivot.position.set(hingeX,ground,hingeZ);pivot.rotation.y=turn;scene.add(pivot);
+        const door=new THREE.Mesh(new THREE.BoxGeometry(doorWidth,2.42,.15),material(0x654127,.94,.02));door.position.set(doorWidth/2,1.21,0);door.castShadow=true;pivot.add(door);
+        const handle=new THREE.Mesh(new THREE.SphereGeometry(.055,8,6),material(0xb68a51,.35,.55));handle.position.set(doorWidth*.82,1.2,-.1);pivot.add(handle);
+        const doorHalfX=Math.abs(Math.cos(turn))*doorWidth/2+Math.abs(Math.sin(turn))*.1,doorHalfZ=Math.abs(Math.sin(turn))*doorWidth/2+Math.abs(Math.cos(turn))*.1;
+        const doorBox:Box={minX:hingeX-doorHalfX,maxX:hingeX+doorHalfX,minY:ground,maxY:ground+2.5,minZ:hingeZ-doorHalfZ,maxZ:hingeZ+doorHalfZ,active:true};boxes.push(doorBox);doors.push({pivot,box:doorBox,target:turn,closedAngle:turn,open:false,swing:variant%2?-1:1});
         const windowCount=w>7?2:1;
         for(let windowIndex=0;windowIndex<windowCount;windowIndex++){
           const wx=windowCount===1?-w*.18:(windowIndex? w*.27:-w*.27);
           if(Math.abs(wx-door.position.x)<1.2)continue;
-          const windowMesh=new THREE.Mesh(new THREE.BoxGeometry(.82,.82,.13),material(darkOpening,.98,0));windowMesh.position.set(wx,h*.58,-d/2-.08);windowMesh.raycast=()=>{};group.add(windowMesh);
+          const windowMesh=new THREE.Mesh(new THREE.BoxGeometry(.82,.82,.13),material(darkOpening,.98,0));windowMesh.position.set(wx,twoStory?h*.58:h*.58,-d/2-.08);windowMesh.raycast=()=>{};group.add(windowMesh);
           const lintel=new THREE.Mesh(new THREE.CylinderGeometry(.075,.09,1.25,7),material(timber,.96,0));lintel.rotation.z=Math.PI/2;lintel.position.set(wx,h*.58+.58,-d/2-.2);lintel.raycast=()=>{};group.add(lintel);
         }
-        for(let beam=0;beam<4;beam++){const roofBeam=new THREE.Mesh(new THREE.CylinderGeometry(.07,.1,d+.65,7),material(timber,.96,0));roofBeam.rotation.x=Math.PI/2;roofBeam.position.set((beam-1.5)*w*.2,h+.36,0);roofBeam.raycast=()=>{};group.add(roofBeam);}
+        for(let beam=0;beam<4;beam++){const roofBeam=new THREE.Mesh(new THREE.CylinderGeometry(.07,.1,d+.65,7),material(timber,.96,0));roofBeam.rotation.x=Math.PI/2;roofBeam.position.set((beam-1.5)*w*.2,totalH+.36,0);roofBeam.raycast=()=>{};group.add(roofBeam);}
         const awning=new THREE.Mesh(new THREE.BoxGeometry(2.5,.12,1.05),material(0x765035,.98,0));awning.position.set(door.position.x,2.68,-d/2-.55);awning.rotation.x=-.08;awning.raycast=()=>{};group.add(awning);
         const corners=[[-w/2,-d/2],[w/2,-d/2],[-w/2,d/2],[w/2,d/2]];
-        corners.forEach(([cx,cz],i)=>{const cap=new THREE.Mesh(new THREE.SphereGeometry(.3,7,5),houseMat);cap.scale.set(1.2,.55,1.2);cap.position.set(cx,h+.12+(i%2)*.04,cz);cap.raycast=()=>{};group.add(cap);});
-        const halfX=Math.abs(Math.cos(turn))*w/2+Math.abs(Math.sin(turn))*d/2,halfZ=Math.abs(Math.sin(turn))*w/2+Math.abs(Math.cos(turn))*d/2;
-        boxes.push({minX:x-halfX,maxX:x+halfX,minY:ground,maxY:ground+h+.4,minZ:z-halfZ,maxZ:z+halfZ});placementSurfaces.push(body);
+        corners.forEach(([cx,cz],i)=>{const cap=new THREE.Mesh(new THREE.SphereGeometry(.3,7,5),houseMat);cap.scale.set(1.2,.55,1.2);cap.position.set(cx,totalH+.12+(i%2)*.04,cz);cap.raycast=()=>{};group.add(cap);});
+        if(twoStory){
+          const stairSide=variant%2?1:-1,steps=12;
+          for(let step=0;step<steps;step++){const progress=(step+.5)/steps,stepH=totalH*progress,localX=stairSide*(w/2-1.05),localZ=-d/2-4.6+progress*4.6;addLocalPart(1.8,stepH,.42,localX,stepH/2,localZ,material(step%2?0x9d6941:0xad7849,.98,0),false);}
+          desertClimbSurfaces.push({x,z,w,d,turn,baseY:ground,roofY:ground+totalH,stairSide});
+        }
       };
       const houses:[number,number,number,number,number,number,number][]=[
         [-48,42,8,8,4.1,.06,0],[-34,43,10,7,4.8,-.04,2],[-17,44,8,9,4.2,.03,1],[17,44,9,8,5,-.05,3],[34,43,10,7,4.3,.04,0],[49,41,7,9,4.6,-.08,2],
@@ -1137,7 +1159,7 @@ export function FpsGame() {
         [-47,3,10,8,4.4,1.57,2],[-28,5,9,10,5.1,3.14,0],[-9,4,8,8,4.2,0,3],[10,3,10,9,4.8,3.14,1],[30,4,9,8,4.3,0,2],[49,2,8,10,5,-1.57,0],
         [-49,-19,8,9,4.2,1.57,3],[-31,-19,10,8,4.9,3.14,1],[-12,-19,8,10,4.5,0,2],[11,-18,10,8,5.1,3.14,0],[31,-20,8,10,4.2,0,3],[49,-20,9,8,4.7,-1.57,1],
         [-47,-41,10,8,4.8,.05,0],[-30,-42,8,9,4.1,-.04,2],[-12,-41,9,8,5,.03,1],[13,-42,8,10,4.3,-.04,3],[31,-41,10,8,4.9,.05,0],[49,-40,8,9,4.2,-.06,2]
-      ];houses.forEach((house)=>addAdobeHouse(...house));
+      ];houses.forEach((house,index)=>addAdobeHouse(...house,index===2||index===8||index===14||index===21||index===26));
       // Courtyard walls, market stalls and storage make the streets tactically dense.
       [[-39,33,11,1],[0,34,13,1],[40,32,12,1],[-39,13,10,1],[0,14,12,1],[40,12,10,1],[-39,-8,12,1],[0,-8,11,1],[40,-9,12,1],[-40,-31,11,1],[0,-31,13,1],[40,-31,11,1]].forEach(([x,z,w],i)=>{const ground=terrainHeightAt(x,z);addBox(x,ground+1.05,z,w,2.1,.42,adobeColors[i%adobeColors.length]);});
       [[-21,34],[22,34],[-20,13],[20,13],[-21,-8],[21,-8],[-20,-31],[20,-31]].forEach(([x,z],i)=>{const ground=terrainHeightAt(x,z);addBox(x,ground+.62,z,3,1.24,2.2,i%2?0x755236:0x86603d);addBox(x+(i%2?.7:-.7),ground+1.5,z,1.1,.52,1,0x60412d);});
@@ -1145,6 +1167,14 @@ export function FpsGame() {
       // Wind-blown dust softens the horizon.
       const dustPositions=new Float32Array(320*3);for(let i=0;i<320;i++){dustPositions[i*3]=-59+Math.random()*118;dustPositions[i*3+1]=.3+Math.random()*9;dustPositions[i*3+2]=-59+Math.random()*118;}const dustGeo=new THREE.BufferGeometry();dustGeo.setAttribute("position",new THREE.BufferAttribute(dustPositions,3));const dust=new THREE.Points(dustGeo,new THREE.PointsMaterial({color:0xe7bc7b,size:.1,transparent:true,opacity:.24,depthWrite:false}));dust.raycast=()=>{};scene.add(dust);
     }
+    const desertWalkHeight=(x:number,z:number,currentFeetY:number)=>{
+      let height=terrainHeightAt(x,z);
+      desertClimbSurfaces.forEach((surface)=>{const dx=x-surface.x,dz=z-surface.z,c=Math.cos(surface.turn),s=Math.sin(surface.turn),lx=dx*c-dz*s,lz=dx*s+dz*c;
+        const onRoof=Math.abs(lx)<=surface.w/2-.25&&Math.abs(lz)<=surface.d/2-.25&&currentFeetY>surface.roofY-.85;
+        const stairProgress=THREE.MathUtils.clamp((lz+surface.d/2+4.6)/4.6,0,1),onStairs=Math.abs(lx-surface.stairSide*(surface.w/2-1.05))<1.05&&lz>=-surface.d/2-4.6&&lz<=-surface.d/2+.25;
+        if(onRoof)height=Math.max(height,surface.roofY);else if(onStairs)height=Math.max(height,surface.baseY+(surface.roofY-surface.baseY)*stairProgress);
+      });return height;
+    };
 
     if (selectedMap === "TEST YARD") {
     // Landmark tower and emissive arena lights
@@ -1448,7 +1478,7 @@ export function FpsGame() {
         remotePlayers.set(state.id, avatar);
       }
       avatar.userData.targetPosition.set(state.x, state.y - PLAYER_HEIGHT - (state.crouching ? .42 : 0), state.z);
-      if(desertMap&&!state.flying) avatar.userData.targetPosition.y=terrainHeightAt(state.x,state.z)-(state.crouching?.42:0);
+      if(desertMap&&!state.flying) avatar.userData.targetPosition.y=Math.max(state.y-PLAYER_HEIGHT,terrainHeightAt(state.x,state.z))-(state.crouching?.42:0);
       if(beachMap&&!state.flying){
         const remoteOnRamp=Math.abs(state.x)<4.7&&state.z<=-4.2&&state.z>-10;
         const remoteOnPier=Math.abs(state.x)<5.5&&state.z<=-10&&state.z>-46;
@@ -1820,7 +1850,7 @@ export function FpsGame() {
         setLeanSide(leanDirection);
       }
       if (e.code === "KeyF" && !e.repeat && nearbyDoor) {
-        nearbyDoor.open = !nearbyDoor.open; nearbyDoor.target = nearbyDoor.open ? nearbyDoor.swing * Math.PI / 2 : 0;
+        nearbyDoor.open = !nearbyDoor.open; nearbyDoor.target = nearbyDoor.closedAngle + (nearbyDoor.open ? nearbyDoor.swing * Math.PI / 2 : 0);
         if (nearbyDoor.open) nearbyDoor.box.active = false;
       }
       if (e.code === "KeyR" && currentSlot <= 2 && !reloadEnd) {
@@ -2496,7 +2526,8 @@ export function FpsGame() {
       const onDockRamp=beachMap&&Math.abs(playerPosition.x)<4.7&&playerPosition.z<=-4.2&&playerPosition.z>-10;
       const onPier=beachMap&&Math.abs(playerPosition.x)<5.5&&playerPosition.z<=-10&&playerPosition.z>-46;
       const beachGround=onDockRamp?THREE.MathUtils.lerp(terrainHeightAt(playerPosition.x,playerPosition.z),1.39,THREE.MathUtils.clamp((-playerPosition.z-4.2)/5.8,0,1)):onPier?1.39:terrainHeightAt(playerPosition.x,playerPosition.z);
-      const groundHeight = snowyMap || beachMap || desertMap ? PLAYER_HEIGHT + beachGround : standingInCreek ? PLAYER_HEIGHT - .7 : PLAYER_HEIGHT;
+      const walkGround=desertMap?desertWalkHeight(playerPosition.x,playerPosition.z,playerPosition.y-PLAYER_HEIGHT):beachGround;
+      const groundHeight = snowyMap || beachMap || desertMap ? PLAYER_HEIGHT + walkGround : standingInCreek ? PLAYER_HEIGHT - .7 : PLAYER_HEIGHT;
       const adminFlyingActive = adminAuthorizedRef.current && adminControlsRef.current.flying;
       if (adminFlyingActive) {
         verticalVelocity = 0; grounded = false;
@@ -2526,7 +2557,7 @@ export function FpsGame() {
       });
       doors.forEach((door) => {
         door.pivot.rotation.y = THREE.MathUtils.lerp(door.pivot.rotation.y, door.target, Math.min(1, dt * 8));
-        if (!door.open && Math.abs(door.pivot.rotation.y) < .04) door.box.active = true;
+        if (!door.open && Math.abs(door.pivot.rotation.y-door.closedAngle) < .04) door.box.active = true;
       });
       nearbyDoor = doors.find((door) => Math.hypot(playerPosition.x - door.pivot.position.x, playerPosition.z - door.pivot.position.z) < 2.35);
       setDoorPrompt(Boolean(nearbyDoor));
