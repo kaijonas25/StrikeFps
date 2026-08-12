@@ -84,16 +84,17 @@ const SPAWNS: Record<MultiplayerMap, { free: [number,number][]; ALPHA: [number,n
     BRAVO: [[-38,-26],[-24,-32],[-8,-38],[8,-38],[24,-32],[38,-26]],
   },
   "TIDEBREAK BEACH": {
-    free: [[-55,86],[-34,90],[0,88],[34,90],[55,86],[-52,67],[52,68],[-54,50],[-32,55],[0,54],[32,55],[54,49],[-51,20],[51,18],[-48,-2],[48,-2],[-29,-11],[29,-11],[-14,-29],[15,-31]],
-    ALPHA: [[-55,87],[-35,91],[-12,92],[12,92],[35,91],[55,87]],
-    BRAVO: [[-54,-2],[-34,-4],[-12,-6],[12,-6],[34,-4],[54,-2]],
+    free: [[-45,81],[-15,80],[15,80],[45,81],[-46,62],[-14,61],[14,61],[46,62],[-43,42],[-14,41],[14,41],[43,42],[-43,23],[-9,22],[9,22],[43,24],[-39,1],[-20,2],[0,1],[20,1],[39,1],[-22,-14],[0,-13],[22,-15]],
+    ALPHA: [[-47,78],[-28,81],[-9,79],[9,79],[28,81],[47,78]],
+    BRAVO: [[-50,1],[-31,2],[-10,0],[10,0],[31,2],[50,1]],
   },
 };
 
 const chooseSpawn = (meta: MatchMeta, team: PlayerState["team"], players: PlayerState[]) => {
   const teamMode = meta.mode === "TDM" || meta.mode === "CTP";
   const base = SPAWNS[meta.map][teamMode ? team : "free"];
-  const clearOfObjectives = base.filter(([x,z]) => meta.objectiveZones.every((zone) => Math.hypot(x-zone.x,z-zone.z) > zone.radius + 3));
+  const beachRocks:[number,number,number][]=[[-42,-8,4],[-31,-27,4.2],[-7,-20,3.5],[7,20,3.7],[24,-2,4],[41,-14,4.2],[-15,19,3.5],[16,-27,3.7]];
+  const clearOfObjectives = base.filter(([x,z]) => meta.objectiveZones.every((zone) => Math.hypot(x-zone.x,z-zone.z) > zone.radius + 3) && (meta.map!=="TIDEBREAK BEACH" || beachRocks.every(([rockX,rockZ,radius])=>Math.hypot(x-rockX,z-rockZ)>radius+2.2)));
   const candidates = clearOfObjectives.length ? clearOfObjectives : base;
   const living = players.filter((player) => player.health > 0);
   return candidates.map(([x,z]) => {
