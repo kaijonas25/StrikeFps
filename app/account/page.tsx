@@ -25,10 +25,10 @@ export default function AccountPage() {
     const token = await currentUser.getIdToken();
     const response = await fetch("/api/player", { headers: { Authorization: `Bearer ${token}` } });
     if (response.ok) {
-      const data = await response.json() as { player: Player; isAdmin?: boolean };
+      const data = await response.json() as { player: Player; adminRole?: "owner" | "junior" | null };
       setPlayer(data.player);
       setNickname(data.player.callsign);
-      setIsAdmin(Boolean(data.isAdmin));
+      setIsAdmin(data.adminRole === "owner");
     }
   }), [router]);
 

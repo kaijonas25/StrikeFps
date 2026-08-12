@@ -166,6 +166,7 @@ export function FpsGame() {
   const mobileMoveRef = useRef<{ id: number; centerX: number; centerY: number } | null>(null);
   const previousHealthRef = useRef(100);
   const adminAuthorizedRef = useRef(false);
+  const adminRoleRef = useRef<"owner" | "junior" | null>(null);
   const adminPanelOpenRef = useRef(false);
   const chatOpenRef = useRef(false);
   const chatInputRef = useRef<HTMLInputElement>(null);
@@ -270,6 +271,7 @@ export function FpsGame() {
   const [secondaryFireControl, setSecondaryFireControl] = useState<FireControlAttachment>("STANDARD TRIGGER");
   const [accountSaveStatus, setAccountSaveStatus] = useState<"idle" | "loading" | "saving" | "saved" | "error">("loading");
   const [adminAuthorized, setAdminAuthorized] = useState(false);
+  const [adminRole, setAdminRole] = useState<"owner" | "junior" | null>(null);
   const [adminPanelOpen, setAdminPanelOpen] = useState(false);
   const [adminFlying, setAdminFlying] = useState(false);
   const [adminNoclip, setAdminNoclip] = useState(false);
@@ -286,17 +288,20 @@ export function FpsGame() {
   };
 
   useEffect(() => onAuthStateChanged(auth, async (user) => {
-    if (!user) { firebaseTokenRef.current = ""; playerCallsignRef.current = "OPERATOR"; setAccountCallsign("OPERATOR"); adminAuthorizedRef.current = false; setAdminAuthorized(false); setAdminPanelOpen(false); setAccountSaveStatus("idle"); return; }
+    if (!user) { firebaseTokenRef.current = ""; playerCallsignRef.current = "OPERATOR"; setAccountCallsign("OPERATOR"); adminAuthorizedRef.current = false; adminRoleRef.current = null; setAdminAuthorized(false); setAdminRole(null); setAdminPanelOpen(false); setAccountSaveStatus("idle"); return; }
     try {
       const token = await user.getIdToken();
       firebaseTokenRef.current = token;
       const response = await fetch("/api/player", { headers: { Authorization: `Bearer ${token}` } });
       if (!response.ok) throw new Error("Unable to load preferences");
-      const data = await response.json() as { isAdmin?: boolean; player?: { callsign?: string; loadout?: Partial<SavedLoadout>; operator?: Partial<SavedOperator> } };
+      const data = await response.json() as { isAdmin?: boolean; adminRole?: "owner" | "junior" | null; player?: { callsign?: string; loadout?: Partial<SavedLoadout>; operator?: Partial<SavedOperator> } };
       playerCallsignRef.current = data.player?.callsign?.slice(0,18) || user.displayName?.slice(0,18).toUpperCase() || "OPERATOR";
       setAccountCallsign(playerCallsignRef.current);
-      adminAuthorizedRef.current = Boolean(data.isAdmin);
-      setAdminAuthorized(Boolean(data.isAdmin));
+      const resolvedAdminRole = data.adminRole ?? (data.isAdmin ? "owner" : null);
+      adminRoleRef.current = resolvedAdminRole;
+      adminAuthorizedRef.current = resolvedAdminRole !== null;
+      setAdminRole(resolvedAdminRole);
+      setAdminAuthorized(resolvedAdminRole !== null);
       const loadout = data.player?.loadout;
       if (loadout) {
         if (loadout.primary) setPrimary(loadout.primary); if (loadout.secondary) setSecondary(loadout.secondary);
@@ -319,7 +324,7 @@ export function FpsGame() {
         if (operator.pantsColor) setPantsColor(operator.pantsColor); if (operator.gloveColor) setGloveColor(operator.gloveColor); if (operator.bootColor) setBootColor(operator.bootColor);
       }
       setAccountSaveStatus("saved");
-    } catch { adminAuthorizedRef.current = false; setAdminAuthorized(false); setAccountSaveStatus("error"); }
+    } catch { adminAuthorizedRef.current = false; adminRoleRef.current = null; setAdminAuthorized(false); setAdminRole(null); setAccountSaveStatus("error"); }
   }), []);
 
   useEffect(() => {
@@ -1778,7 +1783,7 @@ export function FpsGame() {
     };
     const damageDummy = (hit: THREE.Intersection, damage: number) => {
       const multiplier = hit.object.userData.damageMultiplier ?? 1;
-      const adminDamage = adminAuthorizedRef.current ? adminControlsRef.current.damageMultiplier : 1;
+      const adminDamage = adminRoleRef.current === "owner" ? adminControlsRef.current.damageMultiplier : 1;
       const weapon = currentSlot === 1 ? primary : secondary;
       const remotePlayerId = hit.object.userData.remotePlayerId as string | undefined;
       if (remotePlayerId) {
@@ -1792,7 +1797,7 @@ export function FpsGame() {
       damageDummyGroup(dummy, damage * multiplier * adminDamage, weapon, multiplier >= 2);
     };
     adminCommandRef.current = (command) => {
-      if (!adminAuthorizedRef.current) return;
+      if (adminRoleRef.current !== "owner") return;
       if (command === "refill_ammo") {
         ammoCounts[0] = primaryStats.capacity; ammoCounts[1] = secondaryStats.capacity;
         ammoCount = ammoCounts[currentSlot - 1] ?? ammoCount; setAmmo(ammoCount);
@@ -1972,7 +1977,7 @@ export function FpsGame() {
         dummies.forEach((dummy) => { const distance = dummy.position.distanceTo(position); if (distance < radius) damageDummyGroup(dummy, Math.round(maxDamage * (1 - distance / radius)), weapon); });
         damageRemotePlayers(radius, maxDamage, weapon);
         const distance = playerPosition.distanceTo(position);
-        if (distance < radius && !(adminAuthorizedRef.current && adminControlsRef.current.godMode)) { playerHealth = Math.max(0, playerHealth - Math.round(maxDamage * (1 - distance / radius))); setHealth(playerHealth); if (playerHealth <= 0) { setDead(true); document.exitPointerLock(); } }
+        if (distance < radius && !(adminRoleRef.current === "owner" && adminControlsRef.current.godMode)) { playerHealth = Math.max(0, playerHealth - Math.round(maxDamage * (1 - distance / radius))); setHealth(playerHealth); if (playerHealth <= 0) { setDead(true); document.exitPointerLock(); } }
       };
       if (projectile.type === "SMOKE GRENADE" || projectile.type === "GAS BOMB") {
         const gas = projectile.type === "GAS BOMB";
@@ -1985,7 +1990,7 @@ export function FpsGame() {
           const gasTick = window.setInterval(() => {
             dummies.forEach((dummy) => { if (dummy.position.distanceTo(position) < 5) damageDummyGroup(dummy, 5, "GAS BOMB"); });
             damageRemotePlayers(5, 5, "GAS BOMB", false);
-            if (playerPosition.distanceTo(position) < 5 && !(adminAuthorizedRef.current && adminControlsRef.current.godMode)) { playerHealth = Math.max(0, playerHealth - 4); setHealth(playerHealth); if (playerHealth <= 0) { setDead(true); document.exitPointerLock(); } }
+            if (playerPosition.distanceTo(position) < 5 && !(adminRoleRef.current === "owner" && adminControlsRef.current.godMode)) { playerHealth = Math.max(0, playerHealth - 4); setHealth(playerHealth); if (playerHealth <= 0) { setDead(true); document.exitPointerLock(); } }
           }, 500);
           window.setTimeout(() => window.clearInterval(gasTick), 9000);
         }
@@ -2242,7 +2247,7 @@ export function FpsGame() {
         nextPadTick = now + 250;
         if (selectedMap === "TEST YARD") {
           const onPad = (x: number) => Math.abs(playerPosition.x - x) < 2 && Math.abs(playerPosition.z - 23) < 2;
-          const adminGodModeActive = adminAuthorizedRef.current && adminControlsRef.current.godMode;
+          const adminGodModeActive = adminRoleRef.current === "owner" && adminControlsRef.current.godMode;
           if (onPad(-8) && !adminGodModeActive) playerHealth = Math.max(0, playerHealth - 8);
           if (onPad(0) && !adminGodModeActive) playerHealth = 0;
           if (onPad(8)) playerHealth = Math.min(100, playerHealth + 12);
@@ -2731,34 +2736,34 @@ export function FpsGame() {
           <small>{chatDraft.length}/160 · ENTER SEND · ESC CANCEL</small>
         </form> : <button onClick={() => { chatOpenRef.current = true; setChatOpen(true); if (document.pointerLockElement) document.exitPointerLock(); }}><kbd>ENTER</kbd> MATCH CHAT</button>}
       </section>}
-      {started && adminAuthorized && <div className="admin-game-badge"><kbd>=</kbd> ADMIN PANEL</div>}
+      {started && adminAuthorized && <div className="admin-game-badge"><kbd>=</kbd> {adminRole === "owner" ? "ADMIN" : "JUNIOR ADMIN"} PANEL</div>}
       {started && adminAuthorized && adminPanelOpen && <div className="game-admin-overlay" role="dialog" aria-modal="true" aria-label="In-game admin panel">
         <section className="game-admin-panel">
-          <header><div><small>AUTHORIZED OPERATOR</small><h2>ADMIN <span>COMMAND</span></h2></div><button aria-label="Close admin panel" onClick={() => { adminPanelOpenRef.current = false; setAdminPanelOpen(false); mountRef.current?.querySelector("canvas")?.requestPointerLock(); }}>×</button></header>
+          <header><div><small>{adminRole === "owner" ? "OWNER ACCESS" : "LIMITED ACCESS"}</small><h2>{adminRole === "owner" ? "ADMIN" : "JUNIOR ADMIN"} <span>COMMAND</span></h2></div><button aria-label="Close admin panel" onClick={() => { adminPanelOpenRef.current = false; setAdminPanelOpen(false); mountRef.current?.querySelector("canvas")?.requestPointerLock(); }}>×</button></header>
           <div className="admin-game-grid">
             <article><h3>MOVEMENT</h3>
               <button className={adminFlying ? "active" : ""} onClick={() => updateAdminControls({ flying: !adminFlying })}><span>FLY MODE</span><b>{adminFlying ? "ON" : "OFF"}</b></button>
               <button className={adminNoclip ? "active" : ""} onClick={() => updateAdminControls({ noclip: !adminNoclip })}><span>NOCLIP</span><b>{adminNoclip ? "ON" : "OFF"}</b></button>
               <p>Fly with WASD · Space up · C down</p>
             </article>
-            <article><h3>COMBAT</h3>
+            {adminRole === "owner" && <article><h3>COMBAT</h3>
               <label><span>DAMAGE MULTIPLIER</span><select value={adminDamageMultiplier} onChange={(event) => updateAdminControls({ damageMultiplier: Number(event.target.value) })}><option value={1}>1× NORMAL</option><option value={2}>2× DAMAGE</option><option value={5}>5× DAMAGE</option><option value={10}>10× DAMAGE</option><option value={100}>100× INSTANT</option></select></label>
               <button className={adminGodMode ? "active" : ""} onClick={() => updateAdminControls({ godMode: !adminGodMode })}><span>GOD MODE</span><b>{adminGodMode ? "ON" : "OFF"}</b></button>
               <button onClick={() => adminCommandRef.current("restore_health")}><span>RESTORE HEALTH</span><b>100 HP</b></button>
               <button onClick={() => adminCommandRef.current("refill_ammo")}><span>SPAWN AMMO</span><b>FULL</b></button>
-            </article>
-            <article><h3>ITEM SPAWNER</h3>
+            </article>}
+            {adminRole === "owner" && <article><h3>ITEM SPAWNER</h3>
               <button onClick={() => adminCommandRef.current("refill_medical")}><span>{medical}</span><b>×9</b></button>
               <button onClick={() => adminCommandRef.current("refill_utility")}><span>{utility}</span><b>×9</b></button>
               <p>Items are added directly to your active loadout.</p>
-            </article>
-            <article className="admin-kill-panel"><h3>KILL PANEL</h3>
+            </article>}
+            {adminRole === "owner" && <article className="admin-kill-panel"><h3>KILL PANEL</h3>
               <button className="danger" onClick={() => adminCommandRef.current("kill_targets")}><span>ALL TRAINING TARGETS</span><b>ELIMINATE</b></button>
               {connectedPlayerIds.filter((id) => id !== localPlayerId).map((id, index) => <div className="admin-player-actions" key={id}><span>{playerSummaries[id]?.callsign || `OPERATOR ${String(index + 1).padStart(2, "0")}`}</span><button className="danger" onClick={() => multiplayerSendRef.current({ type: "hit", targetId: id, damage: 100, weapon: "ADMIN", headshot: false })}>KILL</button><button className="danger" onClick={() => multiplayerSendRef.current({ type: "admin_kick", targetId: id })}>KICK</button></div>)}
               {!connectedPlayerIds.some((id) => id !== localPlayerId) && <p>NO REMOTE OPERATORS CONNECTED</p>}
-            </article>
+            </article>}
           </div>
-          <footer><span>ADMIN SESSION · {auth.currentUser?.email}</span><button onClick={() => { adminPanelOpenRef.current = false; setAdminPanelOpen(false); mountRef.current?.querySelector("canvas")?.requestPointerLock(); }}>RETURN TO GAME <kbd>=</kbd></button></footer>
+          <footer><span>{adminRole === "owner" ? "OWNER" : "JUNIOR ADMIN"} SESSION · {auth.currentUser?.email}</span><button onClick={() => { adminPanelOpenRef.current = false; setAdminPanelOpen(false); mountRef.current?.querySelector("canvas")?.requestPointerLock(); }}>RETURN TO GAME <kbd>=</kbd></button></footer>
         </section>
       </div>}
       {started && selectedSector !== "TRAINING SECTOR" && matchPhase === "playing" && (matchMode === "TDM" || matchMode === "CTP") && <aside className="tdm-scoreboard">

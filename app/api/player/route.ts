@@ -3,7 +3,15 @@ import { getDb } from "../../../db";
 import { playerMatchResults, players } from "../../../db/schema";
 
 const FIREBASE_API_KEY = "AIzaSyBblKzSnl4XD7afgjqXETtVEhZyADn4-3s";
-const ADMIN_EMAILS = new Set(["kaigarcia2510@gmail.com", "sebastian.ward@pinecrest.edu"]);
+const OWNER_EMAIL = "kaigarcia2510@gmail.com";
+const JUNIOR_ADMIN_EMAILS = new Set(["sebastian.ward@pinecrest.edu"]);
+type AdminRole = "owner" | "junior" | null;
+const adminRoleForEmail = (email: string): AdminRole => {
+  const normalized = email.toLowerCase();
+  if (normalized === OWNER_EMAIL) return "owner";
+  if (JUNIOR_ADMIN_EMAILS.has(normalized)) return "junior";
+  return null;
+};
 type FirebaseAccount = { localId: string; email: string; displayName?: string };
 type AdminStats = { level: number; experience: number; matchesPlayed: number; wins: number; kills: number; deaths: number };
 
@@ -31,7 +39,8 @@ export async function GET(request: Request) {
   await db.insert(players).values({ id: account.localId, email: account.email, callsign }).onConflictDoUpdate({ target: players.id, set: { email: account.email } });
   const [player] = await db.select().from(players).where(eq(players.id, account.localId)).limit(1);
   return Response.json({
-    isAdmin: ADMIN_EMAILS.has(account.email.toLowerCase()),
+    isAdmin: adminRoleForEmail(account.email) !== null,
+    adminRole: adminRoleForEmail(account.email),
     player: {
       ...player,
       loadout: JSON.parse(player.loadoutJson),
@@ -47,7 +56,7 @@ export async function PUT(request: Request) {
   if (!account) return Response.json({ error: "Unauthorized" }, { status: 401 });
   const payload = await request.json() as { loadout?: unknown; operator?: unknown; adminStats?: Partial<AdminStats> };
   if (payload.adminStats) {
-    if (!ADMIN_EMAILS.has(account.email.toLowerCase())) return Response.json({ error: "Admin access required" }, { status: 403 });
+    if (adminRoleForEmail(account.email) !== "owner") return Response.json({ error: "Owner access required" }, { status: 403 });
     const stats: AdminStats = {
       level: payload.adminStats.level as number,
       experience: payload.adminStats.experience as number,
