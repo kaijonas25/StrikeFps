@@ -8,10 +8,11 @@ import { auth } from "./firebase";
 type Box = { minX: number; maxX: number; minY: number; maxY: number; minZ: number; maxZ: number; active?: boolean };
 type PlayerStance = "standing" | "crouching" | "prone";
 type FireMode = "SEMI" | "BURST" | "AUTO";
-type GameMode = "FFA" | "TDM" | "KOTH" | "CTP";
+type GameMode = "FFA" | "TDM" | "KOTH" | "CTP" | "CTF";
 type ObjectiveZone = { id: string; x: number; z: number; radius: number; owner: "ALPHA" | "BRAVO" | null; progress: number };
+type FlagState = { team:"ALPHA"|"BRAVO"; homeX:number; homeZ:number; x:number; z:number; carrierId:string|null; dropped:boolean };
 type MenuPage = "HOME" | "LOADOUT" | "CHARACTER" | "CLASSES" | "SETTINGS";
-type GameMap = "TEST YARD" | "CITY BLOCK" | "BLACKWOOD FOREST" | "FROSTLINE BASE" | "TIDEBREAK BEACH";
+type GameMap = "TEST YARD" | "CITY BLOCK" | "BLACKWOOD FOREST" | "FROSTLINE BASE" | "TIDEBREAK BEACH" | "DUSTFALL DESERT";
 type GameSector = "TRAINING SECTOR" | "SECTOR 1" | "SECTOR 2" | "SECTOR 3" | "SECTOR 4";
 type MultiplayerSector = Exclude<GameSector, "TRAINING SECTOR">;
 type KillFeedEntry = { id: number; killer: string; victim: string; weapon: string; headshot: boolean };
@@ -213,12 +214,14 @@ export function FpsGame() {
   const [forestMapVotes, setForestMapVotes] = useState(0);
   const [frostMapVotes, setFrostMapVotes] = useState(0);
   const [beachMapVotes, setBeachMapVotes] = useState(0);
+  const [desertMapVotes, setDesertMapVotes] = useState(0);
   const [selectedMapVote, setSelectedMapVote] = useState<Exclude<GameMap, "TEST YARD"> | null>(null);
   const [modeVotes, setModeVotes] = useState(0);
   const [ffaModeVotes, setFfaModeVotes] = useState(0);
   const [tdmModeVotes, setTdmModeVotes] = useState(0);
   const [kothModeVotes, setKothModeVotes] = useState(0);
   const [ctpModeVotes, setCtpModeVotes] = useState(0);
+  const [ctfModeVotes, setCtfModeVotes] = useState(0);
   const [selectedModeVote, setSelectedModeVote] = useState<GameMode | null>(null);
   const [matchMode, setMatchMode] = useState<GameMode>("FFA");
   const [endGameVotes, setEndGameVotes] = useState(0);
@@ -237,6 +240,7 @@ export function FpsGame() {
   const [localTeam, setLocalTeam] = useState<"ALPHA" | "BRAVO">("ALPHA");
   const [teamScores, setTeamScores] = useState({ ALPHA: 0, BRAVO: 0 });
   const [objectiveZones, setObjectiveZones] = useState<ObjectiveZone[]>([]);
+  const [flags, setFlags] = useState<FlagState[]>([]);
   const [localObjectiveScore, setLocalObjectiveScore] = useState(0);
   const [multiplayerStatus, setMultiplayerStatus] = useState<"OFFLINE" | "CONNECTING" | "ONLINE">("OFFLINE");
   const [doorPrompt, setDoorPrompt] = useState(false);
@@ -450,6 +454,7 @@ export function FpsGame() {
     const forestMap = selectedMap === "BLACKWOOD FOREST";
     const snowyMap = selectedMap === "FROSTLINE BASE";
     const beachMap = selectedMap === "TIDEBREAK BEACH";
+    const desertMap = selectedMap === "DUSTFALL DESERT";
     const terrainHeightAt = (x: number, z: number) => {
       if (snowyMap) {
         const climb = THREE.MathUtils.clamp((-z + 5) / 43, 0, 1);
@@ -462,8 +467,8 @@ export function FpsGame() {
       }
       return 0;
     };
-    scene.background = new THREE.Color(snowyMap ? 0xb8cbd3 : beachMap ? 0x77c8df : forestMap ? 0x18271f : 0x111b21);
-    scene.fog = new THREE.Fog(snowyMap ? 0xb8cbd3 : beachMap ? 0xa8dae5 : forestMap ? 0x18271f : 0x111b21, snowyMap ? 24 : beachMap ? 48 : forestMap ? 18 : 25, snowyMap ? 92 : beachMap ? 155 : forestMap ? 68 : 72);
+    scene.background = new THREE.Color(snowyMap ? 0xb8cbd3 : beachMap ? 0x77c8df : desertMap ? 0xc98f55 : forestMap ? 0x18271f : 0x111b21);
+    scene.fog = new THREE.Fog(snowyMap ? 0xb8cbd3 : beachMap ? 0xa8dae5 : desertMap ? 0xc79763 : forestMap ? 0x18271f : 0x111b21, snowyMap ? 24 : beachMap ? 48 : desertMap ? 34 : forestMap ? 18 : 25, snowyMap ? 92 : beachMap ? 155 : desertMap ? 108 : forestMap ? 68 : 72);
 
     const camera = new THREE.PerspectiveCamera(78, mount.clientWidth / mount.clientHeight, 0.05, beachMap ? 180 : 120);
     camera.position.set(0, PLAYER_HEIGHT, 15);
@@ -477,7 +482,7 @@ export function FpsGame() {
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     mount.appendChild(renderer.domElement);
 
-    scene.add(new THREE.HemisphereLight(snowyMap ? 0xe9f7ff : beachMap ? 0xfff3cf : forestMap ? 0xa8c5a5 : 0x9dc6d8, snowyMap ? 0x52616a : beachMap ? 0x477f88 : forestMap ? 0x10180d : 0x162017, snowyMap ? 2.15 : beachMap ? 2.35 : forestMap ? 1.45 : 1.8));
+    scene.add(new THREE.HemisphereLight(snowyMap ? 0xe9f7ff : beachMap ? 0xfff3cf : desertMap ? 0xffddb0 : forestMap ? 0xa8c5a5 : 0x9dc6d8, snowyMap ? 0x52616a : beachMap ? 0x477f88 : desertMap ? 0x765134 : forestMap ? 0x10180d : 0x162017, snowyMap ? 2.15 : beachMap ? 2.35 : desertMap ? 2.2 : forestMap ? 1.45 : 1.8));
     const sun = new THREE.DirectionalLight(0xffd6a0, 3.5);
     sun.position.set(-18, 28, 12);
     sun.castShadow = true;
@@ -491,7 +496,7 @@ export function FpsGame() {
     const material = (color: THREE.ColorRepresentation, roughness = 0.82, metalness = 0.05) =>
       new THREE.MeshStandardMaterial({ color, roughness, metalness });
 
-    const mapSize = beachMap ? 128 : selectedMap === "CITY BLOCK" || snowyMap ? 96 : forestMap ? 88 : 64;
+    const mapSize = beachMap ? 128 : selectedMap === "CITY BLOCK" || snowyMap || desertMap ? 96 : forestMap ? 88 : 64;
     const beachCenterZ=16,beachDepth=160;
     const floorGeometry = new THREE.PlaneGeometry(mapSize, beachMap ? beachDepth : mapSize, beachMap ? 80 : snowyMap ? 64 : 1, beachMap ? 100 : snowyMap ? 64 : 1);
     let snowParticles: THREE.Points | undefined;
@@ -500,7 +505,7 @@ export function FpsGame() {
       for (let index = 0; index < positions.count; index++) positions.setZ(index, terrainHeightAt(positions.getX(index), -positions.getY(index)+(beachMap?beachCenterZ:0)));
       positions.needsUpdate = true; floorGeometry.computeVertexNormals();
     }
-    const floor = new THREE.Mesh(floorGeometry, material(selectedMap === "CITY BLOCK" ? 0x252b2d : snowyMap ? 0xd8e5e8 : beachMap ? 0xd8bd79 : forestMap ? 0x263522 : 0x364044));
+    const floor = new THREE.Mesh(floorGeometry, material(selectedMap === "CITY BLOCK" ? 0x252b2d : snowyMap ? 0xd8e5e8 : beachMap ? 0xd8bd79 : desertMap ? 0xc59052 : forestMap ? 0x263522 : 0x364044));
     floor.rotation.x = -Math.PI / 2;
     if(beachMap) floor.position.z=beachCenterZ;
     floor.receiveShadow = true;
@@ -509,7 +514,7 @@ export function FpsGame() {
 
     const grid = new THREE.GridHelper(mapSize, selectedMap === "CITY BLOCK" ? 48 : 32, forestMap ? 0x33452f : 0x516166, forestMap ? 0x2b3b28 : 0x465358);
     grid.position.y = 0.008;
-    if (!snowyMap && !beachMap) scene.add(grid);
+    if (!snowyMap && !beachMap && !desertMap) scene.add(grid);
 
     function addBox(x: number, y: number, z: number, w: number, h: number, d: number, color: number, collide = true) {
       const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material(color));
@@ -547,6 +552,7 @@ export function FpsGame() {
       : forestMap ? [[-31, -24], [29, -26], [-27, 21], [30, 24], [-8, -12], [12, 17], [2, -31], [-16, 32]]
       : snowyMap ? [[-35,30],[35,30],[-28,8],[28,8],[-22,-12],[22,-12],[-12,-30],[12,-30]]
       : beachMap ? [[-52,84],[52,82],[-38,70],[37,72],[-52,49],[52,48],[-37,31],[36,30],[-28,10],[27,12],[-20,-15],[22,-13],[-10,-39],[14,-42]]
+      : desertMap ? [[-38,35],[38,35],[-28,16],[29,17],[-32,-8],[31,-9],[-20,-29],[21,-31]]
       : [[-25, 23], [25, 23], [-22, -18], [22, -18], [-14, 14], [14, 14]];
     const clearSupplyDrops = () => {
       supplyDrops.splice(0).forEach(({ drop }) => {
@@ -561,7 +567,7 @@ export function FpsGame() {
     const spawnSupplyWave = () => {
       clearSupplyDrops();
       const locations = [...supplySpawnLocations].sort(() => Math.random() - .5);
-      locations.slice(0, selectedMap === "CITY BLOCK" || beachMap ? 6 : forestMap || snowyMap ? 4 : 2).forEach(([x, z], index) => {
+      locations.slice(0, selectedMap === "CITY BLOCK" || beachMap ? 6 : forestMap || snowyMap || desertMap ? 4 : 2).forEach(([x, z], index) => {
         const medicalDrop = index % 2 === 0;
         addSupplyDrop(x, z, medicalDrop ? 0x2c9b67 : 0x397f9e, medicalDrop);
       });
@@ -718,7 +724,7 @@ export function FpsGame() {
       namedDummy(addDummy(-7, -14, 0x4d7182), "TARGET ALPHA"); namedDummy(addDummy(0, -14, 0x706347), "TARGET BRAVO"); namedDummy(addDummy(7, -14, 0x754b4b), "TARGET CHARLIE");
       namedDummy(addDummy(15, -15, 0x38785d, "walk"), "WALKER ONE"); namedDummy(addDummy(26, -15, 0x804f32, "sprint"), "RUNNER ONE");
     }
-    const spawnZ = beachMap ? 86 : selectedMap === "CITY BLOCK" ? 38 : forestMap || snowyMap ? 36 : 15;
+    const spawnZ = beachMap ? 86 : selectedMap === "CITY BLOCK" || desertMap ? 38 : forestMap || snowyMap ? 36 : 15;
     const localPlayer = addDummy(0, spawnZ, 0x435e70, "static", false);
     localPlayer.rotation.order = "YXZ";
     localPlayer.visible = false;
@@ -1095,6 +1101,24 @@ export function FpsGame() {
       });
     }
 
+    if(desertMap){
+      // Dustfall Desert: sandstone canyon walls, rolling dunes, ruins, and a central oasis.
+      addBox(0,5,-47.5,96,10,1.2,0x805734);addBox(0,5,47.5,96,10,1.2,0x805734);addBox(-47.5,5,0,1.2,10,96,0x765033);addBox(47.5,5,0,1.2,10,96,0x765033);
+      const duneMat=material(0xd3a15f,.98,0),rockMat=material(0x8a5735,.96,.01);
+      [[-36,29,9,2.2,5],[-16,35,8,1.8,5],[18,32,10,2.4,6],[38,25,8,1.9,5],[-39,3,9,2.3,5],[36,5,10,2.2,6],[-36,-27,10,2.5,6],[-13,-34,8,1.8,5],[18,-33,9,2.2,5],[39,-25,8,2,5]].forEach(([x,z,w,h,d],i)=>{const dune=new THREE.Mesh(new THREE.SphereGeometry(1,18,10),duneMat);dune.position.set(x,-.2,z);dune.scale.set(w,h,d);dune.rotation.y=i*.47;dune.castShadow=dune.receiveShadow=true;dune.raycast=()=>{};scene.add(dune);});
+      [[-41,17,6,4,5],[-26,22,4,3,4],[29,24,6,4,5],[41,12,5,3.5,4],[-42,-12,6,4.5,5],[-25,-19,5,3.5,4],[26,-17,6,4,5],[42,-8,5,3.7,4],[-8,14,4,2.8,4],[10,-15,5,3,4]].forEach(([x,z,w,h,d],i)=>{const rock=new THREE.Mesh(new THREE.DodecahedronGeometry(1,0),rockMat);rock.position.set(x,h*.48,z);rock.scale.set(w*.5,h*.5,d*.5);rock.rotation.set(.08*i,.3*i,.05*(i%3));rock.castShadow=rock.receiveShadow=true;scene.add(rock);boxes.push({minX:x-w*.45,maxX:x+w*.45,minY:0,maxY:h,minZ:z-d*.45,maxZ:z+d*.45});});
+      // Ruined trading post creates close-range lanes through the center.
+      [[-18,4,12,7],[18,-3,13,8],[-2,-24,11,7]].forEach(([x,z,w,d],i)=>{addBox(x,1.9,z,w,3.8,.55,i%2?0xa47347:0x96633c);addBox(x-w/2,1.9,z,.55,3.8,d,0x875936);addBox(x+w/2,1.9,z,.55,3.8,d,0x875936);addBox(x+(i%2?2:-2),3.9,z,w*.42,.35,d*.75,0x68462f,false);});
+      [[-30,34],[-10,28],[13,27],[32,34],[-32,-35],[-10,-28],[12,-29],[32,-34]].forEach(([x,z],i)=>{addBox(x,.65,z,3.2,1.3,2.4,i%2?0x756143:0x8b6944);addBox(x+(i%2?.8:-.8),1.62,z+.2,1.3,.65,1.1,0x66543a);});
+      // Oasis landmark with palms and low stone cover.
+      const oasis=new THREE.Mesh(new THREE.CircleGeometry(7,40),material(0x287f83,.32,.08));oasis.rotation.x=-Math.PI/2;oasis.position.y=.03;oasis.raycast=()=>{};scene.add(oasis);
+      for(let stone=0;stone<12;stone++){const angle=stone*Math.PI/6;addBox(Math.cos(angle)*7,.32,Math.sin(angle)*7,1.7,.64,1.2,0x77634a,false);}
+      const desertTrunk=material(0x735037),desertLeaf=material(0x4d713e);
+      [[-6,5,.8],[6,4,.9],[-5,-5,.72],[6,-6,.82],[-43,37,.7],[43,38,.74],[-42,-37,.72],[42,-38,.76]].forEach(([x,z,s],i)=>{const trunk=new THREE.Mesh(new THREE.CylinderGeometry(.18*s,.34*s,6*s,8),desertTrunk);trunk.position.set(x,3*s,z);trunk.rotation.z=(i%3-1)*.08;trunk.castShadow=true;scene.add(trunk);boxes.push({minX:x-.35,maxX:x+.35,minY:0,maxY:6*s,minZ:z-.35,maxZ:z+.35});for(let leaf=0;leaf<7;leaf++){const frond=new THREE.Mesh(new THREE.ConeGeometry(.35*s,3.5*s,5),desertLeaf);frond.position.set(x+Math.cos(leaf*Math.PI*2/7)*1.1*s,6*s,z+Math.sin(leaf*Math.PI*2/7)*1.1*s);frond.rotation.set(Math.PI/2.4,-leaf*Math.PI*2/7,0);frond.raycast=()=>{};scene.add(frond);}});
+      // Wind-blown dust softens the horizon.
+      const dustPositions=new Float32Array(260*3);for(let i=0;i<260;i++){dustPositions[i*3]=-47+Math.random()*94;dustPositions[i*3+1]=.3+Math.random()*8;dustPositions[i*3+2]=-47+Math.random()*94;}const dustGeo=new THREE.BufferGeometry();dustGeo.setAttribute("position",new THREE.BufferAttribute(dustPositions,3));const dust=new THREE.Points(dustGeo,new THREE.PointsMaterial({color:0xe7bc7b,size:.1,transparent:true,opacity:.3,depthWrite:false}));dust.raycast=()=>{};scene.add(dust);
+    }
+
     if (selectedMap === "TEST YARD") {
     // Landmark tower and emissive arena lights
     addBox(22, 4, -20, 5, 8, 5, 0x343f43);
@@ -1334,6 +1358,10 @@ export function FpsGame() {
         const color = zone.owner === "ALPHA" ? 0x55c9ff : zone.owner === "BRAVO" ? 0xff6559 : mode === "KOTH" ? 0xffb347 : 0xe8f3ef;
         const ring = new THREE.Mesh(new THREE.RingGeometry(zone.radius - .22, zone.radius, 64), new THREE.MeshBasicMaterial({ color, transparent:true, opacity:.72, side:THREE.DoubleSide, depthWrite:false })); ring.rotation.x = -Math.PI / 2; ring.raycast = () => {}; marker.add(ring);
         const fill = new THREE.Mesh(new THREE.CircleGeometry(zone.radius - .3, 64), new THREE.MeshBasicMaterial({ color, transparent:true, opacity:.08, side:THREE.DoubleSide, depthWrite:false })); fill.rotation.x = -Math.PI / 2; fill.raycast = () => {}; marker.add(fill);
+        if (mode === "CTF") {
+          const pole = new THREE.Mesh(new THREE.CylinderGeometry(.055,.07,2.7,10), material(0x2a3031,.72,.45)); pole.position.y = 1.35; pole.raycast = () => {}; marker.add(pole);
+          const banner = new THREE.Mesh(new THREE.PlaneGeometry(1.25,.72), new THREE.MeshBasicMaterial({ color, side:THREE.DoubleSide })); banner.position.set(.64,2.2,0); banner.raycast = () => {}; marker.add(banner);
+        }
         const beacon = new THREE.PointLight(color, 12, zone.radius * 2.2, 2); beacon.position.y = 1; marker.add(beacon); scene.add(marker); objectiveMarkers.push(marker);
       });
     };
@@ -1349,7 +1377,7 @@ export function FpsGame() {
     };
     let localNetworkTeam: "ALPHA" | "BRAVO" = "ALPHA";
     let activeNetworkMode: GameMode = "FFA";
-    const teamModeActive = () => activeNetworkMode === "TDM" || activeNetworkMode === "CTP";
+    const teamModeActive = () => activeNetworkMode === "TDM" || activeNetworkMode === "CTP" || activeNetworkMode === "CTF";
     const createTeammateMarker = (callsign: string) => {
       const canvas = document.createElement("canvas"); canvas.width = 512; canvas.height = 96;
       const context = canvas.getContext("2d")!; context.fillStyle = "rgba(5,18,24,.82)"; context.strokeStyle = "rgba(99,211,255,.9)"; context.lineWidth = 4;
@@ -1449,11 +1477,11 @@ export function FpsGame() {
         if (typeof event.data !== "string") return;
         if (multiplayerSocketRef.current === multiplayerSocket) setMultiplayerStatus("ONLINE");
         try {
-          const packet = JSON.parse(event.data) as { type: string; authorized?: boolean; reason?: string; player?: RemoteState; players?: RemoteState[]; id?: string; health?: number; score?: number; attackerId?: string; weapon?: string; headshot?: boolean; tracerEnds?: number[][]; effect?: string; duration?: number; utilityId?: string; utility?: string; position?: number[]; velocity?: number[]; rotation?: number[]; active?: boolean; yourMapVote?: Exclude<GameMap, "TEST YARD"> | null; yourModeVote?: GameMode | null; map?: Exclude<GameMap, "TEST YARD">; match?: { phase: "voting" | "playing" | "results"; phaseEndsAt: number; votes: number; mapVotes?: { "CITY BLOCK"?: number; "BLACKWOOD FOREST"?: number; "FROSTLINE BASE"?: number; "TIDEBREAK BEACH"?: number }; map: Exclude<GameMap, "TEST YARD">; modeVotes: number; modeVoteCounts?: { FFA?: number; TDM?: number; KOTH?: number; CTP?: number }; endVotes: number; mode: GameMode; teamScores?: { ALPHA: number; BRAVO: number }; objectiveZones?: ObjectiveZone[]; winnerId: string | null; winningTeam?: "ALPHA" | "BRAVO" | null; winningKills: number } };
+          const packet = JSON.parse(event.data) as { type: string; authorized?: boolean; reason?: string; player?: RemoteState; players?: RemoteState[]; id?: string; health?: number; score?: number; attackerId?: string; weapon?: string; headshot?: boolean; tracerEnds?: number[][]; effect?: string; duration?: number; utilityId?: string; utility?: string; position?: number[]; velocity?: number[]; rotation?: number[]; active?: boolean; yourMapVote?: Exclude<GameMap, "TEST YARD"> | null; yourModeVote?: GameMode | null; map?: Exclude<GameMap, "TEST YARD">; match?: { phase: "voting" | "playing" | "results"; phaseEndsAt: number; votes: number; mapVotes?: { "CITY BLOCK"?: number; "BLACKWOOD FOREST"?: number; "FROSTLINE BASE"?: number; "TIDEBREAK BEACH"?: number; "DUSTFALL DESERT"?:number }; map: Exclude<GameMap, "TEST YARD">; modeVotes: number; modeVoteCounts?: { FFA?: number; TDM?: number; KOTH?: number; CTP?: number; CTF?:number }; endVotes: number; mode: GameMode; teamScores?: { ALPHA: number; BRAVO: number }; objectiveZones?: ObjectiveZone[]; flags?:FlagState[]; winnerId: string | null; winningTeam?: "ALPHA" | "BRAVO" | null; winningKills: number } };
           const applyMatch = (match: NonNullable<typeof packet.match>, resetVotes = false) => {
             activeNetworkMode = match.mode ?? "FFA";
-            setMatchPhase(match.phase); setMapVotes(match.votes); setCityMapVotes(match.mapVotes?.["CITY BLOCK"] ?? match.votes); setForestMapVotes(match.mapVotes?.["BLACKWOOD FOREST"] ?? 0); setFrostMapVotes(match.mapVotes?.["FROSTLINE BASE"] ?? 0); setBeachMapVotes(match.mapVotes?.["TIDEBREAK BEACH"] ?? 0); setModeVotes(match.modeVotes ?? 0); setFfaModeVotes(match.modeVoteCounts?.FFA ?? match.modeVotes); setTdmModeVotes(match.modeVoteCounts?.TDM ?? 0); setKothModeVotes(match.modeVoteCounts?.KOTH ?? 0); setCtpModeVotes(match.modeVoteCounts?.CTP ?? 0); setEndGameVotes(match.endVotes ?? 0); setMatchEndsAt(match.phaseEndsAt);
-            setMatchMode(match.mode ?? "FFA"); setTeamScores(match.teamScores ?? { ALPHA: 0, BRAVO: 0 }); setObjectiveZones(match.objectiveZones ?? []); updateObjectiveMarkers(match.objectiveZones ?? [], match.mode ?? "FFA"); setMatchWinnerId(match.winnerId ?? null); setWinningTeam(match.winningTeam ?? null); setWinningKills(match.winningKills ?? 0);
+            setMatchPhase(match.phase); setMapVotes(match.votes); setCityMapVotes(match.mapVotes?.["CITY BLOCK"] ?? match.votes); setForestMapVotes(match.mapVotes?.["BLACKWOOD FOREST"] ?? 0); setFrostMapVotes(match.mapVotes?.["FROSTLINE BASE"] ?? 0); setBeachMapVotes(match.mapVotes?.["TIDEBREAK BEACH"] ?? 0);setDesertMapVotes(match.mapVotes?.["DUSTFALL DESERT"]??0); setModeVotes(match.modeVotes ?? 0); setFfaModeVotes(match.modeVoteCounts?.FFA ?? match.modeVotes); setTdmModeVotes(match.modeVoteCounts?.TDM ?? 0); setKothModeVotes(match.modeVoteCounts?.KOTH ?? 0); setCtpModeVotes(match.modeVoteCounts?.CTP ?? 0);setCtfModeVotes(match.modeVoteCounts?.CTF??0); setEndGameVotes(match.endVotes ?? 0); setMatchEndsAt(match.phaseEndsAt);
+            setMatchMode(match.mode ?? "FFA"); setTeamScores(match.teamScores ?? { ALPHA: 0, BRAVO: 0 }); setObjectiveZones(match.objectiveZones ?? []);setFlags(match.flags??[]); updateObjectiveMarkers(match.mode==="CTF"?(match.flags??[]).map((flag)=>({id:`${flag.team} FLAG`,x:flag.x,z:flag.z,radius:2.1,owner:flag.team,progress:flag.carrierId?100:0})):(match.objectiveZones ?? []), match.mode ?? "FFA"); setMatchWinnerId(match.winnerId ?? null); setWinningTeam(match.winningTeam ?? null); setWinningKills(match.winningKills ?? 0);
             if (match.phase === "playing" && match.map !== selectedMap) setSelectedMap(match.map);
             if ((match.endVotes ?? 0) === 0) setEndGameRequested(false);
             if (match.phase === "voting" && match.phaseEndsAt !== lastVotingPhase) {
@@ -1549,7 +1577,7 @@ export function FpsGame() {
               if (!recordedMatchesRef.current.has(matchId)) {
                 recordedMatchesRef.current.add(matchId);
                 const summary = playerSummariesRef.current[localNetworkId] ?? { kills: 0, deaths: 0 };
-                const won = packet.match.mode === "TDM" || packet.match.mode === "CTP" ? packet.match.winningTeam === localNetworkTeam : packet.match.winnerId === localNetworkId;
+                const won = packet.match.mode === "TDM" || packet.match.mode === "CTP" || packet.match.mode === "CTF" ? packet.match.winningTeam === localNetworkTeam : packet.match.winnerId === localNetworkId;
                 void auth.currentUser.getIdToken().then((token) => fetch("/api/player", {
                   method: "POST",
                   headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
@@ -2953,9 +2981,9 @@ export function FpsGame() {
           <footer><span>{adminRole === "owner" ? "OWNER" : "JUNIOR ADMIN"} SESSION · {auth.currentUser?.email}</span><button onClick={() => { adminPanelOpenRef.current = false; setAdminPanelOpen(false); mountRef.current?.querySelector("canvas")?.requestPointerLock(); }}>RETURN TO GAME <kbd>=</kbd></button></footer>
         </section>
       </div>}
-      {started && selectedSector !== "TRAINING SECTOR" && matchPhase === "playing" && (matchMode === "TDM" || matchMode === "CTP") && <aside className="tdm-scoreboard">
+      {started && selectedSector !== "TRAINING SECTOR" && matchPhase === "playing" && (matchMode === "TDM" || matchMode === "CTP" || matchMode === "CTF") && <aside className="tdm-scoreboard">
         <div className={`tdm-team alpha${localTeam === "ALPHA" ? " local-team" : ""}`}><small>TEAM</small><span>ALPHA</span><strong>{Math.floor(teamScores.ALPHA)}</strong></div>
-        <div className="tdm-clock"><small>{matchMode === "CTP" ? "CAPTURE POINTS" : "TEAM DEATHMATCH"}</small><strong>{formatMatchTime(matchTimeLeft)}</strong><span>{matchMode === "CTP" ? objectiveZones.map((zone) => `${zone.id}:${zone.owner?.[0] ?? "—"}`).join(" · ") : selectedMap}</span></div>
+        <div className="tdm-clock"><small>{matchMode === "CTP" ? "CAPTURE POINTS" : matchMode === "CTF" ? "CAPTURE THE FLAG" : "TEAM DEATHMATCH"}</small><strong>{formatMatchTime(matchTimeLeft)}</strong><span>{matchMode === "CTP" ? objectiveZones.map((zone) => `${zone.id}:${zone.owner?.[0] ?? "—"}`).join(" · ") : matchMode === "CTF" ? flags.map((flag) => `${flag.team[0]}:${flag.carrierId ? "TAKEN" : flag.dropped ? "DROPPED" : "HOME"}`).join(" · ") : selectedMap}</span></div>
         <div className={`tdm-team bravo${localTeam === "BRAVO" ? " local-team" : ""}`}><strong>{Math.floor(teamScores.BRAVO)}</strong><span>BRAVO</span><small>TEAM</small></div>
         <button disabled={endGameRequested} onClick={() => { multiplayerSendRef.current({ type: "end_game" }); setEndGameRequested(true); }}>{endGameRequested ? `${endGameVotes}/${Math.max(1, connectedPlayerIds.length)}` : "END VOTE"}</button>
       </aside>}
@@ -3044,6 +3072,10 @@ export function FpsGame() {
             <i>04</i><span><b>TIDEBREAK BEACH</b><small>TROPICAL SHORE · PALM GROVES · HUTS · BROKEN PIER</small></span><em>{selectedMapVote === "TIDEBREAK BEACH" ? "YOUR VOTE" : hasVoted ? "LOCKED" : multiplayerStatus !== "ONLINE" ? "CONNECTING" : "VOTE"}</em>
           </button>
           <div className="vote-total"><i style={{ width: mapVotes ? `${beachMapVotes / mapVotes * 100}%` : "0%" }} /><span>{beachMapVotes} VOTE{beachMapVotes === 1 ? "" : "S"}</span></div></div>
+          <div className="vote-option"><button className={selectedMapVote === "DUSTFALL DESERT" ? "voted selected-vote" : hasVoted ? "voted" : ""} disabled={hasVoted || multiplayerStatus !== "ONLINE"} onClick={() => { multiplayerSendRef.current({ type: "vote", category: "map", map: "DUSTFALL DESERT" }); setSelectedMapVote("DUSTFALL DESERT"); setHasVoted(true); }}>
+            <i>05</i><span><b>DUSTFALL DESERT</b><small>SWEEPING DUNES · OASIS · RUINS · ROCKY COVER</small></span><em>{selectedMapVote === "DUSTFALL DESERT" ? "YOUR VOTE" : hasVoted ? "LOCKED" : multiplayerStatus !== "ONLINE" ? "CONNECTING" : "VOTE"}</em>
+          </button>
+          <div className="vote-total"><i style={{ width: mapVotes ? `${desertMapVotes / mapVotes * 100}%` : "0%" }} /><span>{desertMapVotes} VOTE{desertMapVotes === 1 ? "" : "S"}</span></div></div>
           </div></section>
           <section className="vote-section mode-section"><header><i>02</i><span><b>RULESET</b><small>CHOOSE HOW YOU FIGHT</small></span><em>{modeVotes}/{connectedPlayerIds.length} CAST</em></header><div className="vote-grid">
           <div className="vote-option"><button className={selectedModeVote === "FFA" ? "voted selected-vote" : hasModeVoted ? "voted" : ""} disabled={hasModeVoted || multiplayerStatus !== "ONLINE"} onClick={() => { multiplayerSendRef.current({ type: "vote", category: "mode", mode: "FFA" }); setSelectedModeVote("FFA"); setHasModeVoted(true); }}>
@@ -3062,16 +3094,20 @@ export function FpsGame() {
             <i>04</i><span><b>CAPTURE POINTS</b><small>ALPHA VS BRAVO · CAPTURE AND HOLD THREE ZONES</small></span><em>{selectedModeVote === "CTP" ? "YOUR VOTE" : hasModeVoted ? "LOCKED" : "VOTE"}</em>
           </button>
           <div className="vote-total"><i style={{ width: modeVotes ? `${ctpModeVotes / modeVotes * 100}%` : "0%" }} /><span>{ctpModeVotes} VOTE{ctpModeVotes === 1 ? "" : "S"}</span></div></div>
+          <div className="vote-option"><button className={selectedModeVote === "CTF" ? "voted selected-vote" : hasModeVoted ? "voted" : ""} disabled={hasModeVoted || multiplayerStatus !== "ONLINE"} onClick={() => { multiplayerSendRef.current({ type: "vote", category: "mode", mode: "CTF" }); setSelectedModeVote("CTF"); setHasModeVoted(true); }}>
+            <i>05</i><span><b>CAPTURE THE FLAG</b><small>ALPHA VS BRAVO · STEAL THE ENEMY FLAG · RETURN IT HOME</small></span><em>{selectedModeVote === "CTF" ? "YOUR VOTE" : hasModeVoted ? "LOCKED" : "VOTE"}</em>
+          </button>
+          <div className="vote-total"><i style={{ width: modeVotes ? `${ctfModeVotes / modeVotes * 100}%` : "0%" }} /><span>{ctfModeVotes} VOTE{ctfModeVotes === 1 ? "" : "S"}</span></div></div>
           </div></section></div>
           <footer>{mapVotes}/{connectedPlayerIds.length} MAP VOTES · {modeVotes}/{connectedPlayerIds.length} MODE VOTES · ALL VOTES DISPLAY BEFORE MATCH START</footer>
         </div>
       </div>}
       {started && matchPhase === "results" && <div className="match-results-overlay">
         <div className="match-results-panel">
-          <small>{selectedSector} · {matchMode === "TDM" ? "TEAM DEATHMATCH" : matchMode === "CTP" ? "CAPTURE POINTS" : matchMode === "KOTH" ? "KING OF THE HILL" : "FREE FOR ALL"} COMPLETE</small>
-          <h2>{matchMode === "TDM" || matchMode === "CTP" ? winningTeam ? "VICTORY TEAM" : "MATCH DRAW" : matchWinnerId ? "MATCH WINNER" : "MATCH DRAW"}</h2>
-          <strong>{matchMode === "TDM" || matchMode === "CTP" ? winningTeam ? `TEAM ${winningTeam}` : "TEAMS TIED" : matchWinnerId ? playerSummaries[matchWinnerId]?.callsign || (matchWinnerId === localPlayerId ? playerCallsignRef.current : `OPERATOR ${matchWinnerId.slice(0, 4).toUpperCase()}`) : "NO SOLE WINNER"}</strong>
-          <p>{winningKills} {matchMode === "KOTH" || matchMode === "CTP" ? "POINTS" : `KILL${winningKills === 1 ? "" : "S"}`}</p>
+          <small>{selectedSector} · {matchMode === "TDM" ? "TEAM DEATHMATCH" : matchMode === "CTP" ? "CAPTURE POINTS" : matchMode === "CTF" ? "CAPTURE THE FLAG" : matchMode === "KOTH" ? "KING OF THE HILL" : "FREE FOR ALL"} COMPLETE</small>
+          <h2>{matchMode === "TDM" || matchMode === "CTP" || matchMode === "CTF" ? winningTeam ? "VICTORY TEAM" : "MATCH DRAW" : matchWinnerId ? "MATCH WINNER" : "MATCH DRAW"}</h2>
+          <strong>{matchMode === "TDM" || matchMode === "CTP" || matchMode === "CTF" ? winningTeam ? `TEAM ${winningTeam}` : "TEAMS TIED" : matchWinnerId ? playerSummaries[matchWinnerId]?.callsign || (matchWinnerId === localPlayerId ? playerCallsignRef.current : `OPERATOR ${matchWinnerId.slice(0, 4).toUpperCase()}`) : "NO SOLE WINNER"}</strong>
+          <p>{winningKills} {matchMode === "CTF" ? `CAPTURE${winningKills === 1 ? "" : "S"}` : matchMode === "KOTH" || matchMode === "CTP" ? "POINTS" : `KILL${winningKills === 1 ? "" : "S"}`}</p>
           <footer>VOTING OPENS IN <b>{formatMatchTime(matchTimeLeft)}</b></footer>
         </div>
       </div>}
@@ -3079,7 +3115,7 @@ export function FpsGame() {
         <div className="death-code">KIA</div><h2>OPERATOR DOWN</h2><p>TEST CONDITION: FATAL DAMAGE</p>
         <button onClick={() => {
           respawnRef.current(); setHealth(maximumHealth); setDead(false);
-          multiplayerSendRef.current({ type: "respawn", x: 0, z: selectedMap === "TIDEBREAK BEACH" ? 86 : selectedMap === "CITY BLOCK" ? 38 : selectedMap === "BLACKWOOD FOREST" || selectedMap === "FROSTLINE BASE" ? 36 : 15 });
+          multiplayerSendRef.current({ type: "respawn", x: 0, z: selectedMap === "TIDEBREAK BEACH" ? 86 : selectedMap === "CITY BLOCK" || selectedMap === "DUSTFALL DESERT" ? 38 : selectedMap === "BLACKWOOD FOREST" || selectedMap === "FROSTLINE BASE" ? 36 : 15 });
           mountRef.current?.querySelector("canvas")?.requestPointerLock();
         }}>RESPAWN AT TEST YARD</button>
       </div>}
