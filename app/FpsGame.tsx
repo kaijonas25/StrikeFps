@@ -1448,6 +1448,7 @@ export function FpsGame() {
         remotePlayers.set(state.id, avatar);
       }
       avatar.userData.targetPosition.set(state.x, state.y - PLAYER_HEIGHT - (state.crouching ? .42 : 0), state.z);
+      if(desertMap&&!state.flying) avatar.userData.targetPosition.y=terrainHeightAt(state.x,state.z)-(state.crouching?.42:0);
       if(beachMap&&!state.flying){
         const remoteOnRamp=Math.abs(state.x)<4.7&&state.z<=-4.2&&state.z>-10;
         const remoteOnPier=Math.abs(state.x)<5.5&&state.z<=-10&&state.z>-46;
@@ -1521,7 +1522,7 @@ export function FpsGame() {
           if (packet.type === "welcome") {
             const otherPlayers = (packet.players ?? []).filter((player) => player.id !== packet.id);
             if (packet.id) { localNetworkId = packet.id; setLocalPlayerId(packet.id); setConnectedPlayerIds([...new Set([packet.id, ...otherPlayers.map((player) => player.id)])]); }
-            if (packet.player) { rememberPlayer(packet.player); playerPosition.set(packet.player.x, packet.player.y, packet.player.z); camera.position.copy(playerPosition); yaw = packet.player.yaw; if (packet.player.team) { localNetworkTeam = packet.player.team; setLocalTeam(packet.player.team); } }
+            if (packet.player) { rememberPlayer(packet.player); playerPosition.set(packet.player.x, desertMap ? PLAYER_HEIGHT + terrainHeightAt(packet.player.x,packet.player.z) : packet.player.y, packet.player.z); camera.position.copy(playerPosition); yaw = packet.player.yaw; if (packet.player.team) { localNetworkTeam = packet.player.team; setLocalTeam(packet.player.team); } }
             if (packet.match) {
               applyMatch(packet.match);
               if (packet.yourMapVote) { setSelectedMapVote(packet.yourMapVote); setHasVoted(true); }
@@ -1592,7 +1593,7 @@ export function FpsGame() {
             const avatar = remotePlayers.get(packet.id); if (avatar) avatar.visible = true;
           }
           else if ((packet.type === "round_start" || packet.type === "respawned") && packet.player) {
-            playerPosition.set(packet.player.x, packet.player.y, packet.player.z); camera.position.copy(playerPosition); lastClearPosition.copy(playerPosition);
+            playerPosition.set(packet.player.x, desertMap || packet.map === "DUSTFALL DESERT" ? PLAYER_HEIGHT + terrainHeightAt(packet.player.x,packet.player.z) : packet.player.y, packet.player.z); camera.position.copy(playerPosition); lastClearPosition.copy(playerPosition);
             yaw = packet.player.yaw; playerHealth = maxPlayerHealth; setHealth(maxPlayerHealth); setDead(false); setHealing(false); keys.clear();
             if (packet.player.team) { localNetworkTeam = packet.player.team; setLocalTeam(packet.player.team); refreshTeammateMarkers(); }
             if (packet.map && packet.map !== selectedMap) setSelectedMap(packet.map);
@@ -1683,12 +1684,12 @@ export function FpsGame() {
       : currentSlot === 1 ? primaryAttachments : secondaryAttachments;
     const maxPlayerHealth = (equipment === "ARMOR PLATING" ? 125 : 100) + classStats.healthBonus;
     let playerHealth = maxPlayerHealth, nextPadTick = 0, healEnd = 0;
-    const playerPosition = new THREE.Vector3(0, PLAYER_HEIGHT, spawnZ);
+    const playerPosition = new THREE.Vector3(0, PLAYER_HEIGHT + terrainHeightAt(0,spawnZ), spawnZ);
     const lastClearPosition = playerPosition.clone();
     let isThirdPerson = false, orbiting = false, isCrouching = false, isProne = false, slideEnd = 0, stanceOffset = 0, crouchPoseAmount = 0, proneAmount = 0, leanDirection: -1 | 0 | 1 = 0, leanAmount = 0;
     const slideVelocity = new THREE.Vector2();
     respawnRef.current = () => {
-      playerPosition.set(0, PLAYER_HEIGHT, spawnZ); camera.position.copy(playerPosition);
+      playerPosition.set(0, PLAYER_HEIGHT + terrainHeightAt(0,spawnZ), spawnZ); camera.position.copy(playerPosition);
       lastClearPosition.copy(playerPosition);
       yaw = 0; pitch = 0; verticalVelocity = 0; playerHealth = maxPlayerHealth;
       playerStamina = 100; staminaExhausted = false; setStamina(100);
@@ -2495,7 +2496,7 @@ export function FpsGame() {
       const onDockRamp=beachMap&&Math.abs(playerPosition.x)<4.7&&playerPosition.z<=-4.2&&playerPosition.z>-10;
       const onPier=beachMap&&Math.abs(playerPosition.x)<5.5&&playerPosition.z<=-10&&playerPosition.z>-46;
       const beachGround=onDockRamp?THREE.MathUtils.lerp(terrainHeightAt(playerPosition.x,playerPosition.z),1.39,THREE.MathUtils.clamp((-playerPosition.z-4.2)/5.8,0,1)):onPier?1.39:terrainHeightAt(playerPosition.x,playerPosition.z);
-      const groundHeight = snowyMap || beachMap ? PLAYER_HEIGHT + beachGround : standingInCreek ? PLAYER_HEIGHT - .7 : PLAYER_HEIGHT;
+      const groundHeight = snowyMap || beachMap || desertMap ? PLAYER_HEIGHT + beachGround : standingInCreek ? PLAYER_HEIGHT - .7 : PLAYER_HEIGHT;
       const adminFlyingActive = adminAuthorizedRef.current && adminControlsRef.current.flying;
       if (adminFlyingActive) {
         verticalVelocity = 0; grounded = false;
