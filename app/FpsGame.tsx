@@ -465,14 +465,19 @@ export function FpsGame() {
         const depth=THREE.MathUtils.clamp((-z-7)/56,0,1);
         return -(depth*depth*(3-2*depth))*4;
       }
+      if (desertMap) {
+        const edge = THREE.MathUtils.clamp((Math.max(Math.abs(x), Math.abs(z)) - 37) / 23, 0, 1);
+        const roll = Math.sin(x * .115 + z * .045) * .65 + Math.cos(z * .13 - x * .035) * .45;
+        return Math.max(0, edge * (1.25 + roll) + edge * edge * 1.7);
+      }
       return 0;
     };
     scene.background = new THREE.Color(snowyMap ? 0xb8cbd3 : beachMap ? 0x77c8df : desertMap ? 0xc98f55 : forestMap ? 0x18271f : 0x111b21);
     scene.fog = new THREE.Fog(snowyMap ? 0xb8cbd3 : beachMap ? 0xa8dae5 : desertMap ? 0xc79763 : forestMap ? 0x18271f : 0x111b21, snowyMap ? 24 : beachMap ? 48 : desertMap ? 34 : forestMap ? 18 : 25, snowyMap ? 92 : beachMap ? 155 : desertMap ? 108 : forestMap ? 68 : 72);
 
-    const camera = new THREE.PerspectiveCamera(78, mount.clientWidth / mount.clientHeight, 0.05, beachMap ? 180 : 120);
+    const camera = new THREE.PerspectiveCamera(78, mount.clientWidth / mount.clientHeight, 0.05, beachMap || desertMap ? 180 : 120);
     camera.position.set(0, PLAYER_HEIGHT, 15);
-    const rearCamera = new THREE.PerspectiveCamera(68, 16 / 9, 0.05, beachMap ? 180 : 120);
+    const rearCamera = new THREE.PerspectiveCamera(68, 16 / 9, 0.05, beachMap || desertMap ? 180 : 120);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -496,11 +501,11 @@ export function FpsGame() {
     const material = (color: THREE.ColorRepresentation, roughness = 0.82, metalness = 0.05) =>
       new THREE.MeshStandardMaterial({ color, roughness, metalness });
 
-    const mapSize = beachMap ? 128 : selectedMap === "CITY BLOCK" || snowyMap || desertMap ? 96 : forestMap ? 88 : 64;
+    const mapSize = beachMap ? 128 : desertMap ? 120 : selectedMap === "CITY BLOCK" || snowyMap ? 96 : forestMap ? 88 : 64;
     const beachCenterZ=16,beachDepth=160;
-    const floorGeometry = new THREE.PlaneGeometry(mapSize, beachMap ? beachDepth : mapSize, beachMap ? 80 : snowyMap ? 64 : 1, beachMap ? 100 : snowyMap ? 64 : 1);
+    const floorGeometry = new THREE.PlaneGeometry(mapSize, beachMap ? beachDepth : mapSize, beachMap ? 80 : snowyMap ? 64 : desertMap ? 72 : 1, beachMap ? 100 : snowyMap ? 64 : desertMap ? 72 : 1);
     let snowParticles: THREE.Points | undefined;
-    if (snowyMap || beachMap) {
+    if (snowyMap || beachMap || desertMap) {
       const positions = floorGeometry.attributes.position;
       for (let index = 0; index < positions.count; index++) positions.setZ(index, terrainHeightAt(positions.getX(index), -positions.getY(index)+(beachMap?beachCenterZ:0)));
       positions.needsUpdate = true; floorGeometry.computeVertexNormals();
@@ -552,7 +557,7 @@ export function FpsGame() {
       : forestMap ? [[-31, -24], [29, -26], [-27, 21], [30, 24], [-8, -12], [12, 17], [2, -31], [-16, 32]]
       : snowyMap ? [[-35,30],[35,30],[-28,8],[28,8],[-22,-12],[22,-12],[-12,-30],[12,-30]]
       : beachMap ? [[-52,84],[52,82],[-38,70],[37,72],[-52,49],[52,48],[-37,31],[36,30],[-28,10],[27,12],[-20,-15],[22,-13],[-10,-39],[14,-42]]
-      : desertMap ? [[-38,35],[38,35],[-28,16],[29,17],[-32,-8],[31,-9],[-20,-29],[21,-31]]
+      : desertMap ? [[-49,46],[49,46],[-39,23],[40,24],[-46,-6],[45,-8],[-31,-38],[31,-40],[0,32],[0,-30]]
       : [[-25, 23], [25, 23], [-22, -18], [22, -18], [-14, 14], [14, 14]];
     const clearSupplyDrops = () => {
       supplyDrops.splice(0).forEach(({ drop }) => {
@@ -724,7 +729,7 @@ export function FpsGame() {
       namedDummy(addDummy(-7, -14, 0x4d7182), "TARGET ALPHA"); namedDummy(addDummy(0, -14, 0x706347), "TARGET BRAVO"); namedDummy(addDummy(7, -14, 0x754b4b), "TARGET CHARLIE");
       namedDummy(addDummy(15, -15, 0x38785d, "walk"), "WALKER ONE"); namedDummy(addDummy(26, -15, 0x804f32, "sprint"), "RUNNER ONE");
     }
-    const spawnZ = beachMap ? 86 : selectedMap === "CITY BLOCK" || desertMap ? 38 : forestMap || snowyMap ? 36 : 15;
+    const spawnZ = beachMap ? 86 : desertMap ? 50 : selectedMap === "CITY BLOCK" ? 38 : forestMap || snowyMap ? 36 : 15;
     const localPlayer = addDummy(0, spawnZ, 0x435e70, "static", false);
     localPlayer.rotation.order = "YXZ";
     localPlayer.visible = false;
@@ -1102,21 +1107,43 @@ export function FpsGame() {
     }
 
     if(desertMap){
-      // Dustfall Desert: sandstone canyon walls, rolling dunes, ruins, and a central oasis.
-      addBox(0,5,-47.5,96,10,1.2,0x805734);addBox(0,5,47.5,96,10,1.2,0x805734);addBox(-47.5,5,0,1.2,10,96,0x765033);addBox(47.5,5,0,1.2,10,96,0x765033);
-      const duneMat=material(0xd3a15f,.98,0),rockMat=material(0x8a5735,.96,.01);
-      [[-36,29,9,2.2,5],[-16,35,8,1.8,5],[18,32,10,2.4,6],[38,25,8,1.9,5],[-39,3,9,2.3,5],[36,5,10,2.2,6],[-36,-27,10,2.5,6],[-13,-34,8,1.8,5],[18,-33,9,2.2,5],[39,-25,8,2,5]].forEach(([x,z,w,h,d],i)=>{const dune=new THREE.Mesh(new THREE.SphereGeometry(1,18,10),duneMat);dune.position.set(x,-.2,z);dune.scale.set(w,h,d);dune.rotation.y=i*.47;dune.castShadow=dune.receiveShadow=true;dune.raycast=()=>{};scene.add(dune);});
-      [[-41,17,6,4,5],[-26,22,4,3,4],[29,24,6,4,5],[41,12,5,3.5,4],[-42,-12,6,4.5,5],[-25,-19,5,3.5,4],[26,-17,6,4,5],[42,-8,5,3.7,4],[-8,14,4,2.8,4],[10,-15,5,3,4]].forEach(([x,z,w,h,d],i)=>{const rock=new THREE.Mesh(new THREE.DodecahedronGeometry(1,0),rockMat);rock.position.set(x,h*.48,z);rock.scale.set(w*.5,h*.5,d*.5);rock.rotation.set(.08*i,.3*i,.05*(i%3));rock.castShadow=rock.receiveShadow=true;scene.add(rock);boxes.push({minX:x-w*.45,maxX:x+w*.45,minY:0,maxY:h,minZ:z-d*.45,maxZ:z+d*.45});});
-      // Ruined trading post creates close-range lanes through the center.
-      [[-18,4,12,7],[18,-3,13,8],[-2,-24,11,7]].forEach(([x,z,w,d],i)=>{addBox(x,1.9,z,w,3.8,.55,i%2?0xa47347:0x96633c);addBox(x-w/2,1.9,z,.55,3.8,d,0x875936);addBox(x+w/2,1.9,z,.55,3.8,d,0x875936);addBox(x+(i%2?2:-2),3.9,z,w*.42,.35,d*.75,0x68462f,false);});
-      [[-30,34],[-10,28],[13,27],[32,34],[-32,-35],[-10,-28],[12,-29],[32,-34]].forEach(([x,z],i)=>{addBox(x,.65,z,3.2,1.3,2.4,i%2?0x756143:0x8b6944);addBox(x+(i%2?.8:-.8),1.62,z+.2,1.3,.65,1.1,0x66543a);});
-      // Oasis landmark with palms and low stone cover.
-      const oasis=new THREE.Mesh(new THREE.CircleGeometry(7,40),material(0x287f83,.32,.08));oasis.rotation.x=-Math.PI/2;oasis.position.y=.03;oasis.raycast=()=>{};scene.add(oasis);
-      for(let stone=0;stone<12;stone++){const angle=stone*Math.PI/6;addBox(Math.cos(angle)*7,.32,Math.sin(angle)*7,1.7,.64,1.2,0x77634a,false);}
-      const desertTrunk=material(0x735037),desertLeaf=material(0x4d713e);
-      [[-6,5,.8],[6,4,.9],[-5,-5,.72],[6,-6,.82],[-43,37,.7],[43,38,.74],[-42,-37,.72],[42,-38,.76]].forEach(([x,z,s],i)=>{const trunk=new THREE.Mesh(new THREE.CylinderGeometry(.18*s,.34*s,6*s,8),desertTrunk);trunk.position.set(x,3*s,z);trunk.rotation.z=(i%3-1)*.08;trunk.castShadow=true;scene.add(trunk);boxes.push({minX:x-.35,maxX:x+.35,minY:0,maxY:6*s,minZ:z-.35,maxZ:z+.35});for(let leaf=0;leaf<7;leaf++){const frond=new THREE.Mesh(new THREE.ConeGeometry(.35*s,3.5*s,5),desertLeaf);frond.position.set(x+Math.cos(leaf*Math.PI*2/7)*1.1*s,6*s,z+Math.sin(leaf*Math.PI*2/7)*1.1*s);frond.rotation.set(Math.PI/2.4,-leaf*Math.PI*2/7,0);frond.raycast=()=>{};scene.add(frond);}});
+      // Dustfall is a dense adobe settlement surrounded by dunes formed directly into the terrain.
+      addBox(0,6,-60,120,12,1.4,0x805734);addBox(0,6,60,120,12,1.4,0x805734);addBox(-60,6,0,1.4,12,120,0x765033);addBox(60,6,0,1.4,12,120,0x765033);
+      const adobeColors=[0xb47c48,0xa96f42,0xc18a53,0x98603c],timber=0x5a3825,darkOpening=0x251b16;
+      const addAdobeHouse=(x:number,z:number,w:number,d:number,h:number,turn=0,variant=0)=>{
+        const ground=terrainHeightAt(x,z),group=new THREE.Group();group.position.set(x,ground,z);group.rotation.y=turn;scene.add(group);
+        const houseMat=material(adobeColors[variant%adobeColors.length],.99,0);
+        const body=new THREE.Mesh(new THREE.BoxGeometry(w,h,d,2,2,2),houseMat);body.position.y=h/2;body.scale.set(1,.98,1);body.castShadow=body.receiveShadow=true;group.add(body);
+        const parapet=new THREE.Mesh(new THREE.BoxGeometry(w+.18,.36,d+.18),houseMat);parapet.position.y=h+.12;parapet.castShadow=true;group.add(parapet);
+        const door=new THREE.Mesh(new THREE.BoxGeometry(1.25,2.35,.12),material(darkOpening,.95,0));door.position.set(variant%2?w*.19:-w*.19,1.18,-d/2-.07);door.raycast=()=>{};group.add(door);
+        const doorInset=new THREE.Mesh(new THREE.BoxGeometry(.92,2.12,.08),material(0x654127,.94,0));doorInset.position.set(door.position.x,1.08,-d/2-.145);doorInset.raycast=()=>{};group.add(doorInset);
+        const windowCount=w>7?2:1;
+        for(let windowIndex=0;windowIndex<windowCount;windowIndex++){
+          const wx=windowCount===1?-w*.18:(windowIndex? w*.27:-w*.27);
+          if(Math.abs(wx-door.position.x)<1.2)continue;
+          const windowMesh=new THREE.Mesh(new THREE.BoxGeometry(.82,.82,.13),material(darkOpening,.98,0));windowMesh.position.set(wx,h*.58,-d/2-.08);windowMesh.raycast=()=>{};group.add(windowMesh);
+          const lintel=new THREE.Mesh(new THREE.CylinderGeometry(.075,.09,1.25,7),material(timber,.96,0));lintel.rotation.z=Math.PI/2;lintel.position.set(wx,h*.58+.58,-d/2-.2);lintel.raycast=()=>{};group.add(lintel);
+        }
+        for(let beam=0;beam<4;beam++){const roofBeam=new THREE.Mesh(new THREE.CylinderGeometry(.07,.1,d+.65,7),material(timber,.96,0));roofBeam.rotation.x=Math.PI/2;roofBeam.position.set((beam-1.5)*w*.2,h+.36,0);roofBeam.raycast=()=>{};group.add(roofBeam);}
+        const awning=new THREE.Mesh(new THREE.BoxGeometry(2.5,.12,1.05),material(0x765035,.98,0));awning.position.set(door.position.x,2.68,-d/2-.55);awning.rotation.x=-.08;awning.raycast=()=>{};group.add(awning);
+        const corners=[[-w/2,-d/2],[w/2,-d/2],[-w/2,d/2],[w/2,d/2]];
+        corners.forEach(([cx,cz],i)=>{const cap=new THREE.Mesh(new THREE.SphereGeometry(.3,7,5),houseMat);cap.scale.set(1.2,.55,1.2);cap.position.set(cx,h+.12+(i%2)*.04,cz);cap.raycast=()=>{};group.add(cap);});
+        const halfX=Math.abs(Math.cos(turn))*w/2+Math.abs(Math.sin(turn))*d/2,halfZ=Math.abs(Math.sin(turn))*w/2+Math.abs(Math.cos(turn))*d/2;
+        boxes.push({minX:x-halfX,maxX:x+halfX,minY:ground,maxY:ground+h+.4,minZ:z-halfZ,maxZ:z+halfZ});placementSurfaces.push(body);
+      };
+      const houses:[number,number,number,number,number,number,number][]=[
+        [-48,42,8,8,4.1,.06,0],[-34,43,10,7,4.8,-.04,2],[-17,44,8,9,4.2,.03,1],[17,44,9,8,5,-.05,3],[34,43,10,7,4.3,.04,0],[49,41,7,9,4.6,-.08,2],
+        [-48,24,9,10,4.8,1.57,1],[-29,25,8,8,4.1,3.14,3],[-11,24,10,9,5.2,0,0],[12,25,8,8,4.4,3.14,2],[30,23,10,10,5,0,1],[49,22,8,9,4.2,-1.57,3],
+        [-47,3,10,8,4.4,1.57,2],[-28,5,9,10,5.1,3.14,0],[-9,4,8,8,4.2,0,3],[10,3,10,9,4.8,3.14,1],[30,4,9,8,4.3,0,2],[49,2,8,10,5,-1.57,0],
+        [-49,-19,8,9,4.2,1.57,3],[-31,-19,10,8,4.9,3.14,1],[-12,-19,8,10,4.5,0,2],[11,-18,10,8,5.1,3.14,0],[31,-20,8,10,4.2,0,3],[49,-20,9,8,4.7,-1.57,1],
+        [-47,-41,10,8,4.8,.05,0],[-30,-42,8,9,4.1,-.04,2],[-12,-41,9,8,5,.03,1],[13,-42,8,10,4.3,-.04,3],[31,-41,10,8,4.9,.05,0],[49,-40,8,9,4.2,-.06,2]
+      ];houses.forEach((house)=>addAdobeHouse(...house));
+      // Courtyard walls, market stalls and storage make the streets tactically dense.
+      [[-39,33,11,1],[0,34,13,1],[40,32,12,1],[-39,13,10,1],[0,14,12,1],[40,12,10,1],[-39,-8,12,1],[0,-8,11,1],[40,-9,12,1],[-40,-31,11,1],[0,-31,13,1],[40,-31,11,1]].forEach(([x,z,w],i)=>{const ground=terrainHeightAt(x,z);addBox(x,ground+1.05,z,w,2.1,.42,adobeColors[i%adobeColors.length]);});
+      [[-21,34],[22,34],[-20,13],[20,13],[-21,-8],[21,-8],[-20,-31],[20,-31]].forEach(([x,z],i)=>{const ground=terrainHeightAt(x,z);addBox(x,ground+.62,z,3,1.24,2.2,i%2?0x755236:0x86603d);addBox(x+(i%2?.7:-.7),ground+1.5,z,1.1,.52,1,0x60412d);});
+      const rockMat=material(0x8a5735,.96,.01);[[-55,30,5,3.5,4],[55,28,5,4,4],[-54,-5,6,4,5],[54,-7,5,3.5,4],[-55,-34,5,4,4],[55,-36,6,4.2,5]].forEach(([x,z,w,h,d],i)=>{const rock=new THREE.Mesh(new THREE.DodecahedronGeometry(1,0),rockMat);rock.position.set(x,terrainHeightAt(x,z)+h*.45,z);rock.scale.set(w*.5,h*.5,d*.5);rock.rotation.set(.08*i,.3*i,.05*(i%3));rock.castShadow=rock.receiveShadow=true;scene.add(rock);boxes.push({minX:x-w*.45,maxX:x+w*.45,minY:0,maxY:h+terrainHeightAt(x,z),minZ:z-d*.45,maxZ:z+d*.45});});
       // Wind-blown dust softens the horizon.
-      const dustPositions=new Float32Array(260*3);for(let i=0;i<260;i++){dustPositions[i*3]=-47+Math.random()*94;dustPositions[i*3+1]=.3+Math.random()*8;dustPositions[i*3+2]=-47+Math.random()*94;}const dustGeo=new THREE.BufferGeometry();dustGeo.setAttribute("position",new THREE.BufferAttribute(dustPositions,3));const dust=new THREE.Points(dustGeo,new THREE.PointsMaterial({color:0xe7bc7b,size:.1,transparent:true,opacity:.3,depthWrite:false}));dust.raycast=()=>{};scene.add(dust);
+      const dustPositions=new Float32Array(320*3);for(let i=0;i<320;i++){dustPositions[i*3]=-59+Math.random()*118;dustPositions[i*3+1]=.3+Math.random()*9;dustPositions[i*3+2]=-59+Math.random()*118;}const dustGeo=new THREE.BufferGeometry();dustGeo.setAttribute("position",new THREE.BufferAttribute(dustPositions,3));const dust=new THREE.Points(dustGeo,new THREE.PointsMaterial({color:0xe7bc7b,size:.1,transparent:true,opacity:.24,depthWrite:false}));dust.raycast=()=>{};scene.add(dust);
     }
 
     if (selectedMap === "TEST YARD") {
@@ -2870,7 +2897,7 @@ export function FpsGame() {
 
   const equippedItems = [primary, secondary, medical, utility, CLASS_ITEMS[playerClass] ?? "NO CLASS ITEM"];
   const maximumHealth = (equipment === "ARMOR PLATING" ? 125 : 100) + CLASS_STATS[playerClass].healthBonus;
-  const radarBounds = selectedMap === "TIDEBREAK BEACH" ? { minX: -60, maxX: 60, minZ: -50, maxZ: 96 } : selectedMap === "TEST YARD" ? { minX: -32, maxX: 32, minZ: -32, maxZ: 32 } : { minX: -50, maxX: 50, minZ: -50, maxZ: 50 };
+  const radarBounds = selectedMap === "TIDEBREAK BEACH" ? { minX: -60, maxX: 60, minZ: -50, maxZ: 96 } : selectedMap === "DUSTFALL DESERT" ? { minX: -60, maxX: 60, minZ: -60, maxZ: 60 } : selectedMap === "TEST YARD" ? { minX: -32, maxX: 32, minZ: -32, maxZ: 32 } : { minX: -50, maxX: 50, minZ: -50, maxZ: 50 };
   const activeIsMelee = activeSlot === 2 && secondary === "COMBAT KNIFE";
   const activeSightAttachment = activeSlot === 1 ? weaponSight : secondarySight;
   const activeMaxMagazine = activeSlot === 1
@@ -3073,7 +3100,7 @@ export function FpsGame() {
           </button>
           <div className="vote-total"><i style={{ width: mapVotes ? `${beachMapVotes / mapVotes * 100}%` : "0%" }} /><span>{beachMapVotes} VOTE{beachMapVotes === 1 ? "" : "S"}</span></div></div>
           <div className="vote-option"><button className={selectedMapVote === "DUSTFALL DESERT" ? "voted selected-vote" : hasVoted ? "voted" : ""} disabled={hasVoted || multiplayerStatus !== "ONLINE"} onClick={() => { multiplayerSendRef.current({ type: "vote", category: "map", map: "DUSTFALL DESERT" }); setSelectedMapVote("DUSTFALL DESERT"); setHasVoted(true); }}>
-            <i>05</i><span><b>DUSTFALL DESERT</b><small>SWEEPING DUNES · OASIS · RUINS · ROCKY COVER</small></span><em>{selectedMapVote === "DUSTFALL DESERT" ? "YOUR VOTE" : hasVoted ? "LOCKED" : multiplayerStatus !== "ONLINE" ? "CONNECTING" : "VOTE"}</em>
+            <i>05</i><span><b>DUSTFALL DESERT</b><small>DENSE ADOBE VILLAGE · NARROW STREETS · COURTYARDS</small></span><em>{selectedMapVote === "DUSTFALL DESERT" ? "YOUR VOTE" : hasVoted ? "LOCKED" : multiplayerStatus !== "ONLINE" ? "CONNECTING" : "VOTE"}</em>
           </button>
           <div className="vote-total"><i style={{ width: mapVotes ? `${desertMapVotes / mapVotes * 100}%` : "0%" }} /><span>{desertMapVotes} VOTE{desertMapVotes === 1 ? "" : "S"}</span></div></div>
           </div></section>
@@ -3115,7 +3142,7 @@ export function FpsGame() {
         <div className="death-code">KIA</div><h2>OPERATOR DOWN</h2><p>TEST CONDITION: FATAL DAMAGE</p>
         <button onClick={() => {
           respawnRef.current(); setHealth(maximumHealth); setDead(false);
-          multiplayerSendRef.current({ type: "respawn", x: 0, z: selectedMap === "TIDEBREAK BEACH" ? 86 : selectedMap === "CITY BLOCK" || selectedMap === "DUSTFALL DESERT" ? 38 : selectedMap === "BLACKWOOD FOREST" || selectedMap === "FROSTLINE BASE" ? 36 : 15 });
+          multiplayerSendRef.current({ type: "respawn", x: 0, z: selectedMap === "TIDEBREAK BEACH" ? 86 : selectedMap === "DUSTFALL DESERT" ? 50 : selectedMap === "CITY BLOCK" ? 38 : selectedMap === "BLACKWOOD FOREST" || selectedMap === "FROSTLINE BASE" ? 36 : 15 });
           mountRef.current?.querySelector("canvas")?.requestPointerLock();
         }}>RESPAWN AT TEST YARD</button>
       </div>}
