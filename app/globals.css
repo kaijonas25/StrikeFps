@@ -254,6 +254,8 @@ body:has(.account-shell) { overflow:hidden; touch-action:pan-y; }
   .mobile-move-pad::after { content:"PUSH FORWARD TO RUN"; position:absolute; left:50%; bottom:-17px; width:170px; color:rgba(218,237,235,.45); font-size:6px; letter-spacing:.13em; text-align:center; transform:translateX(-50%); }
   .mobile-stick { position:absolute; left:50%; top:50%; display:grid; place-items:center; width:82px; height:82px; border:2px solid rgba(255,117,76,.65); border-radius:50%; color:#ffb09a; background:rgba(28,39,42,.82); box-shadow:0 4px 20px rgba(0,0,0,.38),inset 0 0 20px rgba(255,99,54,.13); transform:translate(calc(-50% + var(--stick-x)),calc(-50% + var(--stick-y))); }
   .mobile-stick span { font-size:7px; letter-spacing:.12em; pointer-events:none; }
+  .mobile-controls .mobile-sprint { position:absolute; left:max(218px,calc(env(safe-area-inset-left) + 212px)); bottom:max(42px,calc(env(safe-area-inset-bottom) + 34px)); width:82px; height:82px; border:2px solid rgba(255,184,79,.68); color:#ffd69a; background:rgba(103,67,13,.52); font-size:9px; letter-spacing:.08em; }
+  .mobile-controls .mobile-sprint:active { border-color:#ffb347; background:rgba(184,105,15,.72); box-shadow:0 0 25px rgba(255,166,52,.28),inset 0 0 22px rgba(255,195,105,.2); }
   .mobile-look-pad { position:absolute; right:0; top:70px; width:52vw; height:calc(100% - 220px); border:1px dashed rgba(218,237,235,.08); background:rgba(255,255,255,.006); }
   .mobile-look-pad span { position:absolute; top:50%; left:50%; color:rgba(218,237,235,.18); font-size:7px; letter-spacing:.18em; transform:translate(-50%,-50%); }
   .mobile-actions { position:absolute; right:max(20px,env(safe-area-inset-right)); bottom:max(22px,env(safe-area-inset-bottom)); display:grid; grid-template-columns:repeat(2,64px); gap:10px; width:245px; height:150px; align-content:end; pointer-events:none; }
@@ -270,4 +272,5 @@ body:has(.account-shell) { overflow:hidden; touch-action:pan-y; }
   .mobile-move-pad { transform:scale(.82); transform-origin:left bottom; }
   .mobile-actions { transform:scale(.78); transform-origin:right bottom; }
   .mobile-actions .mobile-aim { left:155px; bottom:175px; transform:scale(.82); }
+  .mobile-controls .mobile-sprint { left:160px; bottom:38px; width:68px; height:68px; font-size:8px; }
 }
