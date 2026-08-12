@@ -2711,9 +2711,9 @@ export function FpsGame() {
         </section>
       </div>}
       {started && selectedSector !== "TRAINING SECTOR" && matchPhase === "playing" && (matchMode === "TDM" || matchMode === "CTP") && <aside className="tdm-scoreboard">
-        <div className={`tdm-team alpha${localTeam === "ALPHA" ? " local-team" : ""}`}><small>TEAM</small><span>ALPHA</span><strong>{teamScores.ALPHA}</strong></div>
+        <div className={`tdm-team alpha${localTeam === "ALPHA" ? " local-team" : ""}`}><small>TEAM</small><span>ALPHA</span><strong>{Math.floor(teamScores.ALPHA)}</strong></div>
         <div className="tdm-clock"><small>{matchMode === "CTP" ? "CAPTURE POINTS" : "TEAM DEATHMATCH"}</small><strong>{formatMatchTime(matchTimeLeft)}</strong><span>{matchMode === "CTP" ? objectiveZones.map((zone) => `${zone.id}:${zone.owner?.[0] ?? "—"}`).join(" · ") : selectedMap}</span></div>
-        <div className={`tdm-team bravo${localTeam === "BRAVO" ? " local-team" : ""}`}><strong>{teamScores.BRAVO}</strong><span>BRAVO</span><small>TEAM</small></div>
+        <div className={`tdm-team bravo${localTeam === "BRAVO" ? " local-team" : ""}`}><strong>{Math.floor(teamScores.BRAVO)}</strong><span>BRAVO</span><small>TEAM</small></div>
         <button disabled={endGameRequested} onClick={() => { multiplayerSendRef.current({ type: "end_game" }); setEndGameRequested(true); }}>{endGameRequested ? `${endGameVotes}/${Math.max(1, connectedPlayerIds.length)}` : "END VOTE"}</button>
       </aside>}
       {started && matchPhase === "playing" && matchMode === "KOTH" && <aside className="objective-scoreboard"><small>KING OF THE HILL</small><strong>{Math.floor(localObjectiveScore)}</strong><span>HILL POINTS · {formatMatchTime(matchTimeLeft)}</span></aside>}
