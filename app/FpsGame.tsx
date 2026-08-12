@@ -108,6 +108,7 @@ const STANCE_COLLIDERS: Record<PlayerStance, { radius: number; height: number; h
   prone: { radius: .32, height: .62, halfLength: .55 },
 };
 const MULTIPLAYER_SERVER = "https://strikeyard-multiplayer.kaigarcia2510.workers.dev";
+const HEAT_VISION_WALL_RANGE = 32;
 const formatMatchTime = (milliseconds: number) => {
   const seconds = Math.max(0, Math.ceil(milliseconds / 1000));
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
@@ -629,6 +630,8 @@ export function FpsGame() {
         if (!(object instanceof THREE.Mesh) || !(object.material instanceof THREE.MeshStandardMaterial)) return;
         object.material.emissive.set(targetable ? 0xff351f : 0xff8a36);
         object.material.emissiveIntensity = targetable ? 2.2 : 1.65;
+        object.material.depthWrite = false;
+        (dummy.userData.thermalMaterials ??= []).push(object.material);
       });
       scene.add(dummy); if (targetable) dummies.push(dummy); return dummy;
     };
@@ -2120,6 +2123,17 @@ export function FpsGame() {
         window.clearTimeout(satelliteClearTimer);
         satelliteClearTimer = window.setTimeout(() => setRadarPings([]), 2500);
       }
+      if (equipment === "HEAT VISION GOGGLES") {
+        [...dummies, ...remotePlayers.values()].forEach((actor) => {
+          const throughWalls = actor.visible && actor.position.distanceTo(playerPosition) <= HEAT_VISION_WALL_RANGE;
+          (actor.userData.thermalMaterials as THREE.MeshStandardMaterial[] | undefined)?.forEach((actorMaterial) => {
+            if (actorMaterial.depthTest === !throughWalls) return;
+            actorMaterial.depthTest = !throughWalls;
+            actorMaterial.needsUpdate = true;
+          });
+          actor.renderOrder = throughWalls ? 20 : 0;
+        });
+      }
       if (now >= nextSupplyWave) { spawnSupplyWave(); nextSupplyWave = now + 60_000; }
       camera.rotation.order = "YXZ";
       camera.rotation.set(pitch, yaw, 0);
@@ -2715,7 +2729,7 @@ export function FpsGame() {
       </div>
       <div className="crosshair" style={{ left: thirdPerson ? leanSide < 0 ? "46%" : "54%" : "50%" }}><span /><span /></div>
       <div className="hud-left"><small>VITALS · {equipment}</small><strong>{health}</strong><div className="health"><i style={{ width: `${health / maximumHealth * 100}%` }} /></div></div>
-      {started && equipment === "HEAT VISION GOGGLES" && <div className="heat-vision-overlay"><span>THERMAL OPTICS</span></div>}
+      {started && equipment === "HEAT VISION GOGGLES" && <div className="heat-vision-overlay"><span>THERMAL OPTICS · WALL DETECTION {HEAT_VISION_WALL_RANGE}M</span></div>}
       {started && equipment === "360 GOGGLES" && <aside className="rear-view-panel"><header>REAR VIEW · 180°</header></aside>}
       {started && equipment === "SATELLITE GPS" && <aside className={`satellite-map${radarPings.length ? " scanning" : ""}`}>
         <header><span>SATELLITE GPS</span><b>{radarPings.length ? "CONTACTS" : "SCANNING"}</b></header>
