@@ -14,7 +14,7 @@ type PlayerState = {
   primary: string;
   secondary: string;
   equipment: "ARMOR PLATING" | "HEAT VISION GOGGLES" | "360 GOGGLES" | "SATELLITE GPS";
-  playerClass: "RECRUIT" | "ASSAULT" | "SCOUT" | "MEDIC" | "HEAVY";
+  playerClass: "RECRUIT" | "ASSAULT" | "SCOUT" | "MEDIC" | "HEAVY" | "MORTAR" | "AIRSTRIKE" | "DEMOLITION" | "ENGINEER" | "DRONE";
   skin: string;
   uniform: string;
   camo: string;
@@ -209,6 +209,12 @@ export class GameRoom extends DurableObject {
       this.broadcast({ type: packet.type, id: attachment.id, utilityId: packet.utilityId, utility: packet.utility, position, ...(velocity ? { velocity } : {}) }, socket);
       return;
     }
+    if (packet.type === "class_effect") {
+      const effects = ["MORTAR", "AIRSTRIKE", "ROCKET LAUNCHER", "SENTRY", "ATTACK DRONE"];
+      const position = Array.isArray(packet.position) && packet.position.length === 3 && packet.position.every((entry) => typeof entry === "number" && Number.isFinite(entry)) ? packet.position : null;
+      if (effects.includes(packet.effect) && position) this.broadcast({ type: "class_effect", id: attachment.id, effect: packet.effect, position }, socket);
+      return;
+    }
     if (packet.type === "utility_effect") {
       const meta = await this.currentMatch();
       if (meta.phase !== "playing" || packet.effect !== "flash" || !packet.targetId || packet.targetId === attachment.id) return;
@@ -310,11 +316,11 @@ export class GameRoom extends DurableObject {
       x: finite(packet.x, attachment.state.x), y: finite(packet.y, attachment.state.y), z: finite(packet.z, attachment.state.z), yaw: finite(packet.yaw, attachment.state.yaw),
       movement: packet.movement === "walk" || packet.movement === "sprint" ? packet.movement : "static",
       crouching: Boolean(packet.crouching), prone: Boolean(packet.prone),
-      slot: typeof packet.slot === "number" && packet.slot >= 1 && packet.slot <= 4 ? packet.slot : attachment.state.slot,
+      slot: typeof packet.slot === "number" && packet.slot >= 1 && packet.slot <= 5 ? packet.slot : attachment.state.slot,
       primary: typeof packet.primary === "string" ? packet.primary.slice(0, 40) : attachment.state.primary,
       secondary: typeof packet.secondary === "string" ? packet.secondary.slice(0, 40) : attachment.state.secondary,
       equipment: packet.equipment === "HEAT VISION GOGGLES" || packet.equipment === "360 GOGGLES" || packet.equipment === "SATELLITE GPS" ? packet.equipment : "ARMOR PLATING",
-      playerClass: packet.playerClass === "ASSAULT" || packet.playerClass === "SCOUT" || packet.playerClass === "MEDIC" || packet.playerClass === "HEAVY" ? packet.playerClass : "RECRUIT",
+      playerClass: (["ASSAULT", "SCOUT", "MEDIC", "HEAVY", "MORTAR", "AIRSTRIKE", "DEMOLITION", "ENGINEER", "DRONE"] as unknown[]).includes(packet.playerClass) ? packet.playerClass as PlayerState["playerClass"] : "RECRUIT",
       skin: safeString(packet.skin, attachment.state.skin, 16), uniform: safeString(packet.uniform, attachment.state.uniform, 16), camo: safeString(packet.camo, attachment.state.camo, 24),
       accessories: Array.isArray(packet.accessories) ? packet.accessories.filter((item): item is string => typeof item === "string" && ["GOGGLES", "MASK", "HEADSET", "NVG"].includes(item)).slice(0, 4) : attachment.state.accessories,
       armor: safeString(packet.armor, attachment.state.armor, 16),

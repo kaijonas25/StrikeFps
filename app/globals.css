@@ -53,6 +53,7 @@ button { font: inherit; }
 .stance-status { position:fixed; left:30px; bottom:102px; color:#a9b9b8; font-size:7px; letter-spacing:.14em; pointer-events:none; }.stance-status kbd { margin:0 3px; }
 .door-prompt { position:fixed; z-index:9; left:50%; bottom:145px; transform:translateX(-50%); padding:9px 14px; border:1px solid rgba(255,255,255,.14); color:#dbe6e3; background:rgba(5,11,14,.78); font-size:8px; letter-spacing:.14em; pointer-events:none; }.door-prompt kbd { margin:0 7px 0 0; border-color:#ff7048; }
 .hud-left { left: 30px; } .hud-right { right: 30px; text-align: right; }
+.class-ability-status { position:fixed; left:30px; bottom:112px; display:flex; gap:10px; align-items:center; padding:9px 12px; border:1px solid rgba(255,117,76,.42); color:#dce8e6; background:rgba(7,15,18,.82); pointer-events:none; }.class-ability-status kbd { color:#ff7953; }.class-ability-status span { display:flex; flex-direction:column; gap:3px; }.class-ability-status b { font-size:8px; letter-spacing:.13em; }.class-ability-status small { color:#68d99f; font-size:6px; letter-spacing:.12em; }.class-ability-status.cooling small { color:#ff8a68; }
 .hud-left strong, .hud-right strong { display: block; font-family: var(--font-geist-sans), sans-serif; font-size: 34px; line-height: 1; font-weight: 650; }
 .hud-right em { color: #8fa0a2; font-style: normal; font-size: 14px; font-weight: 400; }
 .quick-slots { position:fixed; right:30px; bottom:105px; display:flex; flex-direction:column; align-items:flex-end; gap:5px; pointer-events:none; }

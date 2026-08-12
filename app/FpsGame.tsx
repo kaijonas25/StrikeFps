@@ -27,7 +27,7 @@ type FireControlAttachment = "STANDARD TRIGGER" | "BURST TRIGGER";
 type PassiveEquipment = "ARMOR PLATING" | "HEAT VISION GOGGLES" | "360 GOGGLES" | "SATELLITE GPS";
 type CamoPattern = "SOLID" | "WOODLAND" | "MULTICAM" | "DIGITAL" | "URBAN CAMO";
 type OperatorAccessory = "GOGGLES" | "MASK" | "HEADSET" | "NVG";
-type PlayerClass = "RECRUIT" | "ASSAULT" | "SCOUT" | "MEDIC" | "HEAVY";
+type PlayerClass = "RECRUIT" | "ASSAULT" | "SCOUT" | "MEDIC" | "HEAVY" | "MORTAR" | "AIRSTRIKE" | "DEMOLITION" | "ENGINEER" | "DRONE";
 type WeaponAttachments = { sight: SightAttachment; muzzle: MuzzleAttachment; tactical: TacticalAttachment; magazine: MagazineAttachment; fireControl: FireControlAttachment };
 type PlayerAppearance = { skin: string; uniform: string; camo: CamoPattern; accessories: OperatorAccessory[]; armor: string; helmet: string; faceGear: string; headAccessory: string; chestRig: string; backpack: string; pants: string; gloves: string; boots: string };
 type SavedLoadout = { primary: string; secondary: string; medical: string; utility: string; equipment: PassiveEquipment; playerClass?: PlayerClass; weaponSight: SightAttachment; muzzleAttachment: MuzzleAttachment; tacticalAttachment: TacticalAttachment; magazineAttachment: MagazineAttachment; fireControlAttachment: FireControlAttachment; secondarySight: SightAttachment; secondaryMuzzle: MuzzleAttachment; secondaryTactical: TacticalAttachment; secondaryMagazine: MagazineAttachment; secondaryFireControl: FireControlAttachment };
@@ -118,7 +118,14 @@ const CLASS_STATS: Record<PlayerClass, { unlockKills: number; role: string; buff
   SCOUT: { unlockKills: 75, role: "FAST RECON", buffs: ["+15% MOVEMENT SPEED", "−12% WEAPON SPREAD"], debuffs: ["−15 MAX HEALTH", "−5% WEAPON DAMAGE"], damage: .95, speed: 1.15, healthBonus: -15, reload: 1, spread: .88, healing: 1, healTime: 1 },
   MEDIC: { unlockKills: 150, role: "COMBAT SUPPORT", buffs: ["+35% HEALING", "25% FASTER HEAL USE"], debuffs: ["−10% WEAPON DAMAGE"], damage: .9, speed: 1, healthBonus: 0, reload: 1, spread: 1, healing: 1.35, healTime: .75 },
   HEAVY: { unlockKills: 300, role: "ARMORED ANCHOR", buffs: ["+25 MAX HEALTH", "+5% WEAPON DAMAGE"], debuffs: ["−18% MOVEMENT SPEED", "20% SLOWER RELOAD"], damage: 1.05, speed: .82, healthBonus: 25, reload: 1.2, spread: 1, healing: 1, healTime: 1 },
+  MORTAR: { unlockKills: 450, role: "INDIRECT FIRE", buffs: ["SLOT 5: AIMABLE MORTAR", "HIGH SPLASH DAMAGE"], debuffs: ["−12% MOVEMENT SPEED", "LONG ABILITY COOLDOWN"], damage: 1, speed: .88, healthBonus: 0, reload: 1, spread: 1, healing: 1, healTime: 1 },
+  AIRSTRIKE: { unlockKills: 650, role: "AIR SUPPORT", buffs: ["SLOT 5: AIRSTRIKE TABLET", "MULTIPLE STRIKE IMPACTS"], debuffs: ["−10 MAX HEALTH", "LONG ABILITY COOLDOWN"], damage: 1, speed: 1, healthBonus: -10, reload: 1, spread: 1, healing: 1, healTime: 1 },
+  DEMOLITION: { unlockKills: 850, role: "ANTI-ARMOR", buffs: ["SLOT 5: ROCKET LAUNCHER", "HEAVY EXPLOSIVE DAMAGE"], debuffs: ["−15% MOVEMENT SPEED", "+10% WEAPON SPREAD"], damage: 1, speed: .85, healthBonus: 0, reload: 1, spread: 1.1, healing: 1, healTime: 1 },
+  ENGINEER: { unlockKills: 1100, role: "AREA DEFENSE", buffs: ["SLOT 5: BUILD SENTRY", "AUTOMATIC TARGETING"], debuffs: ["−8% WEAPON DAMAGE", "ONE SENTRY AT A TIME"], damage: .92, speed: 1, healthBonus: 0, reload: 1, spread: 1, healing: 1, healTime: 1 },
+  DRONE: { unlockKills: 1400, role: "REMOTE ATTACK", buffs: ["SLOT 5: ARMED DRONE", "REMOTE AERIAL FIRE"], debuffs: ["−15 MAX HEALTH", "BODY IS EXPOSED"], damage: 1, speed: 1, healthBonus: -15, reload: 1, spread: 1, healing: 1, healTime: 1 },
 };
+
+const CLASS_ITEMS: Partial<Record<PlayerClass, string>> = { MORTAR: "MORTAR SYSTEM", AIRSTRIKE: "AIRSTRIKE TABLET", DEMOLITION: "ROCKET LAUNCHER", ENGINEER: "SENTRY KIT", DRONE: "ATTACK DRONE" };
 
 const WEAPON_STATS: Record<string, { damage: number; fireRate: number; capacity: number; reload: number; range: number; mobility: number; spread: number; pellets?: number }> = {
   "VXR-4 CARBINE": { damage: 11, fireRate: 58, capacity: 30, reload: 2.7, range: 60, mobility: 60, spread: 2.1 },
@@ -236,6 +243,7 @@ export function FpsGame() {
   const [equipment, setEquipment] = useState<PassiveEquipment>("ARMOR PLATING");
   const [playerClass, setPlayerClass] = useState<PlayerClass>("RECRUIT");
   const [careerKills, setCareerKills] = useState(0);
+  const [classCooldown, setClassCooldown] = useState(0);
   const [activeSlot, setActiveSlot] = useState(1);
   const [reloading, setReloading] = useState(false);
   const [reloadDuration, setReloadDuration] = useState(0);
@@ -362,6 +370,12 @@ export function FpsGame() {
     damageNumbersEnabledRef.current = damageNumbersEnabled;
     window.localStorage.setItem("strikeyard.damageNumbers", String(damageNumbersEnabled));
   }, [damageNumbersEnabled]);
+
+  useEffect(() => {
+    if (classCooldown <= 0) return;
+    const timer = window.setInterval(() => setClassCooldown((seconds) => Math.max(0, seconds - 1)), 1000);
+    return () => window.clearInterval(timer);
+  }, [classCooldown > 0]);
 
   useEffect(() => {
     if (health < previousHealthRef.current) {
@@ -1241,6 +1255,21 @@ export function FpsGame() {
         visualOnly(new THREE.Mesh(new THREE.BoxGeometry(.34, .43, .075), equipmentMat(0x8f2932, .18))).position.set(x, y, z);
         visualOnly(new THREE.Mesh(new THREE.BoxGeometry(.17, .08, .012), equipmentMat(0xe7e2d5))).position.set(x, y + .04, z - .044);
         const tube = visualOnly(new THREE.Mesh(new THREE.TorusGeometry(.16, .012, 7, 20, Math.PI * 1.45), equipmentMat(0x6f2028, .15))); tube.position.set(x + .08, y - .23, z); tube.rotation.z = -.35;
+      } else if (name === "MORTAR SYSTEM") {
+        const tube = visualOnly(new THREE.Mesh(new THREE.CylinderGeometry(.11, .14, .7, 14), equipmentMat(0x39443a, .55))); tube.rotation.x = Math.PI / 2; tube.position.set(x, y, z);
+        visualOnly(new THREE.Mesh(new THREE.BoxGeometry(.48, .08, .08), equipmentMat(0x20282a, .55))).position.set(x, y - .18, z + .08);
+      } else if (name === "AIRSTRIKE TABLET") {
+        visualOnly(new THREE.Mesh(new THREE.BoxGeometry(.5, .34, .055), equipmentMat(0x182225, .45))).position.set(x, y, z);
+        visualOnly(new THREE.Mesh(new THREE.PlaneGeometry(.4, .25), new THREE.MeshBasicMaterial({ color: 0x65d3bb }))).position.set(x, y, z - .031);
+      } else if (name === "ROCKET LAUNCHER") {
+        const tube = visualOnly(new THREE.Mesh(new THREE.CylinderGeometry(.13, .13, 1.15, 16), equipmentMat(0x3f4a3c, .5))); tube.rotation.x = Math.PI / 2; tube.position.set(x, y, z - .25);
+        visualOnly(new THREE.Mesh(new THREE.BoxGeometry(.14, .3, .16), equipmentMat(0x171d1f, .6))).position.set(x, y - .2, z - .12);
+      } else if (name === "SENTRY KIT") {
+        visualOnly(new THREE.Mesh(new THREE.BoxGeometry(.5, .34, .23), equipmentMat(0x35433f, .45))).position.set(x, y, z);
+        visualOnly(new THREE.Mesh(new THREE.BoxGeometry(.34, .05, .26), equipmentMat(0x171d1f, .55))).position.set(x, y + .2, z);
+      } else if (name === "ATTACK DRONE") {
+        visualOnly(new THREE.Mesh(new THREE.BoxGeometry(.36, .1, .24), equipmentMat(0x283438, .6))).position.set(x, y, z);
+        [-.27, .27].forEach((dx) => [-.18, .18].forEach((dz) => { const rotor = visualOnly(new THREE.Mesh(new THREE.CylinderGeometry(.1, .1, .025, 12), equipmentMat(0x111719, .7))); rotor.position.set(x + dx, y, z + dz); }));
       } else if (name === "C4 CHARGE") {
         visualOnly(new THREE.Mesh(new THREE.BoxGeometry(.42, .3, .12), equipmentMat(0x5b6652))).position.set(x, y, z);
         visualOnly(new THREE.Mesh(new THREE.BoxGeometry(.2, .13, .03), equipmentMat(0x20282a, .4))).position.set(x, y, z - .075);
@@ -1260,11 +1289,13 @@ export function FpsGame() {
     };
     const medicalModel = buildEquipment(medical);
     const utilityModel = buildEquipment(utility);
-    gun.add(primaryWeapon.model, secondaryWeapon.model, medicalModel, utilityModel);
+    const classItemModel = buildEquipment(CLASS_ITEMS[playerClass] ?? "FRAG GRENADE");
+    gun.add(primaryWeapon.model, secondaryWeapon.model, medicalModel, utilityModel, classItemModel);
     const worldPrimary = primaryWeapon.model.clone(true);
     const worldSecondary = secondaryWeapon.model.clone(true);
     const worldMedical = medicalModel.clone(true);
     const worldUtility = utilityModel.clone(true);
+    const worldClassItem = classItemModel.clone(true);
     [worldPrimary, worldSecondary].forEach((weapon) => {
       weapon.scale.setScalar(0.72);
       weapon.position.set(-0.055, 1.58, 0.03);
@@ -1272,7 +1303,7 @@ export function FpsGame() {
       weapon.traverse((object) => { if (object instanceof THREE.Mesh) object.raycast = () => {}; });
       localPlayer.add(weapon);
     });
-    [worldMedical, worldUtility].forEach((item) => {
+    [worldMedical, worldUtility, worldClassItem].forEach((item) => {
       item.scale.setScalar(.78); item.position.set(-.045, 1.56, .03);
       item.traverse((object) => { if (object instanceof THREE.Mesh) object.raycast = () => {}; }); localPlayer.add(item);
     });
@@ -1457,6 +1488,7 @@ export function FpsGame() {
           else if (packet.type === "shot" && packet.id && packet.tracerEnds) showRemoteTracers(packet.id, packet.tracerEnds);
           else if (packet.type === "utility_throw" && packet.utilityId && packet.utility && packet.position && packet.velocity) spawnRemoteUtility(packet.utilityId, packet.utility, packet.position, packet.velocity);
           else if (packet.type === "utility_detonate" && packet.utilityId && packet.utility && packet.position) showRemoteUtilityDetonation(packet.utilityId, packet.utility, packet.position);
+          else if (packet.type === "class_effect" && packet.effect && packet.position) spawnExplosionVisual(new THREE.Vector3(packet.position[0], packet.position[1], packet.position[2]), packet.effect);
           else if (packet.type === "utility_effect" && packet.effect === "flash") {
             setFlashed(true); window.setTimeout(() => setFlashed(false), Math.min(1700, Math.max(250, packet.duration ?? 1000)));
           }
@@ -1554,9 +1586,13 @@ export function FpsGame() {
     const placementMaterial = new THREE.MeshBasicMaterial({ color: 0x74e6b1, transparent: true, opacity: .48, depthWrite: false });
     const placementPreview = new THREE.Mesh(new THREE.BoxGeometry(.46, .12, .32), placementMaterial);
     placementPreview.raycast = () => {}; placementPreview.visible = false; scene.add(placementPreview);
+    const classTargetMarker = new THREE.Mesh(new THREE.RingGeometry(.55, .72, 24), new THREE.MeshBasicMaterial({ color: 0xff6336, transparent: true, opacity: .72, side: THREE.DoubleSide, depthWrite: false }));
+    classTargetMarker.rotation.x = -Math.PI / 2; classTargetMarker.raycast = () => {}; classTargetMarker.visible = false; scene.add(classTargetMarker);
     let placementAiming = false;
     let placementPoint: { point: THREE.Vector3; normal: THREE.Vector3 } | null = null;
     let currentFireMode: FireMode = "AUTO", triggerHeld = false, currentSlot = 1, movementSpread = 1;
+    let classAbilityReadyAt = 0, classAiming = false;
+    const classDeployables: THREE.Object3D[] = [];
     const lastShotAt = [Number.NEGATIVE_INFINITY, Number.NEGATIVE_INFINITY];
     let nearbyDoor: typeof doors[number] | undefined;
     const activeAttachments = (): WeaponAttachments => currentSlot > 2 || (currentSlot === 2 && secondaryIsMelee)
@@ -1717,7 +1753,7 @@ export function FpsGame() {
         currentFireMode = modes[(modes.indexOf(currentFireMode) + 1) % modes.length];
         setFireMode(currentFireMode);
       }
-      if (["Digit1", "Digit2", "Digit3", "Digit4"].includes(e.code)) {
+      if (["Digit1", "Digit2", "Digit3", "Digit4", "Digit5"].includes(e.code) && (e.code !== "Digit5" || CLASS_ITEMS[playerClass])) {
         currentSlot = Number(e.code.slice(-1));
         setActiveSlot(currentSlot);
         if (currentFireMode === "BURST" && activeAttachments().fireControl !== "BURST TRIGGER") {
@@ -1730,6 +1766,7 @@ export function FpsGame() {
         throwableAiming = false;
         trajectory.visible = false;
         placementAiming = false; placementPreview.visible = false; placementPoint = null;
+        classAiming = false; classTargetMarker.visible = false;
         reloadEnd = 0;
         setReloading(false);
         if (currentSlot !== 3 && healEnd) { healEnd = 0; setHealing(false); }
@@ -2031,6 +2068,42 @@ export function FpsGame() {
         if (projectile.type === "LANDMINE") applyExplosion(5.5, 125, "LANDMINE");
       }
     };
+    const classTarget = () => {
+      raycaster.setFromCamera(getAimNdc(), camera);
+      const hit = raycaster.intersectObjects(scene.children, true).find((result) => result.distance > .5 && result.object !== camera);
+      return hit?.point.clone() ?? raycaster.ray.at(38, new THREE.Vector3());
+    };
+    const classBlast = (position: THREE.Vector3, radius: number, damage: number, weapon: string) => {
+      spawnExplosionVisual(position, weapon);
+      dummies.forEach((dummy) => { const distance = dummy.position.distanceTo(position); if (distance < radius) damageDummyGroup(dummy, Math.round(damage * (1 - distance / radius)), weapon); });
+      remotePlayers.forEach((avatar, targetId) => { const distance = avatar.position.distanceTo(position); if (avatar.visible && distance < radius) multiplayerSendRef.current({ type: "hit", targetId, damage: Math.round(damage * (1 - distance / radius)), weapon, headshot: false }); });
+      multiplayerSendRef.current({ type: "class_effect", effect: weapon, position: position.toArray() });
+    };
+    const useClassItem = () => {
+      const now = performance.now();
+      if (now < classAbilityReadyAt) return;
+      const target = classTarget();
+      if (playerClass === "MORTAR") {
+        classAbilityReadyAt = now + 18_000; setClassCooldown(18);
+        const shell = new THREE.Mesh(new THREE.SphereGeometry(.12, 10, 8), material(0x2f382d, .5, .5)); shell.position.copy(target).add(new THREE.Vector3(0, 32, 0)); scene.add(shell);
+        const fall = window.setInterval(() => { shell.position.y -= 1.8; if (shell.position.y <= target.y + .15) { window.clearInterval(fall); scene.remove(shell); classBlast(target, 9, 150, "MORTAR"); } }, 16);
+      } else if (playerClass === "AIRSTRIKE") {
+        classAbilityReadyAt = now + 35_000; setClassCooldown(35);
+        [-8, -4, 0, 4, 8].forEach((offset, index) => window.setTimeout(() => classBlast(target.clone().add(new THREE.Vector3(offset, 0, (index % 2 ? 2 : -2))), 7, 105, "AIRSTRIKE"), index * 420));
+      } else if (playerClass === "DEMOLITION") {
+        classAbilityReadyAt = now + 8_000; setClassCooldown(8); classBlast(target, 8, 140, "ROCKET LAUNCHER");
+      } else if (playerClass === "ENGINEER") {
+        classAbilityReadyAt = now + 25_000; setClassCooldown(25); classDeployables.splice(0).forEach((item) => scene.remove(item));
+        const sentry = new THREE.Group(); sentry.position.copy(target); sentry.add(new THREE.Mesh(new THREE.BoxGeometry(.65, .45, .65), material(0x394744, .55, .4)), new THREE.Mesh(new THREE.BoxGeometry(.18, .18, 1.1), material(0x171d1f, .45, .65))); (sentry.children[1] as THREE.Mesh).position.z = -.55; scene.add(sentry); classDeployables.push(sentry);
+        const sentryFire = window.setInterval(() => { if (!sentry.parent) { window.clearInterval(sentryFire); return; } const targets = [...remotePlayers.entries()].filter(([, avatar]) => avatar.visible && avatar.position.distanceTo(sentry.position) < 28); const nearest = targets.sort((a,b) => a[1].position.distanceTo(sentry.position)-b[1].position.distanceTo(sentry.position))[0]; if (nearest) { sentry.lookAt(nearest[1].position); multiplayerSendRef.current({ type:"hit", targetId:nearest[0], damage:8, weapon:"SENTRY", headshot:false }); } }, 650);
+        window.setTimeout(() => { scene.remove(sentry); window.clearInterval(sentryFire); }, 30_000);
+      } else if (playerClass === "DRONE") {
+        classAbilityReadyAt = now + 30_000; setClassCooldown(30);
+        const drone = new THREE.Group(); drone.position.copy(playerPosition).add(new THREE.Vector3(0, 4, 0)); drone.add(new THREE.Mesh(new THREE.BoxGeometry(.7,.12,.45), material(0x263236,.45,.55))); scene.add(drone); classDeployables.push(drone);
+        const droneFire = window.setInterval(() => { if (!drone.parent) { window.clearInterval(droneFire); return; } drone.rotation.y += .08; const targets=[...remotePlayers.entries()].filter(([,avatar])=>avatar.visible&&avatar.position.distanceTo(drone.position)<35); const nearest=targets.sort((a,b)=>a[1].position.distanceTo(drone.position)-b[1].position.distanceTo(drone.position))[0]; if(nearest){drone.position.lerp(nearest[1].position.clone().add(new THREE.Vector3(0,4,0)),.04); multiplayerSendRef.current({type:"hit",targetId:nearest[0],damage:6,weapon:"ATTACK DRONE",headshot:false});}},500);
+        window.setTimeout(() => { scene.remove(drone); window.clearInterval(droneFire); }, 25_000);
+      }
+    };
     const fireRound = () => {
       if ((!isTouchInput && document.pointerLockElement !== renderer.domElement) || sprinting || sliding || currentSlot > 2 || reloadEnd > 0) return;
       if (currentSlot === 2 && secondaryIsMelee) {
@@ -2109,6 +2182,7 @@ export function FpsGame() {
         if (isThirdPerson) orbiting = true; else { holdAim = true; syncAim(); } return;
       }
       if (e.button !== 0 || sprinting || sliding) return;
+      if (currentSlot === 5) { classAiming = true; classTargetMarker.visible = true; return; }
       if (currentSlot === 3) {
         if (medicalCharges > 0 && playerHealth < maxPlayerHealth && !healEnd) {
           const medicalStats = MEDICAL_STATS[medical];
@@ -2137,6 +2211,7 @@ export function FpsGame() {
     const onMouseUp = (e: MouseEvent) => {
       if (e.button === 0) {
         triggerHeld = false;
+        if (classAiming) { classAiming = false; classTargetMarker.visible = false; useClassItem(); }
         if (placementAiming) { placeUtility(); placementAiming = false; placementPreview.visible = false; placementPoint = null; }
         if (throwableAiming) { throwableAiming = false; trajectory.visible = false; throwUtility(); }
       }
@@ -2160,7 +2235,7 @@ export function FpsGame() {
     const onLockChange = () => {
       const isLocked = document.pointerLockElement === renderer.domElement;
       setLocked(isLocked);
-      if (!isLocked) { clearAim(); orbiting = false; triggerHeld = false; throwableAiming = false; trajectory.visible = false; placementAiming = false; placementPreview.visible = false; placementPoint = null; keys.clear(); }
+      if (!isLocked) { clearAim(); orbiting = false; triggerHeld = false; throwableAiming = false; trajectory.visible = false; placementAiming = false; placementPreview.visible = false; placementPoint = null; classAiming = false; classTargetMarker.visible = false; keys.clear(); }
     };
     const onResize = () => {
       camera.aspect = mount.clientWidth / mount.clientHeight;
@@ -2559,10 +2634,13 @@ export function FpsGame() {
       secondaryWeapon.model.visible = currentSlot === 2;
       medicalModel.visible = currentSlot === 3 && medicalCharges > 0;
       utilityModel.visible = currentSlot === 4 && grenadesLeft > 0;
+      classItemModel.visible = currentSlot === 5 && Boolean(CLASS_ITEMS[playerClass]);
       worldPrimary.visible = isThirdPerson && currentSlot === 1;
       worldSecondary.visible = isThirdPerson && currentSlot === 2;
       worldMedical.visible = isThirdPerson && currentSlot === 3 && medicalCharges > 0;
       worldUtility.visible = isThirdPerson && currentSlot === 4 && grenadesLeft > 0;
+      worldClassItem.visible = isThirdPerson && currentSlot === 5 && Boolean(CLASS_ITEMS[playerClass]);
+      if (classAiming) { const target = classTarget(); classTargetMarker.position.copy(target).add(new THREE.Vector3(0, .035, 0)); classTargetMarker.rotation.z += dt * 1.8; }
       [worldPrimary, worldSecondary].forEach((worldWeapon) => {
         const carryLow = sprinting || sliding;
         const shoulderSwapX = leanAmount < 0 ? leanAmount * .4 : 0;
@@ -2671,7 +2749,7 @@ export function FpsGame() {
     };
   }, [sessionId, started, selectedSector, selectedMap, primary, secondary, medical, utility, equipment, playerClass, characterSkin, characterUniform, camoPattern, equippedAccessories, characterArmor, characterHelmet, chestRig, backpack, pantsColor, gloveColor, bootColor, weaponSight, muzzleAttachment, tacticalAttachment, magazineAttachment, fireControlAttachment, secondarySight, secondaryMuzzle, secondaryTactical, secondaryMagazine, secondaryFireControl]);
 
-  const equippedItems = [primary, secondary, medical, utility];
+  const equippedItems = [primary, secondary, medical, utility, CLASS_ITEMS[playerClass] ?? "NO CLASS ITEM"];
   const maximumHealth = (equipment === "ARMOR PLATING" ? 125 : 100) + CLASS_STATS[playerClass].healthBonus;
   const radarBounds = selectedMap === "TIDEBREAK BEACH" ? { minX: -60, maxX: 60, minZ: -50, maxZ: 96 } : selectedMap === "TEST YARD" ? { minX: -32, maxX: 32, minZ: -32, maxZ: 32 } : { minX: -50, maxX: 50, minZ: -50, maxZ: 50 };
   const activeIsMelee = activeSlot === 2 && secondary === "COMBAT KNIFE";
@@ -2803,6 +2881,7 @@ export function FpsGame() {
       </div>
       <div className="crosshair" style={{ left: thirdPerson ? leanSide < 0 ? "46%" : "54%" : "50%" }}><span /><span /></div>
       <div className="hud-left"><small>VITALS · {equipment}</small><strong>{health}</strong><div className="health"><i style={{ width: `${health / maximumHealth * 100}%` }} /></div></div>
+      {started && CLASS_ITEMS[playerClass] && <div className={`class-ability-status${classCooldown > 0 ? " cooling" : ""}`}><kbd>5</kbd><span><b>{CLASS_ITEMS[playerClass]}</b><small>{classCooldown > 0 ? `COOLDOWN · ${classCooldown} SEC` : "READY · EQUIP SLOT 5"}</small></span></div>}
       {started && equipment === "HEAT VISION GOGGLES" && <div className="heat-vision-overlay"><span>THERMAL OPTICS · WALL DETECTION {HEAT_VISION_WALL_RANGE}M</span></div>}
       {started && equipment === "360 GOGGLES" && <aside className="rear-view-panel"><header>REAR VIEW · 180°</header></aside>}
       {started && equipment === "SATELLITE GPS" && <aside className={`satellite-map${radarPings.length ? " scanning" : ""}`}>
@@ -2814,12 +2893,12 @@ export function FpsGame() {
       </aside>}
       {(crouching || prone) && <div className="stance-status">{prone ? "PRONE" : "CROUCHED"} · <kbd>{prone ? "X" : "C"}</kbd> STAND</div>}
       {doorPrompt && <div className="door-prompt"><kbd>F</kbd> OPEN / CLOSE DOOR</div>}
-      <div className="hud-right"><small>{equippedItems[activeSlot - 1]}{activeIsMelee ? " · MELEE" : activeSlot <= 2 ? ` · ${fireMode}` : " · READY"}</small><strong>{activeSlot === 4 ? utilityCount : activeSlot === 3 ? medicalCount : activeIsMelee ? "—" : ammo} <em>{activeSlot === 4 ? "THROWABLES" : activeSlot === 3 ? "MEDICAL" : activeIsMelee ? "" : `/ ${activeMaxMagazine}`}</em></strong></div>
+      <div className="hud-right"><small>{equippedItems[activeSlot - 1]}{activeIsMelee ? " · MELEE" : activeSlot <= 2 ? ` · ${fireMode}` : " · READY"}</small><strong>{activeSlot === 5 ? classCooldown > 0 ? classCooldown : "READY" : activeSlot === 4 ? utilityCount : activeSlot === 3 ? medicalCount : activeIsMelee ? "—" : ammo} <em>{activeSlot === 5 ? classCooldown > 0 ? "SECONDS" : "CLASS ITEM" : activeSlot === 4 ? "THROWABLES" : activeSlot === 3 ? "MEDICAL" : activeIsMelee ? "" : `/ ${activeMaxMagazine}`}</em></strong></div>
       {reloading && <div className="reload-status"><span>RELOADING</span><i style={{ animationDuration: `${reloadDuration}s` }} /></div>}
       {healing && <div className="heal-status"><span>USING {medical}</span><small>SWITCH EQUIPMENT TO CANCEL</small><i style={{ animationDuration: `${healDuration}s` }} /></div>}
       <div className="quick-slots">
         {([
-          [1, primary, "PRIMARY"], [2, secondary, "SECONDARY"], [3, medical, "MEDICAL"], [4, utility, "UTILITY"]
+          [1, primary, "PRIMARY"], [2, secondary, "SECONDARY"], [3, medical, "MEDICAL"], [4, utility, "UTILITY"], ...(CLASS_ITEMS[playerClass] ? [[5, CLASS_ITEMS[playerClass], "CLASS ITEM"]] : [])
         ] as [number, string, string][]).map(([slot, item, label]) => <div key={slot} className={activeSlot === slot ? "active" : ""}>
           <kbd>{slot}</kbd><span><small>{label}</small><b>{item}</b></span>
         </div>)}
@@ -2974,7 +3053,7 @@ export function FpsGame() {
               <header><div><small>FIELD MANUAL</small><h2 id="controls-tutorial-title">GAME <span>CONTROLS</span></h2></div><button aria-label="Close controls tutorial" onClick={() => setControlsTutorialOpen(false)}>×</button></header>
               <div className="tutorial-control-grid">
                 <article><h3>MOVEMENT</h3><div><kbd>W A S D</kbd><span>MOVE</span></div><div><kbd>SHIFT</kbd><span>SPRINT</span></div><div><kbd>SPACE</kbd><span>JUMP</span></div><div><kbd>C</kbd><span>CROUCH / SLIDE</span></div><div><kbd>X</kbd><span>PRONE</span></div><div><kbd>Q / E</kbd><span>LEAN</span></div></article>
-                <article><h3>COMBAT</h3><div><kbd>LMB</kbd><span>FIRE / USE ITEM</span></div><div><kbd>RMB</kbd><span>AIM</span></div><div><kbd>Z</kbd><span>TOGGLE AIM</span></div><div><kbd>R</kbd><span>RELOAD</span></div><div><kbd>B</kbd><span>FIRE MODE</span></div><div><kbd>1–4</kbd><span>SELECT EQUIPMENT</span></div></article>
+                <article><h3>COMBAT</h3><div><kbd>LMB</kbd><span>FIRE / USE ITEM</span></div><div><kbd>RMB</kbd><span>AIM</span></div><div><kbd>Z</kbd><span>TOGGLE AIM</span></div><div><kbd>R</kbd><span>RELOAD</span></div><div><kbd>B</kbd><span>FIRE MODE</span></div><div><kbd>1–5</kbd><span>SELECT EQUIPMENT / CLASS ITEM</span></div></article>
                 <article><h3>INTERACTION</h3><div><kbd>F</kbd><span>USE / OPEN DOOR</span></div><div><kbd>TAB</kbd><span>CHANGE CAMERA</span></div><div><kbd>ENTER</kbd><span>MATCH CHAT</span></div><div><kbd>ESC</kbd><span>PAUSE MENU</span></div></article>
                 <article className="tutorial-touch"><h3>TOUCH CONTROLS</h3><div><kbd>LEFT PAD</kbd><span>MOVE · PUSH FORWARD TO RUN</span></div><div><kbd>RIGHT PAD</kbd><span>LOOK AROUND</span></div><div><kbd>BUTTONS</kbd><span>FIRE · AIM · JUMP · CROUCH · RELOAD · USE</span></div></article>
               </div>
