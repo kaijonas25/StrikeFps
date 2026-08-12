@@ -44,22 +44,59 @@ const attachmentItemPenalty = (attachment: string) =>
 
 const createCamoTexture = (pattern: CamoPattern, baseColor: string) => {
   if (pattern === "SOLID" || typeof document === "undefined") return null;
-  const canvas = document.createElement("canvas"); canvas.width = 128; canvas.height = 128;
+  const canvas = document.createElement("canvas"); canvas.width = 256; canvas.height = 256;
   const ctx = canvas.getContext("2d"); if (!ctx) return null;
-  const base = new THREE.Color(baseColor);
-  const color = (offset: number, saturation = 1) => {
-    const c = base.clone(); c.offsetHSL(0, (saturation - 1) * .08, offset); return `#${c.getHexString()}`;
+  let seed = [...`${pattern}${baseColor}`].reduce((value, letter) => Math.imul(value ^ letter.charCodeAt(0), 16777619), 2166136261) >>> 0;
+  const random = () => { seed = Math.imul(seed ^ (seed >>> 15), 2246822519) >>> 0; seed = Math.imul(seed ^ (seed >>> 13), 3266489917) >>> 0; return (seed >>> 0) / 4294967296; };
+  const tint = (hex: string, mix: number) => {
+    const color = new THREE.Color(hex), base = new THREE.Color(baseColor); color.lerp(base, mix); return `#${color.getHexString()}`;
   };
-  ctx.fillStyle = pattern === "URBAN CAMO" ? "#4a5153" : color(-.02); ctx.fillRect(0, 0, 128, 128);
-  const palette = pattern === "URBAN CAMO" ? ["#202729", "#72797a", "#a0a5a2"] : pattern === "MULTICAM" ? [color(.18, .75), color(-.18, 1.1), "#75684b"] : [color(.15), color(-.2), "#202b25"];
-  for (let i = 0; i < 34; i++) {
-    const x = (i * 47 + 11) % 136 - 8, y = (i * 73 + 19) % 136 - 8;
-    ctx.fillStyle = palette[i % palette.length];
-    if (pattern === "DIGITAL" || pattern === "URBAN CAMO") ctx.fillRect(x, y, 8 + (i % 4) * 5, 6 + ((i + 2) % 4) * 4);
-    else { ctx.beginPath(); ctx.ellipse(x, y, 10 + (i % 5) * 4, pattern === "MULTICAM" ? 5 + (i % 3) * 3 : 8 + (i % 4) * 3, (i % 6) * .42, 0, Math.PI * 2); ctx.fill(); }
+  const palettes: Record<Exclude<CamoPattern, "SOLID">, string[]> = {
+    WOODLAND: ["#59633a", "#263822", "#7a6842", "#252722"],
+    MULTICAM: ["#b8aa79", "#87784e", "#64704b", "#49553a", "#d0c391", "#3f4735"],
+    DIGITAL: ["#58664c", "#394735", "#788064", "#263129"],
+    "URBAN CAMO": ["#9a9d99", "#62696b", "#353c3f", "#171d20"],
+  };
+  const palette = palettes[pattern].map((color, index) => tint(color, index === 0 ? .2 : .1));
+  ctx.fillStyle = palette[0]; ctx.fillRect(0, 0, 256, 256);
+  const organicBlob = (x: number, y: number, radius: number, color: string, points = 11) => {
+    const vertices = Array.from({ length: points }, (_, index) => {
+      const angle = index / points * Math.PI * 2;
+      const distance = radius * (.55 + random() * .65);
+      return { x: x + Math.cos(angle) * distance, y: y + Math.sin(angle) * distance * (.5 + random() * .35) };
+    });
+    ctx.fillStyle = color; ctx.beginPath();
+    vertices.forEach((point, index) => {
+      const next = vertices[(index + 1) % vertices.length];
+      const midpoint = { x: (point.x + next.x) / 2, y: (point.y + next.y) / 2 };
+      if (index === 0) ctx.moveTo(midpoint.x, midpoint.y); else ctx.quadraticCurveTo(point.x, point.y, midpoint.x, midpoint.y);
+    });
+    ctx.closePath(); ctx.fill();
+  };
+  if (pattern === "DIGITAL" || pattern === "URBAN CAMO") {
+    const pixel = pattern === "URBAN CAMO" ? 8 : 7;
+    for (let cluster = 0; cluster < 48; cluster++) {
+      const color = palette[1 + Math.floor(random() * (palette.length - 1))];
+      const startX = Math.floor(random() * 36) * pixel - pixel, startY = Math.floor(random() * 36) * pixel - pixel;
+      let cellX = 0, cellY = 0; ctx.fillStyle = color;
+      for (let cell = 0; cell < 4 + Math.floor(random() * 10); cell++) {
+        ctx.fillRect(startX + cellX * pixel, startY + cellY * pixel, pixel, pixel);
+        if (random() > .48) cellX += random() > .5 ? 1 : -1; else cellY += random() > .5 ? 1 : -1;
+      }
+    }
+  } else {
+    const largeCount = pattern === "MULTICAM" ? 34 : 25;
+    for (let i = 0; i < largeCount; i++) organicBlob(random() * 280 - 12, random() * 280 - 12, pattern === "MULTICAM" ? 29 + random() * 28 : 35 + random() * 34, palette[1 + i % (palette.length - 1)], pattern === "MULTICAM" ? 13 : 10);
+    if (pattern === "MULTICAM") {
+      for (let i = 0; i < 75; i++) organicBlob(random() * 256, random() * 256, 3 + random() * 8, palette[i % 2 ? 3 : 5], 7);
+    } else {
+      ctx.strokeStyle = palette[3]; ctx.lineWidth = 3;
+      for (let i = 0; i < 18; i++) { ctx.beginPath(); const x = random() * 256, y = random() * 256; ctx.moveTo(x - 15, y + 9); ctx.quadraticCurveTo(x, y - 8, x + 18, y + 4); ctx.stroke(); }
+    }
   }
   const texture = new THREE.CanvasTexture(canvas); texture.colorSpace = THREE.SRGBColorSpace;
-  texture.wrapS = texture.wrapT = THREE.RepeatWrapping; texture.repeat.set(2.4, 3.2); return texture;
+  texture.wrapS = texture.wrapT = THREE.MirroredRepeatWrapping; texture.repeat.set(1.55, 2.15);
+  texture.anisotropy = 4; texture.magFilter = pattern === "DIGITAL" || pattern === "URBAN CAMO" ? THREE.NearestFilter : THREE.LinearFilter; return texture;
 };
 
 const magazineCapacity = (capacity: number, magazine: MagazineAttachment) =>
