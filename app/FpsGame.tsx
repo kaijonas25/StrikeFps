@@ -1283,6 +1283,14 @@ export function FpsGame() {
         remotePlayers.set(state.id, avatar);
       }
       avatar.userData.targetPosition.set(state.x, state.y - PLAYER_HEIGHT - (state.crouching ? .42 : 0), state.z);
+      if(beachMap&&!state.flying){
+        const remoteOnRamp=Math.abs(state.x)<4.7&&state.z<=-4.2&&state.z>-10;
+        const remoteOnPier=Math.abs(state.x)<5.5&&state.z<=-10&&state.z>-46;
+        if(remoteOnRamp){const rampGround=THREE.MathUtils.lerp(terrainHeightAt(state.x,state.z),1.39,THREE.MathUtils.clamp((-state.z-4.2)/5.8,0,1)); avatar.userData.targetPosition.y=rampGround;}
+        else if(remoteOnPier) avatar.userData.targetPosition.y=1.39;
+        else if(state.z < -8.2) avatar.userData.targetPosition.y=THREE.MathUtils.clamp(state.y-PLAYER_HEIGHT,-1.78,-.88);
+        else avatar.userData.targetPosition.y=terrainHeightAt(state.x,state.z)-(state.crouching?.42:0);
+      }
       avatar.userData.targetYaw = state.yaw; avatar.userData.movement = state.prone ? "static" : state.movement;
       avatar.userData.remoteProne = state.prone; avatar.userData.remoteCrouching = state.crouching;
       avatar.userData.remoteFlying = Boolean(state.flying);
@@ -2257,6 +2265,7 @@ export function FpsGame() {
           const stanceDrop = avatar.userData.remoteCrouching ? .42 : 0;
           avatar.position.y = Math.max(avatar.position.y, terrainHeightAt(avatar.position.x, avatar.position.z) - stanceDrop);
         }
+        if(beachMap&&!avatar.userData.remoteFlying&&target) avatar.position.y=THREE.MathUtils.lerp(avatar.position.y,target.y,Math.min(1,dt*18));
         avatar.rotation.y = THREE.MathUtils.lerp(avatar.rotation.y, avatar.userData.targetYaw ?? avatar.rotation.y, Math.min(1, dt * 12));
         avatar.rotation.x = THREE.MathUtils.lerp(avatar.rotation.x, avatar.userData.remoteProne ? -Math.PI / 2 : 0, Math.min(1, dt * 9));
       });
