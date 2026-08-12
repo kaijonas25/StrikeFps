@@ -10,7 +10,7 @@ type PlayerStance = "standing" | "crouching" | "prone";
 type FireMode = "SEMI" | "BURST" | "AUTO";
 type GameMode = "FFA" | "TDM" | "KOTH" | "CTP";
 type ObjectiveZone = { id: string; x: number; z: number; radius: number; owner: "ALPHA" | "BRAVO" | null; progress: number };
-type MenuPage = "HOME" | "LOADOUT" | "CHARACTER" | "SETTINGS";
+type MenuPage = "HOME" | "LOADOUT" | "CHARACTER" | "CLASSES" | "SETTINGS";
 type GameMap = "TEST YARD" | "CITY BLOCK" | "BLACKWOOD FOREST" | "FROSTLINE BASE" | "TIDEBREAK BEACH";
 type GameSector = "TRAINING SECTOR" | "SECTOR 1" | "SECTOR 2" | "SECTOR 3" | "SECTOR 4";
 type MultiplayerSector = Exclude<GameSector, "TRAINING SECTOR">;
@@ -27,9 +27,10 @@ type FireControlAttachment = "STANDARD TRIGGER" | "BURST TRIGGER";
 type PassiveEquipment = "ARMOR PLATING" | "HEAT VISION GOGGLES" | "360 GOGGLES" | "SATELLITE GPS";
 type CamoPattern = "SOLID" | "WOODLAND" | "MULTICAM" | "DIGITAL" | "URBAN CAMO";
 type OperatorAccessory = "GOGGLES" | "MASK" | "HEADSET" | "NVG";
+type PlayerClass = "RECRUIT" | "ASSAULT" | "SCOUT" | "MEDIC" | "HEAVY";
 type WeaponAttachments = { sight: SightAttachment; muzzle: MuzzleAttachment; tactical: TacticalAttachment; magazine: MagazineAttachment; fireControl: FireControlAttachment };
 type PlayerAppearance = { skin: string; uniform: string; camo: CamoPattern; accessories: OperatorAccessory[]; armor: string; helmet: string; faceGear: string; headAccessory: string; chestRig: string; backpack: string; pants: string; gloves: string; boots: string };
-type SavedLoadout = { primary: string; secondary: string; medical: string; utility: string; equipment: PassiveEquipment; weaponSight: SightAttachment; muzzleAttachment: MuzzleAttachment; tacticalAttachment: TacticalAttachment; magazineAttachment: MagazineAttachment; fireControlAttachment: FireControlAttachment; secondarySight: SightAttachment; secondaryMuzzle: MuzzleAttachment; secondaryTactical: TacticalAttachment; secondaryMagazine: MagazineAttachment; secondaryFireControl: FireControlAttachment };
+type SavedLoadout = { primary: string; secondary: string; medical: string; utility: string; equipment: PassiveEquipment; playerClass?: PlayerClass; weaponSight: SightAttachment; muzzleAttachment: MuzzleAttachment; tacticalAttachment: TacticalAttachment; magazineAttachment: MagazineAttachment; fireControlAttachment: FireControlAttachment; secondarySight: SightAttachment; secondaryMuzzle: MuzzleAttachment; secondaryTactical: TacticalAttachment; secondaryMagazine: MagazineAttachment; secondaryFireControl: FireControlAttachment };
 type SavedOperator = { characterSkin: string; characterUniform: string; camoPattern?: CamoPattern; accessories?: OperatorAccessory[]; characterArmor: string; characterHelmet: "TACTICAL" | "LIGHT" | "HEAVY"; faceGear: "NONE" | "GOGGLES" | "MASK"; headAccessory: "NONE" | "HEADSET" | "NVG"; chestRig: "LIGHT" | "PLATE CARRIER" | "HEAVY"; backpack: "NONE" | "ASSAULT PACK" | "RADIO PACK"; pantsColor: string; gloveColor: string; bootColor: string };
 type AdminCommand = "refill_ammo" | "refill_medical" | "refill_utility" | "restore_health" | "kill_targets";
 
@@ -110,6 +111,14 @@ const magazineReloadMultiplier = (magazine: MagazineAttachment) =>
 
 const reloadTimeWithMagazine = (seconds: number, magazine: MagazineAttachment) =>
   seconds * magazineReloadMultiplier(magazine);
+
+const CLASS_STATS: Record<PlayerClass, { unlockKills: number; role: string; buffs: string[]; debuffs: string[]; damage: number; speed: number; healthBonus: number; reload: number; spread: number; healing: number; healTime: number }> = {
+  RECRUIT: { unlockKills: 0, role: "BALANCED STARTER", buffs: ["NO SPECIALIZATION"], debuffs: ["NO CLASS BONUSES"], damage: 1, speed: 1, healthBonus: 0, reload: 1, spread: 1, healing: 1, healTime: 1 },
+  ASSAULT: { unlockKills: 25, role: "FRONTLINE ATTACKER", buffs: ["+10% WEAPON DAMAGE", "+8% RELOAD SPEED"], debuffs: ["+12% WEAPON SPREAD"], damage: 1.1, speed: 1, healthBonus: 0, reload: .92, spread: 1.12, healing: 1, healTime: 1 },
+  SCOUT: { unlockKills: 75, role: "FAST RECON", buffs: ["+15% MOVEMENT SPEED", "−12% WEAPON SPREAD"], debuffs: ["−15 MAX HEALTH", "−5% WEAPON DAMAGE"], damage: .95, speed: 1.15, healthBonus: -15, reload: 1, spread: .88, healing: 1, healTime: 1 },
+  MEDIC: { unlockKills: 150, role: "COMBAT SUPPORT", buffs: ["+35% HEALING", "25% FASTER HEAL USE"], debuffs: ["−10% WEAPON DAMAGE"], damage: .9, speed: 1, healthBonus: 0, reload: 1, spread: 1, healing: 1.35, healTime: .75 },
+  HEAVY: { unlockKills: 300, role: "ARMORED ANCHOR", buffs: ["+25 MAX HEALTH", "+5% WEAPON DAMAGE"], debuffs: ["−18% MOVEMENT SPEED", "20% SLOWER RELOAD"], damage: 1.05, speed: .82, healthBonus: 25, reload: 1.2, spread: 1, healing: 1, healTime: 1 },
+};
 
 const WEAPON_STATS: Record<string, { damage: number; fireRate: number; capacity: number; reload: number; range: number; mobility: number; spread: number; pellets?: number }> = {
   "VXR-4 CARBINE": { damage: 11, fireRate: 58, capacity: 30, reload: 2.7, range: 60, mobility: 60, spread: 2.1 },
@@ -225,6 +234,8 @@ export function FpsGame() {
   const [medical, setMedical] = useState("FIELD MEDKIT");
   const [utility, setUtility] = useState("FRAG GRENADE");
   const [equipment, setEquipment] = useState<PassiveEquipment>("ARMOR PLATING");
+  const [playerClass, setPlayerClass] = useState<PlayerClass>("RECRUIT");
+  const [careerKills, setCareerKills] = useState(0);
   const [activeSlot, setActiveSlot] = useState(1);
   const [reloading, setReloading] = useState(false);
   const [reloadDuration, setReloadDuration] = useState(0);
@@ -288,14 +299,15 @@ export function FpsGame() {
   };
 
   useEffect(() => onAuthStateChanged(auth, async (user) => {
-    if (!user) { firebaseTokenRef.current = ""; playerCallsignRef.current = "OPERATOR"; setAccountCallsign("OPERATOR"); adminAuthorizedRef.current = false; adminRoleRef.current = null; setAdminAuthorized(false); setAdminRole(null); setAdminPanelOpen(false); setAccountSaveStatus("idle"); return; }
+    if (!user) { firebaseTokenRef.current = ""; playerCallsignRef.current = "OPERATOR"; setAccountCallsign("OPERATOR"); setCareerKills(0); setPlayerClass("RECRUIT"); adminAuthorizedRef.current = false; adminRoleRef.current = null; setAdminAuthorized(false); setAdminRole(null); setAdminPanelOpen(false); setAccountSaveStatus("idle"); return; }
     try {
       const token = await user.getIdToken();
       firebaseTokenRef.current = token;
       const response = await fetch("/api/player", { headers: { Authorization: `Bearer ${token}` } });
       if (!response.ok) throw new Error("Unable to load preferences");
-      const data = await response.json() as { isAdmin?: boolean; adminRole?: "owner" | "junior" | null; player?: { callsign?: string; loadout?: Partial<SavedLoadout>; operator?: Partial<SavedOperator> } };
+      const data = await response.json() as { isAdmin?: boolean; adminRole?: "owner" | "junior" | null; player?: { callsign?: string; kills?: number; loadout?: Partial<SavedLoadout>; operator?: Partial<SavedOperator> } };
       playerCallsignRef.current = data.player?.callsign?.slice(0,18) || user.displayName?.slice(0,18).toUpperCase() || "OPERATOR";
+      setCareerKills(data.player?.kills ?? 0);
       setAccountCallsign(playerCallsignRef.current);
       const resolvedAdminRole = data.adminRole ?? (data.isAdmin ? "owner" : null);
       adminRoleRef.current = resolvedAdminRole;
@@ -307,6 +319,7 @@ export function FpsGame() {
         if (loadout.primary) setPrimary(loadout.primary); if (loadout.secondary) setSecondary(loadout.secondary);
         if (loadout.medical) setMedical(loadout.medical); if (loadout.utility) setUtility(loadout.utility);
         if (loadout.equipment) setEquipment(loadout.equipment);
+        if (loadout.playerClass && CLASS_STATS[loadout.playerClass] && (data.player?.kills ?? 0) >= CLASS_STATS[loadout.playerClass].unlockKills) setPlayerClass(loadout.playerClass);
         if (loadout.weaponSight) setWeaponSight(loadout.weaponSight); if (loadout.muzzleAttachment) setMuzzleAttachment(loadout.muzzleAttachment);
         if (loadout.tacticalAttachment) setTacticalAttachment(loadout.tacticalAttachment); if (loadout.magazineAttachment) setMagazineAttachment(loadout.magazineAttachment);
         if (loadout.fireControlAttachment) setFireControlAttachment(loadout.fireControlAttachment); if (loadout.secondarySight) setSecondarySight(loadout.secondarySight);
@@ -365,7 +378,7 @@ export function FpsGame() {
     const user = auth.currentUser;
     if (!user) { setAccountSaveStatus("idle"); return; }
     setAccountSaveStatus("saving");
-    const loadout: SavedLoadout = { primary, secondary, medical, utility, equipment, weaponSight, muzzleAttachment, tacticalAttachment, magazineAttachment, fireControlAttachment, secondarySight, secondaryMuzzle, secondaryTactical, secondaryMagazine, secondaryFireControl };
+    const loadout: SavedLoadout = { primary, secondary, medical, utility, equipment, playerClass, weaponSight, muzzleAttachment, tacticalAttachment, magazineAttachment, fireControlAttachment, secondarySight, secondaryMuzzle, secondaryTactical, secondaryMagazine, secondaryFireControl };
     const savedFaceGear: SavedOperator["faceGear"] = equippedAccessories.includes("MASK") ? "MASK" : equippedAccessories.includes("GOGGLES") ? "GOGGLES" : "NONE";
     const savedHeadAccessory: SavedOperator["headAccessory"] = equippedAccessories.includes("NVG") ? "NVG" : equippedAccessories.includes("HEADSET") ? "HEADSET" : "NONE";
     const operator: SavedOperator = { characterSkin, characterUniform, camoPattern, accessories: equippedAccessories, characterArmor, characterHelmet, faceGear: savedFaceGear, headAccessory: savedHeadAccessory, chestRig, backpack, pantsColor, gloveColor, bootColor };
@@ -1483,7 +1496,10 @@ export function FpsGame() {
                   method: "POST",
                   headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
                   body: JSON.stringify({ matchId, kills: summary.kills, deaths: summary.deaths, won }),
-                })).then((response) => { if (!response.ok) recordedMatchesRef.current.delete(matchId); }).catch(() => recordedMatchesRef.current.delete(matchId));
+                })).then((response) => {
+                  if (!response.ok) recordedMatchesRef.current.delete(matchId);
+                  else setCareerKills((kills) => kills + summary.kills);
+                }).catch(() => recordedMatchesRef.current.delete(matchId));
               }
             }
           }
@@ -1519,10 +1535,11 @@ export function FpsGame() {
 
     const keys = new Set<string>();
     let yaw = 0, pitch = 0, cameraYaw = 0, cameraPitch = 0.2, verticalVelocity = 0, grounded = true;
-    const primaryStats = { ...WEAPON_STATS[primary], capacity: magazineCapacity(WEAPON_STATS[primary].capacity, magazineAttachment), reload: reloadTimeWithMagazine(WEAPON_STATS[primary].reload, magazineAttachment) };
+    const classStats = CLASS_STATS[playerClass];
+    const primaryStats = { ...WEAPON_STATS[primary], capacity: magazineCapacity(WEAPON_STATS[primary].capacity, magazineAttachment), reload: reloadTimeWithMagazine(WEAPON_STATS[primary].reload, magazineAttachment) * classStats.reload };
     const secondaryIsMelee = secondary === "COMBAT KNIFE";
     const baseSecondaryStats = WEAPON_STATS[secondary] ?? { damage: 50, fireRate: 100, capacity: 1, reload: 0.6, range: 5, mobility: 100, spread: 0 };
-    const secondaryStats = { ...baseSecondaryStats, capacity: magazineCapacity(baseSecondaryStats.capacity, secondaryMagazine), reload: reloadTimeWithMagazine(baseSecondaryStats.reload, secondaryMagazine) };
+    const secondaryStats = { ...baseSecondaryStats, capacity: magazineCapacity(baseSecondaryStats.capacity, secondaryMagazine), reload: reloadTimeWithMagazine(baseSecondaryStats.reload, secondaryMagazine) * classStats.reload };
     const ammoCounts = [primaryStats.capacity, secondaryStats.capacity];
     setAmmo(primaryStats.capacity);
     let ammoCount = ammoCounts[0], recoil = 0, muzzleTimer = 0, aiming = false, toggleAim = false, holdAim = false, sprinting = false, sliding = false, reloadEnd = 0, meleeSwing = 0, lastMelee = 0;
@@ -1545,7 +1562,7 @@ export function FpsGame() {
     const activeAttachments = (): WeaponAttachments => currentSlot > 2 || (currentSlot === 2 && secondaryIsMelee)
       ? { sight: "IRON SIGHTS", muzzle: "STANDARD BARREL", tactical: "NONE", magazine: "STANDARD MAG", fireControl: "STANDARD TRIGGER" }
       : currentSlot === 1 ? primaryAttachments : secondaryAttachments;
-    const maxPlayerHealth = equipment === "ARMOR PLATING" ? 125 : 100;
+    const maxPlayerHealth = (equipment === "ARMOR PLATING" ? 125 : 100) + classStats.healthBonus;
     let playerHealth = maxPlayerHealth, nextPadTick = 0, healEnd = 0;
     const playerPosition = new THREE.Vector3(0, PLAYER_HEIGHT, spawnZ);
     const lastClearPosition = playerPosition.clone();
@@ -2051,7 +2068,7 @@ export function FpsGame() {
       const pelletCount = shotStats.pellets ?? 1;
       const networkTracerEnds: number[][] = [];
       const burstAccuracyPenalty = activeAttachments().fireControl === "BURST TRIGGER" ? 1.25 : 1;
-      const spreadDegrees = shotStats.spread * burstAccuracyPenalty * (aiming ? 0.42 : 1) * movementSpread;
+      const spreadDegrees = shotStats.spread * classStats.spread * burstAccuracyPenalty * (aiming ? 0.42 : 1) * movementSpread;
       for (let pellet = 0; pellet < pelletCount; pellet++) {
         const spreadNdc = spreadDegrees / camera.fov;
         const aimNdc = getAimNdc();
@@ -2073,7 +2090,7 @@ export function FpsGame() {
           scene.remove(tracer); tracer.geometry.dispose(); tracerMaterial.dispose();
         }, pelletCount > 1 ? 48 : 65);
         if (hit) {
-          damageDummy(hit, shotStats.damage);
+          damageDummy(hit, shotStats.damage * classStats.damage);
           const impact = new THREE.Mesh(impactGeometry, impactMaterial);
           impact.raycast = () => {};
           impact.position.copy(hit.point).addScaledVector(hit.face?.normal ?? new THREE.Vector3(0, 1, 0), 0.025);
@@ -2093,10 +2110,11 @@ export function FpsGame() {
       }
       if (e.button !== 0 || sprinting || sliding) return;
       if (currentSlot === 3) {
-        if (medicalCharges > 0 && playerHealth < 100 && !healEnd) {
+        if (medicalCharges > 0 && playerHealth < maxPlayerHealth && !healEnd) {
           const medicalStats = MEDICAL_STATS[medical];
-          healEnd = performance.now() + medicalStats.duration * 1000;
-          setHealDuration(medicalStats.duration); setHealing(true);
+          const classHealDuration = medicalStats.duration * classStats.healTime;
+          healEnd = performance.now() + classHealDuration * 1000;
+          setHealDuration(classHealDuration); setHealing(true);
         }
         return;
       }
@@ -2207,7 +2225,7 @@ export function FpsGame() {
       // The creek follows a slightly diagonal north/south channel through the forest.
       const inForestCreek = forestMap && Math.abs((playerPosition.x + 10) + playerPosition.z * .08) < 3.5 && Math.abs(playerPosition.z) < 42;
       const baseSpeed = isProne ? 1.55 : isCrouching ? 2.8 : sprinting ? 8.2 : aiming ? 3.8 : 5.2;
-      const speed = baseSpeed * (1 - attachmentMobilityPenalty(activeAttachments()) / 100) * (inForestCreek ? .52 : inBeachWater ? .58 : 1);
+      const speed = baseSpeed * classStats.speed * (1 - attachmentMobilityPenalty(activeAttachments()) / 100) * (inForestCreek ? .52 : inBeachWater ? .58 : 1);
       const movementYaw = isThirdPerson ? cameraYaw : yaw;
       const sin = Math.sin(movementYaw), cos = Math.cos(movementYaw);
       const leanRightX = Math.cos(yaw), leanRightZ = -Math.sin(yaw);
@@ -2418,7 +2436,7 @@ export function FpsGame() {
         });
       });
       if (healEnd && now >= healEnd) {
-        playerHealth = Math.min(maxPlayerHealth, playerHealth + MEDICAL_STATS[medical].healing);
+        playerHealth = Math.min(maxPlayerHealth, playerHealth + MEDICAL_STATS[medical].healing * classStats.healing);
         medicalCharges -= 1; healEnd = 0;
         setHealth(playerHealth); setMedicalCount(medicalCharges); setHealing(false); setHealingEffect(true);
         window.setTimeout(() => setHealingEffect(false), 650);
@@ -2562,7 +2580,7 @@ export function FpsGame() {
       localPlayer.scale.set(1, 1, 1);
       if (multiplayerSocket?.readyState === WebSocket.OPEN && now - lastMultiplayerSend >= 66) {
         lastMultiplayerSend = now;
-        multiplayerSocket.send(JSON.stringify({ type: "state", x: playerPosition.x, y: playerPosition.y, z: playerPosition.z, yaw, movement: localPlayer.userData.movement, crouching: isCrouching, prone: isProne, slot: currentSlot, primary, secondary, equipment, skin: characterSkin, uniform: characterUniform, camo: camoPattern, accessories: equippedAccessories, armor: characterArmor, helmet: characterHelmet, faceGear: localFaceGear, headAccessory: localHeadAccessory, chestRig, backpack, pants: pantsColor, gloves: gloveColor, boots: bootColor, callsign:playerCallsignRef.current }));
+        multiplayerSocket.send(JSON.stringify({ type: "state", x: playerPosition.x, y: playerPosition.y, z: playerPosition.z, yaw, movement: localPlayer.userData.movement, crouching: isCrouching, prone: isProne, slot: currentSlot, primary, secondary, equipment, playerClass, skin: characterSkin, uniform: characterUniform, camo: camoPattern, accessories: equippedAccessories, armor: characterArmor, helmet: characterHelmet, faceGear: localFaceGear, headAccessory: localHeadAccessory, chestRig, backpack, pants: pantsColor, gloves: gloveColor, boots: bootColor, callsign:playerCallsignRef.current }));
       }
       if (isThirdPerson) {
         const orbitDistance = 4.2;
@@ -2651,10 +2669,10 @@ export function FpsGame() {
       renderer.dispose();
       mount.removeChild(renderer.domElement);
     };
-  }, [sessionId, started, selectedSector, selectedMap, primary, secondary, medical, utility, equipment, characterSkin, characterUniform, camoPattern, equippedAccessories, characterArmor, characterHelmet, chestRig, backpack, pantsColor, gloveColor, bootColor, weaponSight, muzzleAttachment, tacticalAttachment, magazineAttachment, fireControlAttachment, secondarySight, secondaryMuzzle, secondaryTactical, secondaryMagazine, secondaryFireControl]);
+  }, [sessionId, started, selectedSector, selectedMap, primary, secondary, medical, utility, equipment, playerClass, characterSkin, characterUniform, camoPattern, equippedAccessories, characterArmor, characterHelmet, chestRig, backpack, pantsColor, gloveColor, bootColor, weaponSight, muzzleAttachment, tacticalAttachment, magazineAttachment, fireControlAttachment, secondarySight, secondaryMuzzle, secondaryTactical, secondaryMagazine, secondaryFireControl]);
 
   const equippedItems = [primary, secondary, medical, utility];
-  const maximumHealth = equipment === "ARMOR PLATING" ? 125 : 100;
+  const maximumHealth = (equipment === "ARMOR PLATING" ? 125 : 100) + CLASS_STATS[playerClass].healthBonus;
   const radarBounds = selectedMap === "TIDEBREAK BEACH" ? { minX: -60, maxX: 60, minZ: -50, maxZ: 96 } : selectedMap === "TEST YARD" ? { minX: -32, maxX: 32, minZ: -32, maxZ: 32 } : { minX: -50, maxX: 50, minZ: -50, maxZ: 50 };
   const activeIsMelee = activeSlot === 2 && secondary === "COMBAT KNIFE";
   const activeSightAttachment = activeSlot === 1 ? weaponSight : secondarySight;
@@ -2902,8 +2920,9 @@ export function FpsGame() {
             }}><b>01</b><span>PLAY</span><small>SELECT MULTIPLAYER SERVER</small></button>
             <button onClick={() => setMenuPage("LOADOUT")}><b>02</b><span>LOADOUT</span><small>EDIT EQUIPMENT</small></button>
             <button onClick={() => setMenuPage("CHARACTER")}><b>03</b><span>OPERATOR</span><small>CUSTOMIZE CHARACTER</small></button>
-            <a href="/login"><b>04</b><span>ACCOUNT</span><small>LOGIN OR CREATE PROFILE</small></a>
-            <button onClick={() => setMenuPage("SETTINGS")}><b>05</b><span>SETTINGS</span><small>GAMEPLAY & HUD</small></button>
+            <button onClick={() => setMenuPage("CLASSES")}><b>04</b><span>CLASSES</span><small>COMBAT ROLES & PROGRESSION</small></button>
+            <a href="/login"><b>05</b><span>ACCOUNT</span><small>LOGIN OR CREATE PROFILE</small></a>
+            <button onClick={() => setMenuPage("SETTINGS")}><b>06</b><span>SETTINGS</span><small>GAMEPLAY & HUD</small></button>
           </nav>
           <div className={`account-sync ${accountSaveStatus}`}>{accountSaveStatus === "saved" ? "● ACCOUNT LOADOUT SYNCED" : accountSaveStatus === "saving" ? "● SAVING ACCOUNT…" : accountSaveStatus === "error" ? "● ACCOUNT SAVE UNAVAILABLE" : accountSaveStatus === "loading" ? "● LOADING ACCOUNT…" : "○ SIGN IN TO SAVE LOADOUT & OPERATOR"}</div>
           </>}
@@ -2917,7 +2936,7 @@ export function FpsGame() {
                 setSelectedMap("TEST YARD");
                 setMatchPhase("playing");
                 setMapVotes(0); setModeVotes(0); setHasVoted(false); setHasModeVoted(false); setMatchEndsAt(0);
-                setHealth(equipment === "ARMOR PLATING" ? 125 : 100);
+                setHealth(maximumHealth);
                 setStarted(true);
                 setSessionId((id) => id + 1);
               }}>
@@ -2929,7 +2948,7 @@ export function FpsGame() {
                 setSelectedMap("CITY BLOCK");
                 setMatchPhase("connecting");
                 setMapVotes(0); setModeVotes(0); setHasVoted(false); setHasModeVoted(false); setMatchEndsAt(0);
-                setHealth(equipment === "ARMOR PLATING" ? 125 : 100);
+                setHealth(maximumHealth);
                 setStarted(true);
                 setSessionId((id) => id + 1);
               }}>
@@ -2961,6 +2980,24 @@ export function FpsGame() {
               </div>
               <footer>TIP: TRY THE TRAINING SECTOR BEFORE JOINING A MULTIPLAYER MATCH.</footer>
             </section>
+          </div>}
+          {(!started && menuPage === "CLASSES") && <div className="classes-panel">
+            <button className="back-button" onClick={() => setMenuPage("HOME")}>← MAIN MENU</button>
+            <div className="loadout-heading"><div><span>COMBAT</span> CLASSES</div><small>{careerKills} CAREER KILLS · {playerClass} EQUIPPED</small></div>
+            <div className="class-grid">
+              {(Object.entries(CLASS_STATS) as [PlayerClass, typeof CLASS_STATS[PlayerClass]][]).map(([name, stats]) => {
+                const unlocked = careerKills >= stats.unlockKills;
+                return <button key={name} className={`${playerClass === name ? "selected " : ""}${unlocked ? "unlocked" : "locked"}`} disabled={!unlocked} onClick={() => setPlayerClass(name)}>
+                  <header><span>{name}</span><small>{stats.role}</small></header>
+                  <div className="class-requirement">{unlocked ? stats.unlockKills === 0 ? "AVAILABLE" : `UNLOCKED · ${stats.unlockKills} KILLS` : `LOCKED · ${stats.unlockKills} KILLS REQUIRED`}</div>
+                  <section><b>BUFFS</b>{stats.buffs.map((buff) => <i key={buff}>+ {buff.replace(/^\+/, "")}</i>)}</section>
+                  <section className="debuffs"><b>DEBUFFS</b>{stats.debuffs.map((debuff) => <i key={debuff}>− {debuff.replace(/^−/, "")}</i>)}</section>
+                  <footer>{playerClass === name ? "EQUIPPED" : unlocked ? "SELECT CLASS" : `${Math.max(0, stats.unlockKills - careerKills)} KILLS TO GO`}</footer>
+                </button>;
+              })}
+            </div>
+            {!auth.currentUser && <p className="class-login-note">SIGN IN TO TRACK CAREER KILLS AND UNLOCK NEW CLASSES.</p>}
+            <button className="confirm-loadout" onClick={() => { void saveAccountPreferences("loadout"); setMenuPage("HOME"); }}>CONFIRM CLASS</button>
           </div>}
           {(!started && menuPage === "LOADOUT") && <div className="loadout-panel">
             <button className="back-button" onClick={() => setMenuPage("HOME")}>← MAIN MENU</button>

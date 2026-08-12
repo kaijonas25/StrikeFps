@@ -185,6 +185,18 @@ kbd:first-child { margin-left: 0; }
 .gear-editor-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }.gear-editor-grid .character-option { margin:0; }.gear-editor-grid .helmet-options { grid-template-columns:repeat(3,minmax(0,1fr)); }.gear-editor-grid .helmet-options button { min-width:0; padding:4px; font-size:6px; }
 .gear-editor-grid .accessory-option { grid-column:1 / -1; }.gear-editor-grid .accessory-option .helmet-options { grid-template-columns:repeat(4,minmax(0,1fr)); }.accessory-option button small { display:block; margin-top:5px; color:#617477; font-size:5px; letter-spacing:.08em; }.accessory-option button.selected small { color:#ff9a7c; }
 .loadout-panel { position:relative; z-index:2; width:min(920px,84vw); }
+.classes-panel { position:relative; z-index:3; width:min(920px,84vw); }
+.class-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+.class-grid > button { display:flex; flex-direction:column; min-height:250px; padding:18px; border:1px solid rgba(164,192,192,.16); color:#94a6a8; background:linear-gradient(145deg,rgba(13,27,31,.96),rgba(6,13,16,.96)); text-align:left; cursor:pointer; transition:.18s ease; }
+.class-grid > button:hover:not(:disabled),.class-grid > button.selected { border-color:#ff7047; transform:translateY(-2px); box-shadow:0 12px 30px rgba(0,0,0,.28); }
+.class-grid > button.selected { background:linear-gradient(145deg,rgba(78,31,21,.78),rgba(10,19,22,.98)); }
+.class-grid > button.locked { opacity:.48; filter:saturate(.35); cursor:not-allowed; }
+.class-grid header { display:flex; justify-content:space-between; gap:12px; padding-bottom:12px; border-bottom:1px solid rgba(164,192,192,.14); }.class-grid header span { color:#eef5f3; font-size:17px; letter-spacing:.12em; }.class-grid header small { color:#64777a; font-size:6px; letter-spacing:.13em; text-align:right; }
+.class-requirement { margin:11px 0; color:#ff8765; font-size:7px; letter-spacing:.13em; }
+.class-grid section { display:flex; flex-direction:column; gap:5px; margin-top:7px; }.class-grid section b { color:#65d9a1; font-size:6px; letter-spacing:.18em; }.class-grid section i { color:#94b9a8; font-size:7px; font-style:normal; letter-spacing:.07em; }.class-grid section.debuffs b { color:#ff7867; }.class-grid section.debuffs i { color:#bd8c84; }
+.class-grid footer { margin-top:auto; padding-top:13px; color:#dce9e7; font-size:7px; letter-spacing:.15em; }
+.class-login-note { margin:16px 0 0; color:#ffaf72; font-size:7px; letter-spacing:.12em; }
+.main-menu-screen:has(.classes-panel) { align-items:flex-start; padding-top:4vh; overflow-y:auto; }.main-menu-screen:has(.classes-panel) .menu-card { width:min(960px,92vw); padding-bottom:8vh; }
 .main-menu-screen:has(.loadout-panel) { align-items:flex-start; padding-top:5vh; overflow-y:auto; }
 .main-menu-screen:has(.loadout-panel) .menu-card { width:min(920px,88vw); }
 .main-menu-screen:has(.character-editor) { align-items:flex-start; padding-top:4vh; overflow-y:auto; }
@@ -215,6 +227,7 @@ kbd:first-child { margin-left: 0; }
 .confirm-loadout { display:block; width:240px; height:48px; margin:20px 0 0 auto; border:1px solid #ff6336; color:#fff; background:rgba(255,99,54,.15); cursor:pointer; font-size:9px; font-weight:700; letter-spacing:.16em; }
 .confirm-loadout:hover { background:#ff6336; }
 @media (max-width: 850px) { .character-preview { opacity:.28; right:-90px; pointer-events:none; }.character-editor { width:min(520px,84vw); } }
+@media (max-width: 700px) { .class-grid { grid-template-columns:1fr; }.classes-panel { width:88vw; } }
 @media (max-width: 650px) { .topbar { padding: 0 16px; }.status { display: none; }.mission { right: 16px; left: auto; transform: none; }.hud-left { left: 16px }.hud-right { right: 16px }.controls { display: none; } }
 
 .account-shell { box-sizing:border-box; width:100%; height:100dvh; overflow-x:hidden; overflow-y:auto; overscroll-behavior-y:contain; touch-action:pan-y; padding:42px clamp(22px,7vw,90px); color:#dce7e4; background:linear-gradient(105deg,rgba(4,10,13,.98),rgba(7,16,20,.93)),repeating-linear-gradient(118deg,transparent 0 70px,rgba(255,99,54,.055) 71px 72px); -webkit-overflow-scrolling:touch; }
