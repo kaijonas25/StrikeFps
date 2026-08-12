@@ -1338,6 +1338,15 @@ export function FpsGame() {
       });
     };
     const remotePlayers = new Map<string, THREE.Group>();
+    const remoteDrones = new Map<string, THREE.Group>();
+    const buildDroneVisual = () => {
+      const drone = new THREE.Group();
+      drone.add(new THREE.Mesh(new THREE.BoxGeometry(.75,.14,.48),material(0x263236,.45,.55)));
+      [-1,1].forEach((sx)=>[-1,1].forEach((sz)=>{const arm=new THREE.Mesh(new THREE.BoxGeometry(.5,.045,.045),material(0x171d1f,.6,.5)); arm.position.set(sx*.28,0,sz*.2); arm.rotation.y=sx*sz*.65; drone.add(arm); const rotor=new THREE.Mesh(new THREE.CylinderGeometry(.18,.18,.025,14),material(0x111719,.65,.5)); rotor.position.set(sx*.48,.04,sz*.34); drone.add(rotor);}));
+      const gunBarrel=new THREE.Mesh(new THREE.BoxGeometry(.09,.09,.5),material(0x101719,.45,.7)); gunBarrel.position.set(0,-.12,-.35); drone.add(gunBarrel);
+      drone.traverse((object)=>{if(object instanceof THREE.Mesh)object.raycast=()=>{};});
+      return drone;
+    };
     let localNetworkTeam: "ALPHA" | "BRAVO" = "ALPHA";
     let activeNetworkMode: GameMode = "FFA";
     const teamModeActive = () => activeNetworkMode === "TDM" || activeNetworkMode === "CTP";
@@ -1440,7 +1449,7 @@ export function FpsGame() {
         if (typeof event.data !== "string") return;
         if (multiplayerSocketRef.current === multiplayerSocket) setMultiplayerStatus("ONLINE");
         try {
-          const packet = JSON.parse(event.data) as { type: string; authorized?: boolean; reason?: string; player?: RemoteState; players?: RemoteState[]; id?: string; health?: number; score?: number; attackerId?: string; weapon?: string; headshot?: boolean; tracerEnds?: number[][]; effect?: string; duration?: number; utilityId?: string; utility?: string; position?: number[]; velocity?: number[]; yourMapVote?: Exclude<GameMap, "TEST YARD"> | null; yourModeVote?: GameMode | null; map?: Exclude<GameMap, "TEST YARD">; match?: { phase: "voting" | "playing" | "results"; phaseEndsAt: number; votes: number; mapVotes?: { "CITY BLOCK"?: number; "BLACKWOOD FOREST"?: number; "FROSTLINE BASE"?: number; "TIDEBREAK BEACH"?: number }; map: Exclude<GameMap, "TEST YARD">; modeVotes: number; modeVoteCounts?: { FFA?: number; TDM?: number; KOTH?: number; CTP?: number }; endVotes: number; mode: GameMode; teamScores?: { ALPHA: number; BRAVO: number }; objectiveZones?: ObjectiveZone[]; winnerId: string | null; winningTeam?: "ALPHA" | "BRAVO" | null; winningKills: number } };
+          const packet = JSON.parse(event.data) as { type: string; authorized?: boolean; reason?: string; player?: RemoteState; players?: RemoteState[]; id?: string; health?: number; score?: number; attackerId?: string; weapon?: string; headshot?: boolean; tracerEnds?: number[][]; effect?: string; duration?: number; utilityId?: string; utility?: string; position?: number[]; velocity?: number[]; rotation?: number[]; active?: boolean; yourMapVote?: Exclude<GameMap, "TEST YARD"> | null; yourModeVote?: GameMode | null; map?: Exclude<GameMap, "TEST YARD">; match?: { phase: "voting" | "playing" | "results"; phaseEndsAt: number; votes: number; mapVotes?: { "CITY BLOCK"?: number; "BLACKWOOD FOREST"?: number; "FROSTLINE BASE"?: number; "TIDEBREAK BEACH"?: number }; map: Exclude<GameMap, "TEST YARD">; modeVotes: number; modeVoteCounts?: { FFA?: number; TDM?: number; KOTH?: number; CTP?: number }; endVotes: number; mode: GameMode; teamScores?: { ALPHA: number; BRAVO: number }; objectiveZones?: ObjectiveZone[]; winnerId: string | null; winningTeam?: "ALPHA" | "BRAVO" | null; winningKills: number } };
           const applyMatch = (match: NonNullable<typeof packet.match>, resetVotes = false) => {
             activeNetworkMode = match.mode ?? "FFA";
             setMatchPhase(match.phase); setMapVotes(match.votes); setCityMapVotes(match.mapVotes?.["CITY BLOCK"] ?? match.votes); setForestMapVotes(match.mapVotes?.["BLACKWOOD FOREST"] ?? 0); setFrostMapVotes(match.mapVotes?.["FROSTLINE BASE"] ?? 0); setBeachMapVotes(match.mapVotes?.["TIDEBREAK BEACH"] ?? 0); setModeVotes(match.modeVotes ?? 0); setFfaModeVotes(match.modeVoteCounts?.FFA ?? match.modeVotes); setTdmModeVotes(match.modeVoteCounts?.TDM ?? 0); setKothModeVotes(match.modeVoteCounts?.KOTH ?? 0); setCtpModeVotes(match.modeVoteCounts?.CTP ?? 0); setEndGameVotes(match.endVotes ?? 0); setMatchEndsAt(match.phaseEndsAt);
@@ -1481,6 +1490,7 @@ export function FpsGame() {
           }
           else if (packet.type === "left" && packet.id) {
             const avatar = remotePlayers.get(packet.id); if (avatar) scene.remove(avatar); remotePlayers.delete(packet.id);
+            const drone = remoteDrones.get(packet.id); if (drone) scene.remove(drone); remoteDrones.delete(packet.id);
             setConnectedPlayerIds((ids) => ids.filter((id) => id !== packet.id));
             const next = { ...playerSummariesRef.current }; delete next[packet.id]; playerSummariesRef.current = next; setPlayerSummaries(next);
           }
@@ -1500,6 +1510,11 @@ export function FpsGame() {
           else if (packet.type === "utility_throw" && packet.utilityId && packet.utility && packet.position && packet.velocity) spawnRemoteUtility(packet.utilityId, packet.utility, packet.position, packet.velocity);
           else if (packet.type === "utility_detonate" && packet.utilityId && packet.utility && packet.position) showRemoteUtilityDetonation(packet.utilityId, packet.utility, packet.position);
           else if (packet.type === "class_effect" && packet.effect && packet.position) spawnExplosionVisual(new THREE.Vector3(packet.position[0], packet.position[1], packet.position[2]), packet.effect);
+          else if (packet.type === "drone_state" && packet.id) {
+            let drone=remoteDrones.get(packet.id);
+            if(packet.active===false){if(drone)scene.remove(drone);remoteDrones.delete(packet.id);}
+            else if(packet.position?.length===3){if(!drone){drone=buildDroneVisual();scene.add(drone);remoteDrones.set(packet.id,drone);}drone.position.set(packet.position[0],packet.position[1],packet.position[2]);if(packet.rotation?.length===3)drone.rotation.set(packet.rotation[0],packet.rotation[1],packet.rotation[2]);}
+          }
           else if (packet.type === "utility_effect" && packet.effect === "flash") {
             setFlashed(true); window.setTimeout(() => setFlashed(false), Math.min(1700, Math.max(250, packet.duration ?? 1000)));
           }
@@ -1604,7 +1619,7 @@ export function FpsGame() {
     let placementAiming = false;
     let placementPoint: { point: THREE.Vector3; normal: THREE.Vector3 } | null = null;
     let currentFireMode: FireMode = "AUTO", triggerHeld = false, currentSlot = 1, movementSpread = 1;
-    let classAbilityReadyAt = 0, classAiming = false, activeDrone: THREE.Group | null = null, droneYaw = yaw, dronePitch = 0, droneTrigger = false, nextDroneShot = 0;
+    let classAbilityReadyAt = 0, classAiming = false, activeDrone: THREE.Group | null = null, droneYaw = yaw, dronePitch = 0, droneTrigger = false, nextDroneShot = 0, lastDroneNetworkSend = 0;
     const classDeployables: THREE.Object3D[] = [];
     const lastShotAt = [Number.NEGATIVE_INFINITY, Number.NEGATIVE_INFINITY];
     let nearbyDoor: typeof doors[number] | undefined;
@@ -2096,6 +2111,7 @@ export function FpsGame() {
     };
     const endDroneControl = () => {
       if (!activeDrone) return;
+      multiplayerSendRef.current({ type:"drone_state", active:false });
       scene.remove(activeDrone); activeDrone = null; droneTrigger = false; setDronePiloting(false);
       camera.position.copy(playerPosition); renderer.domElement.requestPointerLock?.();
     };
@@ -2118,6 +2134,7 @@ export function FpsGame() {
         const shell = new THREE.Mesh(new THREE.SphereGeometry(.12, 10, 8), material(0x2f382d, .5, .5)); shell.position.copy(target).add(new THREE.Vector3(0, 32, 0)); scene.add(shell);
         const fall = window.setInterval(() => { shell.position.y -= 1.8; if (shell.position.y <= target.y + .15) { window.clearInterval(fall); scene.remove(shell); classBlast(target, 9, 150, "MORTAR"); } }, 16);
       } else if (playerClass === "AIRSTRIKE") {
+        setRadarPings([{id:"local",x:playerPosition.x,z:playerPosition.z,local:true},...[...remotePlayers.entries()].filter(([,avatar])=>avatar.visible).map(([id,avatar])=>({id,x:avatar.position.x,z:avatar.position.z,local:false}))]);
         setAirstrikeMapOpen(true); classTargetMarker.visible = false; document.exitPointerLock();
       } else if (playerClass === "DEMOLITION") {
         classAbilityReadyAt = now + 8_000; setClassCooldown(8); classBlast(target, 8, 140, "ROCKET LAUNCHER");
@@ -2129,7 +2146,7 @@ export function FpsGame() {
       } else if (playerClass === "DRONE") {
         classAbilityReadyAt = now + 30_000; setClassCooldown(30);
         if (activeDrone) endDroneControl();
-        const drone = new THREE.Group(); drone.position.copy(playerPosition).add(new THREE.Vector3(0, 3, 0)); const body=new THREE.Mesh(new THREE.BoxGeometry(.75,.14,.48),material(0x263236,.45,.55)); drone.add(body); [-1,1].forEach((sx)=>[-1,1].forEach((sz)=>{const arm=new THREE.Mesh(new THREE.BoxGeometry(.5,.045,.045),material(0x171d1f,.6,.5)); arm.position.set(sx*.28,0,sz*.2); arm.rotation.y=sx*sz*.65; drone.add(arm); const rotor=new THREE.Mesh(new THREE.CylinderGeometry(.18,.18,.025,14),material(0x111719,.65,.5)); rotor.position.set(sx*.48,.04,sz*.34); drone.add(rotor);})); const gunBarrel=new THREE.Mesh(new THREE.BoxGeometry(.09,.09,.5),material(0x101719,.45,.7)); gunBarrel.position.set(0,-.12,-.35); drone.add(gunBarrel); scene.add(drone); classDeployables.push(drone); activeDrone=drone; droneYaw=yaw; dronePitch=0; setDronePiloting(true);
+        const drone = buildDroneVisual(); drone.position.copy(playerPosition).add(new THREE.Vector3(0, 3, 0)); scene.add(drone); classDeployables.push(drone); activeDrone=drone; droneYaw=yaw; dronePitch=0; setDronePiloting(true); multiplayerSendRef.current({type:"drone_state",active:true,position:drone.position.toArray(),rotation:[0,droneYaw,0]});
         window.setTimeout(() => { if (activeDrone === drone) endDroneControl(); else scene.remove(drone); }, 45_000);
       }
     };
@@ -2336,8 +2353,10 @@ export function FpsGame() {
           const hit = raycaster.intersectObjects([...dummies, ...remotePlayers.values()], true).find((result) => result.distance < 70);
           const end = hit?.point.clone() ?? origin.clone().addScaledVector(forward, 70);
           const tracer = new THREE.Line(new THREE.BufferGeometry().setFromPoints([origin, end]), new THREE.LineBasicMaterial({ color: 0xffb56e, transparent: true, opacity: .9 })); tracer.raycast = () => {}; scene.add(tracer); window.setTimeout(() => scene.remove(tracer), 65);
-          if (hit) { const targetId = hit.object.userData.remotePlayerId as string | undefined; if (targetId) multiplayerSendRef.current({ type: "hit", targetId, damage: 7, weapon: "ATTACK DRONE", headshot: false }); else damageDummy(hit, 7); }
+          if (hit) { let hitNode:THREE.Object3D|null=hit.object; let targetId:string|undefined; while(hitNode&&!targetId){targetId=hitNode.userData.remotePlayerId as string|undefined;hitNode=hitNode.parent;} if(targetId) multiplayerSendRef.current({ type: "hit", targetId, damage: 7, weapon: "ATTACK DRONE", headshot: false }); else damageDummy(hit, 7); }
+          multiplayerSendRef.current({type:"shot",tracerEnds:[end.toArray()]});
         }
+        if(multiplayerSocket?.readyState===WebSocket.OPEN&&now-lastDroneNetworkSend>=66){lastDroneNetworkSend=now;multiplayerSendRef.current({type:"drone_state",active:true,position:activeDrone.position.toArray(),rotation:[activeDrone.rotation.x,activeDrone.rotation.y,activeDrone.rotation.z]});}
         input.set(0, 0);
       }
       if (sliding && now >= slideEnd) { sliding = false; slideEnd = 0; }
@@ -2720,6 +2739,7 @@ export function FpsGame() {
       crouchPoseAmount = THREE.MathUtils.lerp(crouchPoseAmount, isCrouching ? 1 : 0, Math.min(1, dt * 10));
       proneAmount = THREE.MathUtils.lerp(proneAmount, isProne ? 1 : 0, Math.min(1, dt * 8));
       localPlayer.scale.set(1, 1, 1);
+      localPlayer.visible = isThirdPerson || Boolean(activeDrone);
       if (multiplayerSocket?.readyState === WebSocket.OPEN && now - lastMultiplayerSend >= 66) {
         lastMultiplayerSend = now;
         multiplayerSocket.send(JSON.stringify({ type: "state", x: playerPosition.x, y: playerPosition.y, z: playerPosition.z, yaw, movement: localPlayer.userData.movement, crouching: isCrouching, prone: isProne, slot: currentSlot, primary, secondary, equipment, playerClass, skin: characterSkin, uniform: characterUniform, camo: camoPattern, accessories: equippedAccessories, armor: characterArmor, helmet: characterHelmet, faceGear: localFaceGear, headAccessory: localHeadAccessory, chestRig, backpack, pants: pantsColor, gloves: gloveColor, boots: bootColor, callsign:playerCallsignRef.current }));
@@ -2959,6 +2979,7 @@ export function FpsGame() {
           <header><div><small>TACTICAL UPLINK</small><h2>AIRSTRIKE TARGETING</h2></div><button onClick={() => { setAirstrikeMapOpen(false); requestAnimationFrame(() => mountRef.current?.querySelector("canvas")?.requestPointerLock()); }}>×</button></header>
           <div className="airstrike-map" onClick={(event) => { const rect=event.currentTarget.getBoundingClientRect(); const px=THREE.MathUtils.clamp((event.clientX-rect.left)/rect.width,0,1); const pz=THREE.MathUtils.clamp((event.clientY-rect.top)/rect.height,0,1); airstrikeTargetRef.current(radarBounds.minX+px*(radarBounds.maxX-radarBounds.minX),radarBounds.minZ+pz*(radarBounds.maxZ-radarBounds.minZ)); }}>
             <i className="airstrike-scanline" /><span className="airstrike-reticle">+</span><b>N</b>
+            {radarPings.map((ping)=><i key={ping.id} className={`airstrike-contact ${ping.local?"local":"enemy"}`} style={{left:`${(ping.x-radarBounds.minX)/(radarBounds.maxX-radarBounds.minX)*100}%`,top:`${(ping.z-radarBounds.minZ)/(radarBounds.maxZ-radarBounds.minZ)*100}%`}} />)}
           </div>
           <footer>CLICK A POSITION TO CONFIRM THE STRIKE · FIVE IMPACT RUN</footer>
         </section>

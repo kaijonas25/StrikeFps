@@ -215,6 +215,13 @@ export class GameRoom extends DurableObject {
       if (effects.includes(packet.effect) && position) this.broadcast({ type: "class_effect", id: attachment.id, effect: packet.effect, position }, socket);
       return;
     }
+    if (packet.type === "drone_state") {
+      const vector = (value: unknown) => Array.isArray(value) && value.length === 3 && value.every((entry) => typeof entry === "number" && Number.isFinite(entry) && Math.abs(entry) <= 250) ? value as number[] : null;
+      if (packet.active === false) { this.broadcast({type:"drone_state",id:attachment.id,active:false},socket); return; }
+      const position=vector(packet.position),rotation=vector(packet.rotation);
+      if(position&&rotation&&attachment.state.playerClass==="DRONE") this.broadcast({type:"drone_state",id:attachment.id,active:true,position,rotation},socket);
+      return;
+    }
     if (packet.type === "utility_effect") {
       const meta = await this.currentMatch();
       if (meta.phase !== "playing" || packet.effect !== "flash" || !packet.targetId || packet.targetId === attachment.id) return;
