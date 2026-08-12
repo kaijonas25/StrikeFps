@@ -190,7 +190,11 @@ export function FpsGame() {
   const adminControlsRef = useRef({ flying: false, noclip: false, godMode: false, damageMultiplier: 1 });
   const firebaseTokenRef = useRef("");
   const adminCommandRef = useRef<(command: AdminCommand) => void>(() => {});
+  const airstrikeTargetRef = useRef<(x: number, z: number) => void>(() => {});
+  const droneExitRef = useRef<() => void>(() => {});
   const [locked, setLocked] = useState(false);
+  const [airstrikeMapOpen, setAirstrikeMapOpen] = useState(false);
+  const [dronePiloting, setDronePiloting] = useState(false);
   const [touchControls, setTouchControls] = useState(false);
   const [damageFlash, setDamageFlash] = useState(false);
   const [started, setStarted] = useState(false);
@@ -250,6 +254,7 @@ export function FpsGame() {
   const [utilityCount, setUtilityCount] = useState(2);
   const [flashed, setFlashed] = useState(false);
   const [health, setHealth] = useState(100);
+  const [stamina, setStamina] = useState(100);
   const [dead, setDead] = useState(false);
   const [medicalCount, setMedicalCount] = useState(2);
   const [healingEffect, setHealingEffect] = useState(false);
@@ -1256,14 +1261,20 @@ export function FpsGame() {
         visualOnly(new THREE.Mesh(new THREE.BoxGeometry(.17, .08, .012), equipmentMat(0xe7e2d5))).position.set(x, y + .04, z - .044);
         const tube = visualOnly(new THREE.Mesh(new THREE.TorusGeometry(.16, .012, 7, 20, Math.PI * 1.45), equipmentMat(0x6f2028, .15))); tube.position.set(x + .08, y - .23, z); tube.rotation.z = -.35;
       } else if (name === "MORTAR SYSTEM") {
-        const tube = visualOnly(new THREE.Mesh(new THREE.CylinderGeometry(.11, .14, .7, 14), equipmentMat(0x39443a, .55))); tube.rotation.x = Math.PI / 2; tube.position.set(x, y, z);
-        visualOnly(new THREE.Mesh(new THREE.BoxGeometry(.48, .08, .08), equipmentMat(0x20282a, .55))).position.set(x, y - .18, z + .08);
+        const tube = visualOnly(new THREE.Mesh(new THREE.CylinderGeometry(.095, .145, .82, 18), equipmentMat(0x354238, .65))); tube.rotation.x = Math.PI / 2; tube.position.set(x, y, z - .08);
+        const rim = visualOnly(new THREE.Mesh(new THREE.TorusGeometry(.145, .025, 8, 18), equipmentMat(0x171d1f, .7))); rim.position.set(x, y, z - .49);
+        const base = visualOnly(new THREE.Mesh(new THREE.CylinderGeometry(.24, .24, .055, 18), equipmentMat(0x252f2c, .6))); base.rotation.x = Math.PI / 2; base.position.set(x, y, z + .36);
+        [-1, 1].forEach((side) => { const leg = visualOnly(new THREE.Mesh(new THREE.BoxGeometry(.055, .48, .055), equipmentMat(0x252f2c, .65))); leg.position.set(x + side * .16, y - .18, z + .2); leg.rotation.z = side * .5; });
+        visualOnly(new THREE.Mesh(new THREE.BoxGeometry(.16, .13, .08), equipmentMat(0x111719, .55))).position.set(x + .16, y + .12, z - .08);
       } else if (name === "AIRSTRIKE TABLET") {
         visualOnly(new THREE.Mesh(new THREE.BoxGeometry(.5, .34, .055), equipmentMat(0x182225, .45))).position.set(x, y, z);
         visualOnly(new THREE.Mesh(new THREE.PlaneGeometry(.4, .25), new THREE.MeshBasicMaterial({ color: 0x65d3bb }))).position.set(x, y, z - .031);
       } else if (name === "ROCKET LAUNCHER") {
-        const tube = visualOnly(new THREE.Mesh(new THREE.CylinderGeometry(.13, .13, 1.15, 16), equipmentMat(0x3f4a3c, .5))); tube.rotation.x = Math.PI / 2; tube.position.set(x, y, z - .25);
-        visualOnly(new THREE.Mesh(new THREE.BoxGeometry(.14, .3, .16), equipmentMat(0x171d1f, .6))).position.set(x, y - .2, z - .12);
+        const tube = visualOnly(new THREE.Mesh(new THREE.CylinderGeometry(.135, .155, 1.28, 18), equipmentMat(0x3f4a3c, .55))); tube.rotation.x = Math.PI / 2; tube.position.set(x, y, z - .28);
+        const rear = visualOnly(new THREE.Mesh(new THREE.CylinderGeometry(.21, .16, .2, 18), equipmentMat(0x1b2422, .65))); rear.rotation.x = Math.PI / 2; rear.position.set(x, y, z + .43);
+        const muzzle = visualOnly(new THREE.Mesh(new THREE.TorusGeometry(.15, .025, 8, 18), equipmentMat(0x111719, .75))); muzzle.position.set(x, y, z - .93);
+        visualOnly(new THREE.Mesh(new THREE.BoxGeometry(.15, .34, .18), equipmentMat(0x171d1f, .6))).position.set(x, y - .2, z - .12);
+        visualOnly(new THREE.Mesh(new THREE.BoxGeometry(.12, .12, .32), equipmentMat(0x20282a, .55))).position.set(x + .17, y + .14, z - .2);
       } else if (name === "SENTRY KIT") {
         visualOnly(new THREE.Mesh(new THREE.BoxGeometry(.5, .34, .23), equipmentMat(0x35433f, .45))).position.set(x, y, z);
         visualOnly(new THREE.Mesh(new THREE.BoxGeometry(.34, .05, .26), equipmentMat(0x171d1f, .55))).position.set(x, y + .2, z);
@@ -1575,6 +1586,8 @@ export function FpsGame() {
     const ammoCounts = [primaryStats.capacity, secondaryStats.capacity];
     setAmmo(primaryStats.capacity);
     let ammoCount = ammoCounts[0], recoil = 0, muzzleTimer = 0, aiming = false, toggleAim = false, holdAim = false, sprinting = false, sliding = false, reloadEnd = 0, meleeSwing = 0, lastMelee = 0;
+    let playerStamina = 100, staminaExhausted = false, lastSprintAt = Number.NEGATIVE_INFINITY, lastStaminaUiUpdate = 0;
+    setStamina(100);
     const syncAim = () => { aiming = toggleAim || holdAim; setAdsActive(aiming); };
     const clearAim = () => { toggleAim = false; holdAim = false; syncAim(); };
     let throwableAiming = false, grenadesLeft = 2, medicalCharges = 2;
@@ -1591,7 +1604,7 @@ export function FpsGame() {
     let placementAiming = false;
     let placementPoint: { point: THREE.Vector3; normal: THREE.Vector3 } | null = null;
     let currentFireMode: FireMode = "AUTO", triggerHeld = false, currentSlot = 1, movementSpread = 1;
-    let classAbilityReadyAt = 0, classAiming = false;
+    let classAbilityReadyAt = 0, classAiming = false, activeDrone: THREE.Group | null = null, droneYaw = yaw, dronePitch = 0, droneTrigger = false, nextDroneShot = 0;
     const classDeployables: THREE.Object3D[] = [];
     const lastShotAt = [Number.NEGATIVE_INFINITY, Number.NEGATIVE_INFINITY];
     let nearbyDoor: typeof doors[number] | undefined;
@@ -1608,6 +1621,7 @@ export function FpsGame() {
       playerPosition.set(0, PLAYER_HEIGHT, spawnZ); camera.position.copy(playerPosition);
       lastClearPosition.copy(playerPosition);
       yaw = 0; pitch = 0; verticalVelocity = 0; playerHealth = maxPlayerHealth;
+      playerStamina = 100; staminaExhausted = false; setStamina(100);
       isCrouching = false; isProne = false; sliding = false; slideEnd = 0; stanceOffset = 0; crouchPoseAmount = 0; proneAmount = 0; leanDirection = 0; leanAmount = 0; setCrouching(false); setProne(false); setLeanSide(0);
       keys.clear();
     };
@@ -1784,6 +1798,7 @@ export function FpsGame() {
     };
     const onMouseMove = (e: MouseEvent) => {
       if (document.pointerLockElement !== renderer.domElement) return;
+      if (activeDrone) { droneYaw -= e.movementX * .0026; dronePitch = THREE.MathUtils.clamp(dronePitch - e.movementY * .0022, -.72, .62); return; }
       if (isThirdPerson && !orbiting) return;
       applyLook(e.movementX, e.movementY);
     };
@@ -2079,6 +2094,21 @@ export function FpsGame() {
       remotePlayers.forEach((avatar, targetId) => { const distance = avatar.position.distanceTo(position); if (avatar.visible && distance < radius) multiplayerSendRef.current({ type: "hit", targetId, damage: Math.round(damage * (1 - distance / radius)), weapon, headshot: false }); });
       multiplayerSendRef.current({ type: "class_effect", effect: weapon, position: position.toArray() });
     };
+    const endDroneControl = () => {
+      if (!activeDrone) return;
+      scene.remove(activeDrone); activeDrone = null; droneTrigger = false; setDronePiloting(false);
+      camera.position.copy(playerPosition); renderer.domElement.requestPointerLock?.();
+    };
+    droneExitRef.current = endDroneControl;
+    const callAirstrike = (x: number, z: number) => {
+      const now = performance.now();
+      if (now < classAbilityReadyAt) return;
+      classAbilityReadyAt = now + 35_000; setClassCooldown(35); setAirstrikeMapOpen(false);
+      const target = new THREE.Vector3(x, terrainHeightAt(x, z) + .05, z);
+      [-8, -4, 0, 4, 8].forEach((offset, index) => window.setTimeout(() => classBlast(target.clone().add(new THREE.Vector3(offset, 0, index % 2 ? 2 : -2)), 7, 105, "AIRSTRIKE"), index * 420));
+      renderer.domElement.requestPointerLock?.();
+    };
+    airstrikeTargetRef.current = callAirstrike;
     const useClassItem = () => {
       const now = performance.now();
       if (now < classAbilityReadyAt) return;
@@ -2088,20 +2118,19 @@ export function FpsGame() {
         const shell = new THREE.Mesh(new THREE.SphereGeometry(.12, 10, 8), material(0x2f382d, .5, .5)); shell.position.copy(target).add(new THREE.Vector3(0, 32, 0)); scene.add(shell);
         const fall = window.setInterval(() => { shell.position.y -= 1.8; if (shell.position.y <= target.y + .15) { window.clearInterval(fall); scene.remove(shell); classBlast(target, 9, 150, "MORTAR"); } }, 16);
       } else if (playerClass === "AIRSTRIKE") {
-        classAbilityReadyAt = now + 35_000; setClassCooldown(35);
-        [-8, -4, 0, 4, 8].forEach((offset, index) => window.setTimeout(() => classBlast(target.clone().add(new THREE.Vector3(offset, 0, (index % 2 ? 2 : -2))), 7, 105, "AIRSTRIKE"), index * 420));
+        setAirstrikeMapOpen(true); classTargetMarker.visible = false; document.exitPointerLock();
       } else if (playerClass === "DEMOLITION") {
         classAbilityReadyAt = now + 8_000; setClassCooldown(8); classBlast(target, 8, 140, "ROCKET LAUNCHER");
       } else if (playerClass === "ENGINEER") {
         classAbilityReadyAt = now + 25_000; setClassCooldown(25); classDeployables.splice(0).forEach((item) => scene.remove(item));
-        const sentry = new THREE.Group(); sentry.position.copy(target); sentry.add(new THREE.Mesh(new THREE.BoxGeometry(.65, .45, .65), material(0x394744, .55, .4)), new THREE.Mesh(new THREE.BoxGeometry(.18, .18, 1.1), material(0x171d1f, .45, .65))); (sentry.children[1] as THREE.Mesh).position.z = -.55; scene.add(sentry); classDeployables.push(sentry);
-        const sentryFire = window.setInterval(() => { if (!sentry.parent) { window.clearInterval(sentryFire); return; } const targets = [...remotePlayers.entries()].filter(([, avatar]) => avatar.visible && avatar.position.distanceTo(sentry.position) < 28); const nearest = targets.sort((a,b) => a[1].position.distanceTo(sentry.position)-b[1].position.distanceTo(sentry.position))[0]; if (nearest) { sentry.lookAt(nearest[1].position); multiplayerSendRef.current({ type:"hit", targetId:nearest[0], damage:8, weapon:"SENTRY", headshot:false }); } }, 650);
+        const sentry = new THREE.Group(); sentry.position.copy(target); const base = new THREE.Mesh(new THREE.BoxGeometry(.65, .45, .65), material(0x394744, .55, .4)); base.position.y=.28; const turret = new THREE.Mesh(new THREE.BoxGeometry(.28, .22, .72), material(0x171d1f, .45, .65)); turret.position.set(0,.66,-.28); sentry.add(base,turret); scene.add(sentry); classDeployables.push(sentry);
+        const sentryFire = window.setInterval(() => { if (!sentry.parent) { window.clearInterval(sentryFire); return; } const remoteTargets=[...remotePlayers.entries()].filter(([,avatar])=>avatar.visible&&avatar.position.distanceTo(sentry.position)<32).map(([id,avatar])=>({id,avatar})); const dummyTargets=dummies.filter((dummy)=>dummy.visible&&dummy.position.distanceTo(sentry.position)<32).map((avatar)=>({id:"",avatar})); const nearest=[...remoteTargets,...dummyTargets].sort((a,b)=>a.avatar.position.distanceTo(sentry.position)-b.avatar.position.distanceTo(sentry.position))[0]; if(nearest){sentry.lookAt(nearest.avatar.position.clone().add(new THREE.Vector3(0,1.1,0))); if(nearest.id) multiplayerSendRef.current({type:"hit",targetId:nearest.id,damage:10,weapon:"SENTRY",headshot:false}); else damageDummyGroup(nearest.avatar,10,"SENTRY"); const start=sentry.position.clone().add(new THREE.Vector3(0,.66,0)); const end=nearest.avatar.position.clone().add(new THREE.Vector3(0,1.1,0)); const tracer=new THREE.Line(new THREE.BufferGeometry().setFromPoints([start,end]),new THREE.LineBasicMaterial({color:0xffb45f,transparent:true,opacity:.9})); tracer.raycast=()=>{}; scene.add(tracer); window.setTimeout(()=>scene.remove(tracer),70); } }, 420);
         window.setTimeout(() => { scene.remove(sentry); window.clearInterval(sentryFire); }, 30_000);
       } else if (playerClass === "DRONE") {
         classAbilityReadyAt = now + 30_000; setClassCooldown(30);
-        const drone = new THREE.Group(); drone.position.copy(playerPosition).add(new THREE.Vector3(0, 4, 0)); drone.add(new THREE.Mesh(new THREE.BoxGeometry(.7,.12,.45), material(0x263236,.45,.55))); scene.add(drone); classDeployables.push(drone);
-        const droneFire = window.setInterval(() => { if (!drone.parent) { window.clearInterval(droneFire); return; } drone.rotation.y += .08; const targets=[...remotePlayers.entries()].filter(([,avatar])=>avatar.visible&&avatar.position.distanceTo(drone.position)<35); const nearest=targets.sort((a,b)=>a[1].position.distanceTo(drone.position)-b[1].position.distanceTo(drone.position))[0]; if(nearest){drone.position.lerp(nearest[1].position.clone().add(new THREE.Vector3(0,4,0)),.04); multiplayerSendRef.current({type:"hit",targetId:nearest[0],damage:6,weapon:"ATTACK DRONE",headshot:false});}},500);
-        window.setTimeout(() => { scene.remove(drone); window.clearInterval(droneFire); }, 25_000);
+        if (activeDrone) endDroneControl();
+        const drone = new THREE.Group(); drone.position.copy(playerPosition).add(new THREE.Vector3(0, 3, 0)); const body=new THREE.Mesh(new THREE.BoxGeometry(.75,.14,.48),material(0x263236,.45,.55)); drone.add(body); [-1,1].forEach((sx)=>[-1,1].forEach((sz)=>{const arm=new THREE.Mesh(new THREE.BoxGeometry(.5,.045,.045),material(0x171d1f,.6,.5)); arm.position.set(sx*.28,0,sz*.2); arm.rotation.y=sx*sz*.65; drone.add(arm); const rotor=new THREE.Mesh(new THREE.CylinderGeometry(.18,.18,.025,14),material(0x111719,.65,.5)); rotor.position.set(sx*.48,.04,sz*.34); drone.add(rotor);})); const gunBarrel=new THREE.Mesh(new THREE.BoxGeometry(.09,.09,.5),material(0x101719,.45,.7)); gunBarrel.position.set(0,-.12,-.35); drone.add(gunBarrel); scene.add(drone); classDeployables.push(drone); activeDrone=drone; droneYaw=yaw; dronePitch=0; setDronePiloting(true);
+        window.setTimeout(() => { if (activeDrone === drone) endDroneControl(); else scene.remove(drone); }, 45_000);
       }
     };
     const fireRound = () => {
@@ -2175,6 +2204,7 @@ export function FpsGame() {
     const onMouseDown = (e: MouseEvent) => {
       if (!isTouchInput && document.pointerLockElement !== renderer.domElement) return;
       if (e.button === 2) {
+        if (activeDrone) { endDroneControl(); return; }
         if (currentSlot === 4 && utility === "C4 CHARGE") {
           plantedC4.splice(0).forEach((charge) => detonate(charge));
           return;
@@ -2182,6 +2212,7 @@ export function FpsGame() {
         if (isThirdPerson) orbiting = true; else { holdAim = true; syncAim(); } return;
       }
       if (e.button !== 0 || sprinting || sliding) return;
+      if (activeDrone) { droneTrigger = true; return; }
       if (currentSlot === 5) { classAiming = true; classTargetMarker.visible = true; return; }
       if (currentSlot === 3) {
         if (medicalCharges > 0 && playerHealth < maxPlayerHealth && !healEnd) {
@@ -2211,6 +2242,7 @@ export function FpsGame() {
     const onMouseUp = (e: MouseEvent) => {
       if (e.button === 0) {
         triggerHeld = false;
+        droneTrigger = false;
         if (classAiming) { classAiming = false; classTargetMarker.visible = false; useClassItem(); }
         if (placementAiming) { placeUtility(); placementAiming = false; placementPreview.visible = false; placementPoint = null; }
         if (throwableAiming) { throwableAiming = false; trajectory.visible = false; throwUtility(); }
@@ -2291,11 +2323,38 @@ export function FpsGame() {
         Number(keys.has("KeyW")) - Number(keys.has("KeyS"))
       );
       if (input.lengthSq() > 0) input.normalize();
+      if (activeDrone) {
+        const forward = new THREE.Vector3(-Math.sin(droneYaw) * Math.cos(dronePitch), Math.sin(dronePitch), -Math.cos(droneYaw) * Math.cos(dronePitch));
+        const right = new THREE.Vector3(Math.cos(droneYaw), 0, -Math.sin(droneYaw));
+        activeDrone.position.add(forward.clone().multiplyScalar(input.y).addScaledVector(right, input.x).multiplyScalar(dt * (keys.has("ShiftLeft") ? 13 : 8)));
+        activeDrone.position.y = THREE.MathUtils.clamp(activeDrone.position.y, terrainHeightAt(activeDrone.position.x, activeDrone.position.z) + 1.2, 22);
+        activeDrone.rotation.set(dronePitch * .18, droneYaw, -input.x * .18);
+        if (droneTrigger && now >= nextDroneShot) {
+          nextDroneShot = now + 125;
+          const origin = activeDrone.position.clone().addScaledVector(forward, .5);
+          raycaster.set(origin, forward);
+          const hit = raycaster.intersectObjects([...dummies, ...remotePlayers.values()], true).find((result) => result.distance < 70);
+          const end = hit?.point.clone() ?? origin.clone().addScaledVector(forward, 70);
+          const tracer = new THREE.Line(new THREE.BufferGeometry().setFromPoints([origin, end]), new THREE.LineBasicMaterial({ color: 0xffb56e, transparent: true, opacity: .9 })); tracer.raycast = () => {}; scene.add(tracer); window.setTimeout(() => scene.remove(tracer), 65);
+          if (hit) { const targetId = hit.object.userData.remotePlayerId as string | undefined; if (targetId) multiplayerSendRef.current({ type: "hit", targetId, damage: 7, weapon: "ATTACK DRONE", headshot: false }); else damageDummy(hit, 7); }
+        }
+        input.set(0, 0);
+      }
       if (sliding && now >= slideEnd) { sliding = false; slideEnd = 0; }
       const onBeachDock = beachMap && Math.abs(playerPosition.x)<5.5 && playerPosition.z < -4.2 && playerPosition.z > -46;
       const inBeachWater = beachMap && playerPosition.z < -8.2 && !onBeachDock;
-      sprinting = !isCrouching && !isProne && !sliding && ((isTouchInput && input.length() > .82 && input.y > .25) || keys.has("ShiftLeft") || keys.has("ShiftRight")) && input.y > 0 && input.lengthSq() > 0;
+      const sprintRequested = ((isTouchInput && input.length() > .82 && input.y > .25) || keys.has("ShiftLeft") || keys.has("ShiftRight")) && input.y > 0 && input.lengthSq() > 0;
+      if (staminaExhausted && playerStamina >= 25) staminaExhausted = false;
+      sprinting = !staminaExhausted && playerStamina > 0 && !isCrouching && !isProne && !sliding && sprintRequested;
       if (inBeachWater) { sprinting = false; sliding = false; }
+      if (sprinting) {
+        playerStamina = Math.max(0, playerStamina - 18 * dt);
+        lastSprintAt = now;
+        if (playerStamina <= 0) { playerStamina = 0; staminaExhausted = true; sprinting = false; }
+      } else if (now - lastSprintAt >= 800) {
+        playerStamina = Math.min(100, playerStamina + 14 * dt);
+      }
+      if (now - lastStaminaUiUpdate >= 80) { lastStaminaUiUpdate = now; setStamina(Math.round(playerStamina)); }
       if (sprinting || sliding) clearAim();
       // The creek follows a slightly diagonal north/south channel through the forest.
       const inForestCreek = forestMap && Math.abs((playerPosition.x + 10) + playerPosition.z * .08) < 3.5 && Math.abs(playerPosition.z) < 42;
@@ -2448,8 +2507,9 @@ export function FpsGame() {
             const holdingWeapon = actorSlot <= 2;
             const holdingMedical = isLocal && currentSlot === 3 && medicalCharges > 0;
             const holdingUtility = isLocal && currentSlot === 4 && grenadesLeft > 0 && limb.side === 1;
-            const holdingItem = holdingWeapon || holdingMedical || holdingUtility;
-            const holdingLongGun = holdingWeapon && (actorSlot === 1 || actorSecondary === "DB-2 SAWED-OFF" || actorSecondary === "MP5K COMPACT");
+            const holdingClassItem = isLocal && currentSlot === 5 && Boolean(CLASS_ITEMS[playerClass]);
+            const holdingItem = holdingWeapon || holdingMedical || holdingUtility || holdingClassItem;
+            const holdingLongGun = (holdingWeapon && (actorSlot === 1 || actorSecondary === "DB-2 SAWED-OFF" || actorSecondary === "MP5K COMPACT")) || (holdingClassItem && (playerClass === "DEMOLITION" || playerClass === "MORTAR"));
             const isRightArm = limb.side === 1;
             const alignLimb = (mesh: THREE.Mesh, start: THREE.Vector3, end: THREE.Vector3) => {
               mesh.position.copy(start).add(end).multiplyScalar(.5);
@@ -2458,14 +2518,18 @@ export function FpsGame() {
             if (holdingItem) {
               const shoulder = new THREE.Vector3(limb.side * .43, 1.65, 0);
               const sprintCarry = isLocal ? sprinting || sliding : movement === "sprint";
-              const elbow = holdingMedical
+              const elbow = holdingClassItem
+                ? isRightArm ? new THREE.Vector3(.46, 1.4, -.3) : new THREE.Vector3(-.18, 1.42, -.42)
+                : holdingMedical
                 ? isRightArm ? new THREE.Vector3(.4, 1.38, -.16) : new THREE.Vector3(-.38, 1.38, -.16)
                 : holdingUtility ? new THREE.Vector3(.46, 1.4, -.12)
                 : sprintCarry
                 ? isRightArm ? new THREE.Vector3(.46, 1.27, -.12) : new THREE.Vector3(-.2, 1.3, -.2)
                 : isRightArm ? new THREE.Vector3(.48, 1.38, -.32)
                 : holdingLongGun ? new THREE.Vector3(-.2, 1.35, -.33) : new THREE.Vector3(-.18, 1.37, -.2);
-              const hand = holdingMedical
+              const hand = holdingClassItem
+                ? isRightArm ? new THREE.Vector3(.17, 1.28, -.3) : new THREE.Vector3(.08, 1.4, -.72)
+                : holdingMedical
                 ? new THREE.Vector3(isRightArm ? .25 : .02, 1.29, -.42)
                 : holdingUtility ? new THREE.Vector3(.19, 1.29, -.42)
                 : sprintCarry
@@ -2660,7 +2724,11 @@ export function FpsGame() {
         lastMultiplayerSend = now;
         multiplayerSocket.send(JSON.stringify({ type: "state", x: playerPosition.x, y: playerPosition.y, z: playerPosition.z, yaw, movement: localPlayer.userData.movement, crouching: isCrouching, prone: isProne, slot: currentSlot, primary, secondary, equipment, playerClass, skin: characterSkin, uniform: characterUniform, camo: camoPattern, accessories: equippedAccessories, armor: characterArmor, helmet: characterHelmet, faceGear: localFaceGear, headAccessory: localHeadAccessory, chestRig, backpack, pants: pantsColor, gloves: gloveColor, boots: bootColor, callsign:playerCallsignRef.current }));
       }
-      if (isThirdPerson) {
+      if (activeDrone) {
+        const droneForward = new THREE.Vector3(-Math.sin(droneYaw) * Math.cos(dronePitch), Math.sin(dronePitch), -Math.cos(droneYaw) * Math.cos(dronePitch));
+        camera.position.copy(activeDrone.position).add(new THREE.Vector3(0, .28, 0)).addScaledVector(droneForward, -1.15);
+        camera.lookAt(activeDrone.position.clone().addScaledVector(droneForward, 18));
+      } else if (isThirdPerson) {
         const orbitDistance = 4.2;
         const horizontalDistance = Math.cos(cameraPitch) * orbitDistance;
         const orbitRightX = Math.cos(cameraYaw), orbitRightZ = -Math.sin(cameraYaw);
@@ -2742,6 +2810,9 @@ export function FpsGame() {
       multiplayerSocket?.close(1000, "leaving sector");
       adminCommandRef.current = () => {};
       multiplayerSendRef.current = () => {};
+      airstrikeTargetRef.current = () => {};
+      droneExitRef.current = () => {};
+      setAirstrikeMapOpen(false); setDronePiloting(false);
       setMultiplayerStatus("OFFLINE");
       setConnectedPlayerIds([]); setLocalPlayerId("");
       renderer.dispose();
@@ -2880,8 +2951,18 @@ export function FpsGame() {
         {damageNumbers.map((number) => <span key={number.id} className={number.headshot ? "headshot" : ""} style={{ left: number.x, top: number.y }}>-{number.damage}</span>)}
       </div>
       <div className="crosshair" style={{ left: thirdPerson ? leanSide < 0 ? "46%" : "54%" : "50%" }}><span /><span /></div>
-      <div className="hud-left"><small>VITALS · {equipment}</small><strong>{health}</strong><div className="health"><i style={{ width: `${health / maximumHealth * 100}%` }} /></div></div>
+      <div className="hud-left"><small>VITALS · {equipment}</small><strong>{health}</strong><div className="health"><i style={{ width: `${health / maximumHealth * 100}%` }} /></div><div className={`stamina${stamina <= 25 ? " low" : ""}`}><span>STAMINA</span><i><b style={{ width: `${stamina}%` }} /></i><em>{stamina}</em></div></div>
       {started && CLASS_ITEMS[playerClass] && <div className={`class-ability-status${classCooldown > 0 ? " cooling" : ""}`}><kbd>5</kbd><span><b>{CLASS_ITEMS[playerClass]}</b><small>{classCooldown > 0 ? `COOLDOWN · ${classCooldown} SEC` : "READY · EQUIP SLOT 5"}</small></span></div>}
+      {started && dronePiloting && <div className="drone-control-hud"><b>ATTACK DRONE · REMOTE LINK</b><span><kbd>WASD</kbd> FLY · <kbd>SHIFT</kbd> BOOST · <kbd>LMB</kbd> FIRE · <kbd>RMB</kbd> EXIT</span></div>}
+      {started && airstrikeMapOpen && <div className="airstrike-overlay" role="dialog" aria-modal="true" aria-label="Airstrike targeting map">
+        <section className="airstrike-console">
+          <header><div><small>TACTICAL UPLINK</small><h2>AIRSTRIKE TARGETING</h2></div><button onClick={() => { setAirstrikeMapOpen(false); requestAnimationFrame(() => mountRef.current?.querySelector("canvas")?.requestPointerLock()); }}>×</button></header>
+          <div className="airstrike-map" onClick={(event) => { const rect=event.currentTarget.getBoundingClientRect(); const px=THREE.MathUtils.clamp((event.clientX-rect.left)/rect.width,0,1); const pz=THREE.MathUtils.clamp((event.clientY-rect.top)/rect.height,0,1); airstrikeTargetRef.current(radarBounds.minX+px*(radarBounds.maxX-radarBounds.minX),radarBounds.minZ+pz*(radarBounds.maxZ-radarBounds.minZ)); }}>
+            <i className="airstrike-scanline" /><span className="airstrike-reticle">+</span><b>N</b>
+          </div>
+          <footer>CLICK A POSITION TO CONFIRM THE STRIKE · FIVE IMPACT RUN</footer>
+        </section>
+      </div>}
       {started && equipment === "HEAT VISION GOGGLES" && <div className="heat-vision-overlay"><span>THERMAL OPTICS · WALL DETECTION {HEAT_VISION_WALL_RANGE}M</span></div>}
       {started && equipment === "360 GOGGLES" && <aside className="rear-view-panel"><header>REAR VIEW · 180°</header></aside>}
       {started && equipment === "SATELLITE GPS" && <aside className={`satellite-map${radarPings.length ? " scanning" : ""}`}>
