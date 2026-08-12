@@ -141,6 +141,7 @@ export function FpsGame() {
   const [fireMode, setFireMode] = useState<FireMode>("AUTO");
   const [sessionId, setSessionId] = useState(0);
   const [menuPage, setMenuPage] = useState<MenuPage>("HOME");
+  const [controlsTutorialOpen, setControlsTutorialOpen] = useState(false);
   const [selectedMap, setSelectedMap] = useState<GameMap>("TEST YARD");
   const [selectedSector, setSelectedSector] = useState<GameSector>("SECTOR 1");
   const [serverBrowserOpen, setServerBrowserOpen] = useState(false);
@@ -2893,7 +2894,7 @@ export function FpsGame() {
           </div>}
           {(!started && menuPage === "SETTINGS") && <div className="settings-panel">
             <button className="back-button" onClick={() => setMenuPage("HOME")}>← MAIN MENU</button>
-            <div className="loadout-heading"><div><span>GAME</span> SETTINGS</div><small>GAMEPLAY & HUD PREFERENCES</small></div>
+            <div className="settings-title-row"><div className="loadout-heading"><div><span>GAME</span> SETTINGS</div><small>GAMEPLAY & HUD PREFERENCES</small></div><button className="tutorial-help-button" aria-label="Open game controls tutorial" title="Controls tutorial" onClick={() => setControlsTutorialOpen(true)}>?</button></div>
             <section className="settings-group">
               <header><small>HUD</small><h2>COMBAT FEEDBACK</h2></header>
               <button className={`settings-toggle${damageNumbersEnabled ? " enabled" : ""}`} role="switch" aria-checked={damageNumbersEnabled} onClick={toggleDamageNumbers}>
@@ -2903,6 +2904,18 @@ export function FpsGame() {
               <div className="settings-preview" aria-hidden="true"><span>TARGET HIT</span><b className={damageNumbersEnabled ? "visible" : ""}>-32</b><small>{damageNumbersEnabled ? "DAMAGE NUMBERS ENABLED" : "DAMAGE NUMBERS HIDDEN"}</small></div>
             </section>
             <p className="settings-note">PREFERENCES ARE SAVED ON THIS DEVICE.</p>
+          </div>}
+          {(!started && menuPage === "SETTINGS" && controlsTutorialOpen) && <div className="controls-tutorial-overlay" role="dialog" aria-modal="true" aria-labelledby="controls-tutorial-title" onClick={() => setControlsTutorialOpen(false)}>
+            <section className="controls-tutorial" onClick={(event) => event.stopPropagation()}>
+              <header><div><small>FIELD MANUAL</small><h2 id="controls-tutorial-title">GAME <span>CONTROLS</span></h2></div><button aria-label="Close controls tutorial" onClick={() => setControlsTutorialOpen(false)}>×</button></header>
+              <div className="tutorial-control-grid">
+                <article><h3>MOVEMENT</h3><div><kbd>W A S D</kbd><span>MOVE</span></div><div><kbd>SHIFT</kbd><span>SPRINT</span></div><div><kbd>SPACE</kbd><span>JUMP</span></div><div><kbd>C</kbd><span>CROUCH / SLIDE</span></div><div><kbd>X</kbd><span>PRONE</span></div><div><kbd>Q / E</kbd><span>LEAN</span></div></article>
+                <article><h3>COMBAT</h3><div><kbd>LMB</kbd><span>FIRE / USE ITEM</span></div><div><kbd>RMB</kbd><span>AIM</span></div><div><kbd>Z</kbd><span>TOGGLE AIM</span></div><div><kbd>R</kbd><span>RELOAD</span></div><div><kbd>B</kbd><span>FIRE MODE</span></div><div><kbd>1–4</kbd><span>SELECT EQUIPMENT</span></div></article>
+                <article><h3>INTERACTION</h3><div><kbd>F</kbd><span>USE / OPEN DOOR</span></div><div><kbd>TAB</kbd><span>CHANGE CAMERA</span></div><div><kbd>ENTER</kbd><span>MATCH CHAT</span></div><div><kbd>ESC</kbd><span>PAUSE MENU</span></div></article>
+                <article className="tutorial-touch"><h3>TOUCH CONTROLS</h3><div><kbd>LEFT PAD</kbd><span>MOVE · PUSH FORWARD TO RUN</span></div><div><kbd>RIGHT PAD</kbd><span>LOOK AROUND</span></div><div><kbd>BUTTONS</kbd><span>FIRE · AIM · JUMP · CROUCH · RELOAD · USE</span></div></article>
+              </div>
+              <footer>TIP: TRY THE TRAINING SECTOR BEFORE JOINING A MULTIPLAYER MATCH.</footer>
+            </section>
           </div>}
           {(!started && menuPage === "LOADOUT") && <div className="loadout-panel">
             <button className="back-button" onClick={() => setMenuPage("HOME")}>← MAIN MENU</button>
