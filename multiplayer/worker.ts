@@ -9,6 +9,7 @@ type PlayerState = {
   movement: "static" | "walk" | "sprint";
   crouching: boolean;
   prone: boolean;
+  flying: boolean;
   slot: number;
   primary: string;
   secondary: string;
@@ -138,7 +139,7 @@ export class GameRoom extends DurableObject {
     const team: PlayerState["team"] = playerNumber % 2 === 0 ? "ALPHA" : "BRAVO";
     const spawn = chooseSpawn(meta, team, existingPlayers);
     const spawnX = spawn.x, spawnZ = spawn.z;
-    const initial: PlayerState = { id, x: spawnX, y: 1.7, z: spawnZ, yaw: spawnZ > 0 ? 0 : Math.PI, movement: "static", crouching: false, prone: false, slot: 1, primary: "VXR-4 CARBINE", secondary: "P9 SIDEARM", equipment: "ARMOR PLATING", skin: "#a9795e", uniform: "#303a3b", camo: "SOLID", accessories: ["GOGGLES", "HEADSET"], armor: "#20292b", helmet: "TACTICAL", faceGear: "GOGGLES", headAccessory: "HEADSET", chestRig: "PLATE CARRIER", backpack: "ASSAULT PACK", pants: "#303a3b", gloves: "#20292b", boots: "#151b1d", kills: 0, deaths: 0, health: 125, team, objectiveScore: 0, spawnProtectedUntil: Date.now() + 3000, callsign:`OPERATOR ${id.slice(0,4).toUpperCase()}` };
+    const initial: PlayerState = { id, x: spawnX, y: 1.7, z: spawnZ, yaw: spawnZ > 0 ? 0 : Math.PI, movement: "static", crouching: false, prone: false, flying: false, slot: 1, primary: "VXR-4 CARBINE", secondary: "P9 SIDEARM", equipment: "ARMOR PLATING", skin: "#a9795e", uniform: "#303a3b", camo: "SOLID", accessories: ["GOGGLES", "HEADSET"], armor: "#20292b", helmet: "TACTICAL", faceGear: "GOGGLES", headAccessory: "HEADSET", chestRig: "PLATE CARRIER", backpack: "ASSAULT PACK", pants: "#303a3b", gloves: "#20292b", boots: "#151b1d", kills: 0, deaths: 0, health: 125, team, objectiveScore: 0, spawnProtectedUntil: Date.now() + 3000, callsign:`OPERATOR ${id.slice(0,4).toUpperCase()}` };
     this.ctx.acceptWebSocket(server);
     server.serializeAttachment({ id, state: initial, isAdmin: false, godMode: false, damageMultiplier: 1, lastSeenAt: Date.now() } satisfies SocketAttachment);
 
@@ -151,7 +152,7 @@ export class GameRoom extends DurableObject {
 
   async webSocketMessage(socket: WebSocket, message: string | ArrayBuffer) {
     if (typeof message !== "string" || message.length > 4096) return;
-    let packet: Partial<PlayerState> & { type?: string; category?: "map" | "mode"; map?: MultiplayerMap; mode?: GameMode; targetId?: string; damage?: number; weapon?: string; headshot?: boolean; tracerEnds?: unknown; effect?: string; duration?: number; text?: string; utilityId?: string; utility?: string; position?: unknown; velocity?: unknown; idToken?: string; godMode?: boolean; damageMultiplier?: number };
+    let packet: Partial<PlayerState> & { type?: string; category?: "map" | "mode"; map?: MultiplayerMap; mode?: GameMode; targetId?: string; damage?: number; weapon?: string; headshot?: boolean; tracerEnds?: unknown; effect?: string; duration?: number; text?: string; utilityId?: string; utility?: string; position?: unknown; velocity?: unknown; idToken?: string; godMode?: boolean; damageMultiplier?: number; flying?: boolean };
     try { packet = JSON.parse(message); } catch { return; }
     const attachment = socket.deserializeAttachment() as SocketAttachment;
     attachment.lastSeenAt = Date.now();
@@ -168,7 +169,9 @@ export class GameRoom extends DurableObject {
       const allowedMultipliers = [1, 2, 5, 10, 100];
       attachment.godMode = Boolean(packet.godMode);
       attachment.damageMultiplier = allowedMultipliers.includes(packet.damageMultiplier ?? 1) ? packet.damageMultiplier : 1;
+      attachment.state.flying = Boolean(packet.flying);
       socket.serializeAttachment(attachment);
+      this.broadcast({ type: "state", player: attachment.state }, socket);
       return;
     }
     if (packet.type === "admin_kick") {

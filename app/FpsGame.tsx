@@ -241,7 +241,7 @@ export function FpsGame() {
     if (typeof next.noclip === "boolean") setAdminNoclip(next.noclip);
     if (typeof next.godMode === "boolean") setAdminGodMode(next.godMode);
     if (typeof next.damageMultiplier === "number") setAdminDamageMultiplier(next.damageMultiplier);
-    multiplayerSendRef.current({ type: "admin_config", godMode: adminControlsRef.current.godMode, damageMultiplier: adminControlsRef.current.damageMultiplier });
+    multiplayerSendRef.current({ type: "admin_config", godMode: adminControlsRef.current.godMode, damageMultiplier: adminControlsRef.current.damageMultiplier, flying: adminControlsRef.current.flying });
   };
 
   useEffect(() => onAuthStateChanged(auth, async (user) => {
@@ -1217,7 +1217,7 @@ export function FpsGame() {
       item.scale.setScalar(.78); item.position.set(-.045, 1.56, .03);
       item.traverse((object) => { if (object instanceof THREE.Mesh) object.raycast = () => {}; }); localPlayer.add(item);
     });
-    type RemoteState = { id: string; x: number; y: number; z: number; yaw: number; movement: "static" | "walk" | "sprint"; crouching: boolean; prone: boolean; slot: number; primary?: string; secondary?: string; health?: number; kills?: number; deaths?: number; team?: "ALPHA" | "BRAVO"; callsign?: string } & Partial<PlayerAppearance>;
+    type RemoteState = { id: string; x: number; y: number; z: number; yaw: number; movement: "static" | "walk" | "sprint"; crouching: boolean; prone: boolean; flying?: boolean; slot: number; primary?: string; secondary?: string; health?: number; kills?: number; deaths?: number; team?: "ALPHA" | "BRAVO"; callsign?: string } & Partial<PlayerAppearance>;
     const rememberPlayer = (player: RemoteState) => {
       const previous = playerSummariesRef.current[player.id];
       const callsign = (player.callsign || previous?.callsign || (player.id === localNetworkId ? playerCallsignRef.current : "OPERATOR")).slice(0, 18);
@@ -1285,6 +1285,7 @@ export function FpsGame() {
       avatar.userData.targetPosition.set(state.x, state.y - PLAYER_HEIGHT - (state.crouching ? .42 : 0), state.z);
       avatar.userData.targetYaw = state.yaw; avatar.userData.movement = state.prone ? "static" : state.movement;
       avatar.userData.remoteProne = state.prone; avatar.userData.remoteCrouching = state.crouching;
+      avatar.userData.remoteFlying = Boolean(state.flying);
       avatar.userData.remoteTeam = state.team ?? "ALPHA";
       avatar.userData.remoteSlot = state.slot; avatar.userData.remoteSecondaryName = state.secondary ?? "P9 SIDEARM";
       if (avatar.userData.remotePrimary) avatar.userData.remotePrimary.visible = state.slot === 1;
@@ -1356,7 +1357,7 @@ export function FpsGame() {
             otherPlayers.forEach((player) => { rememberPlayer(player); upsertRemotePlayer(player); }); refreshTeammateMarkers();
           }
           else if (packet.type === "admin_authenticated" && packet.authorized) {
-            multiplayerSendRef.current({ type: "admin_config", godMode: adminControlsRef.current.godMode, damageMultiplier: adminControlsRef.current.damageMultiplier });
+            multiplayerSendRef.current({ type: "admin_config", godMode: adminControlsRef.current.godMode, damageMultiplier: adminControlsRef.current.damageMultiplier, flying: adminControlsRef.current.flying });
           }
           else if (packet.type === "kicked") {
             window.alert(packet.reason ?? "You were removed by a server administrator.");
@@ -2252,7 +2253,7 @@ export function FpsGame() {
       remotePlayers.forEach((avatar) => {
         const target = avatar.userData.targetPosition as THREE.Vector3 | undefined;
         if (target) avatar.position.lerp(target, Math.min(1, dt * 12));
-        if (snowyMap) {
+        if (snowyMap && !avatar.userData.remoteFlying) {
           const stanceDrop = avatar.userData.remoteCrouching ? .42 : 0;
           avatar.position.y = Math.max(avatar.position.y, terrainHeightAt(avatar.position.x, avatar.position.z) - stanceDrop);
         }
