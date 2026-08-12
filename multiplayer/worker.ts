@@ -47,9 +47,7 @@ const MATCH_DURATION = 10 * 60_000;
 const RESULTS_DURATION = 5_000;
 const FINAL_VOTE_DISPLAY_DURATION = 1_500;
 const EMPTY_ROOM_GRACE = 10_000;
-const FIREBASE_API_KEY = "AIzaSyBblKzSnl4XD7afgjqXETtVEhZyADn4-3s";
-const OWNER_EMAIL = "kaigarcia2510@gmail.com";
-const JUNIOR_ADMIN_EMAILS = new Set(["sebastian.ward@pinecrest.edu"]);
+const PLAYER_API_URL = "https://strikeyard-fps.kaijonasgarcia.chatgpt.site/api/player";
 const safeString = (value: unknown, fallback: string, maxLength: number) =>
   typeof value === "string" ? value.slice(0, maxLength) : fallback;
 const maxHealth = (player: Pick<PlayerState, "equipment">) => player.equipment === "ARMOR PLATING" ? 125 : 100;
@@ -61,15 +59,10 @@ const json = (value: unknown, status = 200) => new Response(JSON.stringify(value
 
 const verifiedAdminToken = async (idToken: unknown): Promise<AdminRole> => {
   if (typeof idToken !== "string" || idToken.length < 20 || idToken.length > 4096) return null;
-  const response = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${FIREBASE_API_KEY}`, {
-    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ idToken }),
-  });
+  const response = await fetch(PLAYER_API_URL, { headers: { authorization: `Bearer ${idToken}` } });
   if (!response.ok) return null;
-  const payload = await response.json() as { users?: { email?: string }[] };
-  const email = payload.users?.[0]?.email?.toLowerCase();
-  if (email === OWNER_EMAIL) return "owner";
-  if (email && JUNIOR_ADMIN_EMAILS.has(email)) return "junior";
-  return null;
+  const payload = await response.json() as { adminRole?: AdminRole };
+  return payload.adminRole === "owner" || payload.adminRole === "junior" ? payload.adminRole : null;
 };
 
 const SPAWNS: Record<MultiplayerMap, { free: [number,number][]; ALPHA: [number,number][]; BRAVO: [number,number][] }> = {

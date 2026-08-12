@@ -7,6 +7,8 @@ import { auth } from "../firebase";
 
 type Player = { callsign: string; level: number; experience: number; matchesPlayed: number; wins: number; kills: number; deaths: number };
 type AdminStatus = "idle" | "saving" | "saved" | "error";
+type AdminRole = "owner" | "junior";
+type AdminGrant = { email: string; role: AdminRole; locked?: boolean };
 
 export default function AccountPage() {
   const router = useRouter();
@@ -15,6 +17,10 @@ export default function AccountPage() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [adminStatus, setAdminStatus] = useState<AdminStatus>("idle");
   const [adminError, setAdminError] = useState("");
+  const [adminGrants, setAdminGrants] = useState<AdminGrant[]>([]);
+  const [grantEmail, setGrantEmail] = useState("");
+  const [grantStatus, setGrantStatus] = useState<AdminStatus>("idle");
+  const [grantError, setGrantError] = useState("");
   const [nickname, setNickname] = useState("");
   const [nicknameStatus, setNicknameStatus] = useState<AdminStatus>("idle");
   const [nicknameError, setNicknameError] = useState("");
@@ -29,6 +35,13 @@ export default function AccountPage() {
       setPlayer(data.player);
       setNickname(data.player.callsign);
       setIsAdmin(data.adminRole === "owner");
+      if (data.adminRole === "owner") {
+        const rolesResponse = await fetch("/api/admin-roles", { headers: { Authorization: `Bearer ${token}` } });
+        if (rolesResponse.ok) {
+          const rolesData = await rolesResponse.json() as { grants?: AdminGrant[] };
+          setAdminGrants(rolesData.grants ?? []);
+        }
+      }
     }
   }), [router]);
 
@@ -76,6 +89,20 @@ export default function AccountPage() {
     } catch (error) { setNicknameError(error instanceof Error ? error.message : "Unable to save nickname."); setNicknameStatus("error"); }
   };
 
+  const setAdminRole = async (email: string, role: AdminRole | "none") => {
+    if (!user || !isAdmin) return;
+    setGrantStatus("saving"); setGrantError("");
+    try {
+      const token = await user.getIdToken();
+      const response = await fetch("/api/admin-roles", { method: "PUT", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({ email, role }) });
+      const data = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(data.error || "Unable to update admin access.");
+      const normalized = email.trim().toLowerCase();
+      setAdminGrants((current) => role === "none" ? current.filter((grant) => grant.email !== normalized) : [...current.filter((grant) => grant.email !== normalized), { email: normalized, role }].sort((a, b) => Number(Boolean(b.locked)) - Number(Boolean(a.locked)) || a.email.localeCompare(b.email)));
+      setGrantEmail(""); setGrantStatus("saved");
+    } catch (error) { setGrantError(error instanceof Error ? error.message : "Unable to update admin access."); setGrantStatus("error"); }
+  };
+
   if (!user || !player) return <main className="account-shell account-loading"><div>LOADING OPERATOR RECORD…</div></main>;
 
   return <main className="account-shell">
@@ -97,6 +124,23 @@ export default function AccountPage() {
         <button className="admin-reset" disabled={adminStatus === "saving"} onClick={() => { setPlayer({ ...player, level: 1, experience: 0, matchesPlayed: 0, wins: 0, kills: 0, deaths: 0 }); setAdminStatus("idle"); }}>RESET VALUES</button>
         <span className={adminStatus}>{adminStatus === "saved" ? "CHANGES SAVED" : adminStatus === "error" ? adminError : ""}</span>
       </div>
+    </section>}
+    {isAdmin && <section className="admin-panel role-manager">
+      <div className="admin-heading"><div><small>OWNER SETTINGS ONLY</small><h2>ADMIN <span>PERMISSIONS</span></h2></div><b>ROLE CONTROL</b></div>
+      <p>Owner admins receive every command. Junior admins receive only Fly and Noclip. Removing access takes effect the next time that player joins a server.</p>
+      <div className="role-grant-form">
+        <input type="email" value={grantEmail} placeholder="player@example.com" aria-label="Player email" onChange={(event) => { setGrantEmail(event.target.value); setGrantStatus("idle"); }} />
+        <button disabled={grantStatus === "saving" || !grantEmail.trim()} onClick={() => void setAdminRole(grantEmail, "owner")}>GIVE OWNER</button>
+        <button disabled={grantStatus === "saving" || !grantEmail.trim()} onClick={() => void setAdminRole(grantEmail, "junior")}>GIVE JUNIOR</button>
+        <button className="remove" disabled={grantStatus === "saving" || !grantEmail.trim()} onClick={() => void setAdminRole(grantEmail, "none")}>REMOVE</button>
+      </div>
+      <div className="role-list">
+        {adminGrants.map((grant) => <div key={grant.email}><span><strong>{grant.email}</strong><small>{grant.role === "owner" ? "OWNER ADMIN" : "JUNIOR ADMIN"}</small></span><div>
+          {!grant.locked && <><button onClick={() => void setAdminRole(grant.email, grant.role === "owner" ? "junior" : "owner")}>{grant.role === "owner" ? "MAKE JUNIOR" : "MAKE OWNER"}</button><button className="remove" onClick={() => void setAdminRole(grant.email, "none")}>REMOVE</button></>}
+          {grant.locked && <b>PRIMARY OWNER</b>}
+        </div></div>)}
+      </div>
+      <span className={`role-status ${grantStatus}`}>{grantStatus === "saved" ? "ADMIN ACCESS UPDATED" : grantStatus === "error" ? grantError : ""}</span>
     </section>}
   </main>;
 }

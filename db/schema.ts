@@ -26,3 +26,9 @@ export const playerMatchResults = sqliteTable("player_match_results", {
   won: integer("won", { mode: "boolean" }).notNull(),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });
+
+export const adminRoles = sqliteTable("admin_roles", {
+  email: text("email").primaryKey(),
+  role: text("role", { enum: ["owner", "junior"] }).notNull(),
+  updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+});

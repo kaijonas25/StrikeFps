@@ -1,17 +1,16 @@
 import { eq, sql } from "drizzle-orm";
 import { getDb } from "../../../db";
-import { playerMatchResults, players } from "../../../db/schema";
+import { adminRoles, playerMatchResults, players } from "../../../db/schema";
 
 const FIREBASE_API_KEY = "AIzaSyBblKzSnl4XD7afgjqXETtVEhZyADn4-3s";
 const OWNER_EMAIL = "kaigarcia2510@gmail.com";
-const JUNIOR_ADMIN_EMAILS = new Set(["sebastian.ward@pinecrest.edu"]);
 type AdminRole = "owner" | "junior" | null;
-const adminRoleForEmail = (email: string): AdminRole => {
+async function adminRoleForEmail(email: string): Promise<AdminRole> {
   const normalized = email.toLowerCase();
   if (normalized === OWNER_EMAIL) return "owner";
-  if (JUNIOR_ADMIN_EMAILS.has(normalized)) return "junior";
-  return null;
-};
+  const [grant] = await getDb().select({ role: adminRoles.role }).from(adminRoles).where(eq(adminRoles.email, normalized)).limit(1);
+  return grant?.role ?? null;
+}
 type FirebaseAccount = { localId: string; email: string; displayName?: string };
 type AdminStats = { level: number; experience: number; matchesPlayed: number; wins: number; kills: number; deaths: number };
 
@@ -38,9 +37,10 @@ export async function GET(request: Request) {
   const db = getDb();
   await db.insert(players).values({ id: account.localId, email: account.email, callsign }).onConflictDoUpdate({ target: players.id, set: { email: account.email } });
   const [player] = await db.select().from(players).where(eq(players.id, account.localId)).limit(1);
+  const adminRole = await adminRoleForEmail(account.email);
   return Response.json({
-    isAdmin: adminRoleForEmail(account.email) !== null,
-    adminRole: adminRoleForEmail(account.email),
+    isAdmin: adminRole !== null,
+    adminRole,
     player: {
       ...player,
       loadout: JSON.parse(player.loadoutJson),
@@ -56,7 +56,7 @@ export async function PUT(request: Request) {
   if (!account) return Response.json({ error: "Unauthorized" }, { status: 401 });
   const payload = await request.json() as { loadout?: unknown; operator?: unknown; adminStats?: Partial<AdminStats> };
   if (payload.adminStats) {
-    if (adminRoleForEmail(account.email) !== "owner") return Response.json({ error: "Owner access required" }, { status: 403 });
+    if (await adminRoleForEmail(account.email) !== "owner") return Response.json({ error: "Owner access required" }, { status: 403 });
     const stats: AdminStats = {
       level: payload.adminStats.level as number,
       experience: payload.adminStats.experience as number,
