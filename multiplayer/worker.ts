@@ -264,6 +264,20 @@ export class GameRoom extends DurableObject<Env> {
       if(position&&rotation&&attachment.state.playerClass==="DRONE") this.broadcast({type:"drone_state",id:attachment.id,active:true,position,rotation},socket);
       return;
     }
+    if (packet.type === "drone_hit") {
+      const meta = await this.currentMatch();
+      if (meta.phase !== "playing" || !packet.targetId || packet.targetId === attachment.id) return;
+      const targetSocket = this.ctx.getWebSockets().find((candidate) => (candidate.deserializeAttachment() as SocketAttachment).id === packet.targetId);
+      if (!targetSocket) return;
+      const target = targetSocket.deserializeAttachment() as SocketAttachment;
+      if (target.state.playerClass !== "DRONE") return;
+      if ((meta.mode === "TDM" || meta.mode === "CTP" || meta.mode === "CTF") && target.state.team === attachment.state.team) return;
+      const baseDamage = Math.max(0, typeof packet.damage === "number" && Number.isFinite(packet.damage) ? packet.damage : 0);
+      const attackerMultiplier = attachment.adminRole === "owner" ? attachment.damageMultiplier ?? 1 : 1;
+      const damage = Math.min(100, baseDamage * attackerMultiplier);
+      if (damage > 0) targetSocket.send(JSON.stringify({ type: "drone_damage", damage, attackerId: attachment.id, weapon: typeof packet.weapon === "string" ? packet.weapon.slice(0, 40) : "WEAPON" }));
+      return;
+    }
     if (packet.type === "utility_effect") {
       const meta = await this.currentMatch();
       if (meta.phase !== "playing" || packet.effect !== "flash" || !packet.targetId || packet.targetId === attachment.id) return;

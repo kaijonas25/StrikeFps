@@ -1443,7 +1443,7 @@ export function FpsGame() {
       drone.add(new THREE.Mesh(new THREE.BoxGeometry(.75,.14,.48),material(0x263236,.45,.55)));
       [-1,1].forEach((sx)=>[-1,1].forEach((sz)=>{const arm=new THREE.Mesh(new THREE.BoxGeometry(.5,.045,.045),material(0x171d1f,.6,.5)); arm.position.set(sx*.28,0,sz*.2); arm.rotation.y=sx*sz*.65; drone.add(arm); const rotor=new THREE.Mesh(new THREE.CylinderGeometry(.18,.18,.025,14),material(0x111719,.65,.5)); rotor.position.set(sx*.48,.04,sz*.34); drone.add(rotor);}));
       const gunBarrel=new THREE.Mesh(new THREE.BoxGeometry(.09,.09,.5),material(0x101719,.45,.7)); gunBarrel.position.set(0,-.12,-.35); drone.add(gunBarrel);
-      drone.traverse((object)=>{if(object instanceof THREE.Mesh)object.raycast=()=>{};});
+      drone.userData.health = 100;
       return drone;
     };
     let localNetworkTeam: "ALPHA" | "BRAVO" = "ALPHA";
@@ -1613,7 +1613,11 @@ export function FpsGame() {
           else if (packet.type === "drone_state" && packet.id) {
             let drone=remoteDrones.get(packet.id);
             if(packet.active===false){if(drone)scene.remove(drone);remoteDrones.delete(packet.id);}
-            else if(packet.position?.length===3){if(!drone){drone=buildDroneVisual();scene.add(drone);remoteDrones.set(packet.id,drone);}drone.position.set(packet.position[0],packet.position[1],packet.position[2]);if(packet.rotation?.length===3)drone.rotation.set(packet.rotation[0],packet.rotation[1],packet.rotation[2]);}
+            else if(packet.position?.length===3){if(!drone){drone=buildDroneVisual();drone.traverse((object)=>{if(object instanceof THREE.Mesh){object.userData.droneOwnerId=packet.id;object.userData.damageMultiplier=1;}});scene.add(drone);remoteDrones.set(packet.id,drone);}drone.position.set(packet.position[0],packet.position[1],packet.position[2]);if(packet.rotation?.length===3)drone.rotation.set(packet.rotation[0],packet.rotation[1],packet.rotation[2]);}
+          }
+          else if (packet.type === "drone_damage" && typeof packet.damage === "number" && activeDrone) {
+            activeDrone.userData.health = Math.max(0, (activeDrone.userData.health ?? 100) - packet.damage);
+            if (activeDrone.userData.health <= 0) endDroneControl();
           }
           else if (packet.type === "utility_effect" && packet.effect === "flash") {
             setFlashed(true); window.setTimeout(() => setFlashed(false), Math.min(1700, Math.max(250, packet.duration ?? 1000)));
@@ -1974,6 +1978,13 @@ export function FpsGame() {
         const dealtDamage = damage * multiplier * adminDamage;
         multiplayerSendRef.current({ type: "hit", targetId: remotePlayerId, damage: damage * multiplier, weapon, headshot: multiplier >= 2 });
         showDamageNumber(hit.point, dealtDamage, multiplier >= 2);
+        return;
+      }
+      const droneOwnerId = hit.object.userData.droneOwnerId as string | undefined;
+      if (droneOwnerId) {
+        const dealtDamage = damage * adminDamage;
+        multiplayerSendRef.current({ type: "drone_hit", targetId: droneOwnerId, damage, weapon });
+        showDamageNumber(hit.point, dealtDamage, false);
         return;
       }
       const dummy = hit.object.userData.dummy as THREE.Group | undefined;
@@ -2453,7 +2464,18 @@ export function FpsGame() {
       if (activeDrone) {
         const forward = new THREE.Vector3(-Math.sin(droneYaw) * Math.cos(dronePitch), Math.sin(dronePitch), -Math.cos(droneYaw) * Math.cos(dronePitch));
         const right = new THREE.Vector3(Math.cos(droneYaw), 0, -Math.sin(droneYaw));
-        activeDrone.position.add(forward.clone().multiplyScalar(input.y).addScaledVector(right, input.x).multiplyScalar(inputStrength * dt * (keys.has("ShiftLeft") ? 13 : 8)));
+        const droneDelta = forward.clone().multiplyScalar(input.y).addScaledVector(right, input.x).multiplyScalar(inputStrength * dt * (keys.has("ShiftLeft") ? 13 : 8));
+        const droneBlockedAt = (position: THREE.Vector3) => boxes.some((box) => {
+          if (box.active === false) return false;
+          const closestX = THREE.MathUtils.clamp(position.x, box.minX, box.maxX);
+          const closestY = THREE.MathUtils.clamp(position.y, box.minY, box.maxY);
+          const closestZ = THREE.MathUtils.clamp(position.z, box.minZ, box.maxZ);
+          return position.distanceToSquared(new THREE.Vector3(closestX, closestY, closestZ)) < .32;
+        });
+        const nextDronePosition = activeDrone.position.clone();
+        nextDronePosition.x += droneDelta.x; if (!droneBlockedAt(nextDronePosition)) activeDrone.position.x = nextDronePosition.x; else nextDronePosition.x = activeDrone.position.x;
+        nextDronePosition.z += droneDelta.z; if (!droneBlockedAt(nextDronePosition)) activeDrone.position.z = nextDronePosition.z; else nextDronePosition.z = activeDrone.position.z;
+        nextDronePosition.y += droneDelta.y; if (!droneBlockedAt(nextDronePosition)) activeDrone.position.y = nextDronePosition.y;
         activeDrone.position.y = THREE.MathUtils.clamp(activeDrone.position.y, terrainHeightAt(activeDrone.position.x, activeDrone.position.z) + 1.2, 22);
         activeDrone.rotation.set(dronePitch * .18, droneYaw, -input.x * .18);
         if (droneTrigger && now >= nextDroneShot) {
