@@ -44,7 +44,7 @@ type FlagState = { team:PlayerState["team"]; homeX:number; homeZ:number; x:numbe
 type AdminRole = "owner" | "junior" | null;
 type SocketAttachment = { id: string; state: PlayerState; adminRole?: AdminRole; godMode?: boolean; damageMultiplier?: number; lastSeenAt?: number; votedMapPhase?: number; votedMap?: MultiplayerMap; votedModePhase?: number; votedMode?: GameMode; endGamePhase?: number; lastChatAt?: number };
 type MatchMeta = { day: string; phase: "voting" | "playing" | "results"; phaseEndsAt: number; votes: number; mapVotes: Record<MultiplayerMap, number>; modeVotes: number; modeVoteCounts: Record<GameMode, number>; endVotes: number; map: MultiplayerMap; mode: GameMode; teamScores: Record<PlayerState["team"], number>; objectiveZones: ObjectiveZone[]; flags:FlagState[]; lastObjectiveTick: number; winnerId: string | null; winningTeam: PlayerState["team"] | null; winningKills: number };
-type CustomConfig={name:string;map:MultiplayerMap;mode:GameMode;maxPlayers:number};
+type CustomConfig={name:string;map:MultiplayerMap;mode:GameMode;maxPlayers:number;fillBots:boolean};
 const VOTE_DURATION = 30_000;
 const MATCH_DURATION = 10 * 60_000;
 const RESULTS_DURATION = 5_000;
@@ -122,6 +122,16 @@ const chooseSpawn = (meta: MatchMeta, team: PlayerState["team"], players: Player
 };
 
 export class GameRoom extends DurableObject<Env> {
+  private bots=new Map<string,PlayerState>();
+  private lastBotTick=0;
+  private botShotAt=new Map<string,number>();
+  private async syncBots(meta:MatchMeta,config?:CustomConfig){
+    if(!config?.fillBots){for(const bot of this.bots.values())this.broadcast({type:"left",id:bot.id});this.bots.clear();return;}
+    const humans=this.ctx.getWebSockets().filter((socket)=>socket.readyState===WebSocket.OPEN).map((socket)=>(socket.deserializeAttachment() as SocketAttachment).state),target=Math.max(0,(config.maxPlayers||10)-humans.length);
+    while(this.bots.size>target){const bot=this.bots.values().next().value as PlayerState;this.bots.delete(bot.id);this.broadcast({type:"left",id:bot.id});}
+    while(this.bots.size<target){const all=[...humans,...this.bots.values()],alpha=all.filter((player)=>player.team==="ALPHA").length,bravo=all.length-alpha,team:PlayerState["team"]=alpha<=bravo?"ALPHA":"BRAVO",id=`bot-${crypto.randomUUID()}`,spawn=chooseSpawn(meta,team,all);const bot:PlayerState={id,x:spawn.x,y:1.7,z:spawn.z,yaw:spawn.z>0?0:Math.PI,movement:"walk",crouching:false,prone:false,flying:false,slot:1,primary:"VXR-4 CARBINE",secondary:"P9 SIDEARM",equipment:"ARMOR PLATING",playerClass:"RECRUIT",skin:"#a9795e",uniform:team==="ALPHA"?"#324f61":"#603b35",camo:"SOLID",accessories:["GOGGLES"],armor:"#20292b",helmet:"TACTICAL",faceGear:"GOGGLES",headAccessory:"NONE",chestRig:"PLATE CARRIER",backpack:"ASSAULT PACK",pants:"#303a3b",gloves:"#20292b",boots:"#151b1d",kills:0,deaths:0,health:125,team,objectiveScore:0,spawnProtectedUntil:Date.now()+1500,callsign:`BOT ${String(this.bots.size+1).padStart(2,"0")}`};this.bots.set(id,bot);this.broadcast({type:"joined",player:bot});}
+  }
+  private async tickBots(meta:MatchMeta){const now=Date.now();if(now-this.lastBotTick<120)return;const dt=Math.min(.25,(now-this.lastBotTick)/1000||.12);this.lastBotTick=now;const humans=this.ctx.getWebSockets().filter((socket)=>socket.readyState===WebSocket.OPEN).map((socket)=>({socket,attachment:socket.deserializeAttachment() as SocketAttachment}));let scoreChanged=false;for(const bot of this.bots.values()){const enemies=humans.filter(({attachment})=>attachment.state.health>0&&(meta.mode==="FFA"||meta.mode==="KOTH"||attachment.state.team!==bot.team));if(!enemies.length)continue;const target=enemies.sort((a,b)=>Math.hypot(bot.x-a.attachment.state.x,bot.z-a.attachment.state.z)-Math.hypot(bot.x-b.attachment.state.x,bot.z-b.attachment.state.z))[0],dx=target.attachment.state.x-bot.x,dz=target.attachment.state.z-bot.z,distance=Math.hypot(dx,dz)||1;bot.yaw=Math.atan2(-dx,-dz);if(distance>7){bot.x+=dx/distance*3.4*dt;bot.z+=dz/distance*3.4*dt;bot.movement="sprint";}else bot.movement="static";if(distance<20&&now-(this.botShotAt.get(bot.id)??0)>850){this.botShotAt.set(bot.id,now);if(Math.random()<.7&&now>target.attachment.state.spawnProtectedUntil){target.attachment.state.health=Math.max(0,target.attachment.state.health-9);target.socket.serializeAttachment(target.attachment);try{target.socket.send(JSON.stringify({type:"damage",health:target.attachment.state.health,attackerId:bot.id}));}catch{}if(target.attachment.state.health===0){bot.kills++;target.attachment.state.deaths++;if(meta.mode==="TDM"){meta.teamScores[bot.team]++;scoreChanged=true;}this.broadcast({type:"killed",id:target.attachment.id,attackerId:bot.id,weapon:bot.primary,headshot:false});}}}this.broadcast({type:"state",player:bot});}if(scoreChanged){await this.ctx.storage.put("match",meta);this.broadcast({type:"match",match:meta});}}
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
     if(url.pathname==="/registry/add"&&request.method==="POST"){
@@ -139,7 +149,7 @@ export class GameRoom extends DurableObject<Env> {
     }
     if(url.pathname==="/custom/configure"&&request.method==="POST"){
       const body=await request.json<{code?:string;config?:CustomConfig}>();if(!body.code||!body.config)return json({error:"Missing custom server configuration"},400);
-      const config:CustomConfig={name:safeString(body.config.name,"CUSTOM SERVER",24).replace(/[^a-z0-9 _-]/gi,"").trim()||"CUSTOM SERVER",map:SPAWNS[body.config.map]?body.config.map:"CITY BLOCK",mode:["FFA","TDM","KOTH","CTP","CTF"].includes(body.config.mode)?body.config.mode:"FFA",maxPlayers:Math.max(2,Math.min(16,Math.trunc(body.config.maxPlayers)||8))};
+      const requestedLimit=Math.trunc(body.config.maxPlayers);const config:CustomConfig={name:safeString(body.config.name,"CUSTOM SERVER",24).replace(/[^a-z0-9 _-]/gi,"").trim()||"CUSTOM SERVER",map:SPAWNS[body.config.map]?body.config.map:"CITY BLOCK",mode:["FFA","TDM","KOTH","CTP","CTF"].includes(body.config.mode)?body.config.mode:"FFA",maxPlayers:requestedLimit===0?0:Math.max(2,Math.min(16,requestedLimit||8)),fillBots:Boolean(body.config.fillBots)};
       const spots:Record<MultiplayerMap,[number,number][]>= {"CITY BLOCK":[[0,0],[-24,0],[24,0]],"BLACKWOOD FOREST":[[5,0],[-25,-15],[22,15]],"FROSTLINE BASE":[[0,22],[-28,18],[28,18]],"TIDEBREAK BEACH":[[0,43],[-31,57],[32,58]],"DUSTFALL DESERT":[[0,0],[-38,30],[38,-27]]};
       const alphaHome=SPAWNS[config.map].ALPHA[2],bravoHome=SPAWNS[config.map].BRAVO[2],objectiveSpots=spots[config.map];
       const match:MatchMeta={day:new Date().toISOString().slice(0,10),phase:"playing",phaseEndsAt:Date.now()+MATCH_DURATION,votes:0,mapVotes:{"CITY BLOCK":0,"BLACKWOOD FOREST":0,"FROSTLINE BASE":0,"TIDEBREAK BEACH":0,"DUSTFALL DESERT":0},modeVotes:0,modeVoteCounts:{FFA:0,TDM:0,KOTH:0,CTP:0,CTF:0},endVotes:0,map:config.map,mode:config.mode,teamScores:{ALPHA:0,BRAVO:0},objectiveZones:config.mode==="KOTH"?[{id:"HILL",x:objectiveSpots[0][0],z:objectiveSpots[0][1],radius:7.5,owner:null,progress:0}]:config.mode==="CTP"?objectiveSpots.map(([x,z],index)=>({id:String.fromCharCode(65+index),x,z,radius:4.25,owner:null,progress:0})):[],flags:config.mode==="CTF"?[{team:"ALPHA",homeX:alphaHome[0],homeZ:alphaHome[1],x:alphaHome[0],z:alphaHome[1],carrierId:null,dropped:false},{team:"BRAVO",homeX:bravoHome[0],homeZ:bravoHome[1],x:bravoHome[0],z:bravoHome[1],carrierId:null,dropped:false}]:[],lastObjectiveTick:Date.now(),winnerId:null,winningTeam:null,winningKills:0};
@@ -167,7 +177,7 @@ export class GameRoom extends DurableObject<Env> {
     }
     if (request.headers.get("Upgrade") !== "websocket") return json({ error: "WebSocket upgrade required" }, 426);
     const customConfig=await this.ctx.storage.get<CustomConfig>("customConfig");
-    if(customConfig&&this.ctx.getWebSockets().filter((socket)=>socket.readyState===WebSocket.OPEN).length>=customConfig.maxPlayers)return json({error:"Custom server is full."},403);
+    if(customConfig&&customConfig.maxPlayers>0&&this.ctx.getWebSockets().filter((socket)=>socket.readyState===WebSocket.OPEN).length>=customConfig.maxPlayers)return json({error:"Custom server is full."},403);
     const meta = await this.currentMatch();
     // Cancel a pending empty-room reset when clients return after loading a map.
     await this.ctx.storage.delete("emptyResetAt");
@@ -183,8 +193,9 @@ export class GameRoom extends DurableObject<Env> {
     const initial: PlayerState = { id, x: spawnX, y: 1.7, z: spawnZ, yaw: spawnZ > 0 ? 0 : Math.PI, movement: "static", crouching: false, prone: false, flying: false, slot: 1, primary: "VXR-4 CARBINE", secondary: "P9 SIDEARM", equipment: "ARMOR PLATING", playerClass: "RECRUIT", skin: "#a9795e", uniform: "#303a3b", camo: "SOLID", accessories: ["GOGGLES", "HEADSET"], armor: "#20292b", helmet: "TACTICAL", faceGear: "GOGGLES", headAccessory: "HEADSET", chestRig: "PLATE CARRIER", backpack: "ASSAULT PACK", pants: "#303a3b", gloves: "#20292b", boots: "#151b1d", kills: 0, deaths: 0, health: 125, team, objectiveScore: 0, spawnProtectedUntil: Date.now() + 3000, callsign:`OPERATOR ${id.slice(0,4).toUpperCase()}` };
     this.ctx.acceptWebSocket(server);
     server.serializeAttachment({ id, state: initial, adminRole: null, godMode: false, damageMultiplier: 1, lastSeenAt: Date.now() } satisfies SocketAttachment);
+    await this.syncBots(meta,customConfig);
 
-    const players = existingPlayers;
+    const players = [...existingPlayers,...this.bots.values()];
     const joiningAttachment = server.deserializeAttachment() as SocketAttachment;
     server.send(JSON.stringify({ type: "welcome", id, player: initial, players, match: meta, yourMapVote: joiningAttachment.votedMapPhase === meta.phaseEndsAt ? joiningAttachment.votedMap : null, yourModeVote: joiningAttachment.votedModePhase === meta.phaseEndsAt ? joiningAttachment.votedMode : null }));
     this.broadcast({ type: "joined", player: initial }, server);
@@ -278,7 +289,7 @@ export class GameRoom extends DurableObject<Env> {
       const meta = await this.currentMatch();
       if (meta.phase !== "playing" || !packet.targetId || packet.targetId === attachment.id) return;
       const targetSocket = this.ctx.getWebSockets().find((candidate) => (candidate.deserializeAttachment() as SocketAttachment).id === packet.targetId);
-      if (!targetSocket) return;
+      if(!targetSocket){const bot=this.bots.get(packet.targetId);if(!bot||bot.health<=0||(meta.mode!=="FFA"&&meta.mode!=="KOTH"&&bot.team===attachment.state.team)||bot.spawnProtectedUntil>Date.now())return;const damage=Math.min(100,Math.max(0,typeof packet.damage==="number"&&Number.isFinite(packet.damage)?packet.damage:0)*(attachment.adminRole==="owner"?attachment.damageMultiplier??1:1));if(!damage)return;bot.health=Math.max(0,bot.health-damage);if(bot.health===0){attachment.state.kills++;bot.deaths++;if(meta.mode==="TDM")meta.teamScores[attachment.state.team]++;this.broadcast({type:"killed",id:bot.id,attackerId:attachment.id,weapon:typeof packet.weapon==="string"?packet.weapon.slice(0,40):"WEAPON",headshot:Boolean(packet.headshot)});const spawn=chooseSpawn(meta,bot.team,[...this.bots.values(),...this.ctx.getWebSockets().map((candidate)=>(candidate.deserializeAttachment() as SocketAttachment).state)]);bot.x=spawn.x;bot.z=spawn.z;bot.health=maxHealth(bot);bot.spawnProtectedUntil=Date.now()+2000;this.broadcast({type:"player_health",id:bot.id,health:bot.health});await this.ctx.storage.put("match",meta);}else this.broadcast({type:"player_health",id:bot.id,health:bot.health,attackerId:attachment.id});socket.serializeAttachment(attachment);this.broadcast({type:"state",player:bot});return;}
       const target = targetSocket.deserializeAttachment() as SocketAttachment;
       if ((meta.mode === "TDM" || meta.mode === "CTP" || meta.mode === "CTF") && target.state.team === attachment.state.team) return;
       if ((target.state.spawnProtectedUntil ?? 0) > Date.now()) return;
@@ -384,6 +395,7 @@ export class GameRoom extends DurableObject<Env> {
     socket.serializeAttachment(attachment);
     this.broadcast({ type: "state", player: attachment.state }, socket);
     const meta = await this.currentMatch();
+    await this.tickBots(meta);
     if (meta.phase === "playing" && (meta.mode === "KOTH" || meta.mode === "CTP" || meta.mode === "CTF")) await this.updateObjectives(meta);
   }
 
@@ -435,6 +447,7 @@ export class GameRoom extends DurableObject<Env> {
       await this.ctx.storage.setAlarm(emptyResetAt);
       return;
     }
+    await this.syncBots(meta,await this.ctx.storage.get<CustomConfig>("customConfig"));
     if (meta.phase === "voting" && remainingPlayers.every((candidate) => {
       const vote = candidate.deserializeAttachment() as SocketAttachment;
       return vote.votedMapPhase === meta.phaseEndsAt && vote.votedModePhase === meta.phaseEndsAt;
@@ -608,7 +621,7 @@ export default {
     if(url.pathname==="/custom/create"&&request.method==="POST"){
       const token=request.headers.get("authorization")?.replace(/^Bearer\s+/i,"");if(!await verifiedPlayerToken(token))return json({error:"Sign in to create a custom server."},401);
       const alphabet="ABCDEFGHJKLMNPQRSTUVWXYZ23456789";let code="",exists=true;while(exists){code="";for(let index=0;index<6;index++)code+=alphabet[crypto.getRandomValues(new Uint8Array(1))[0]%alphabet.length];const response=await env.GAME_ROOMS.getByName("__custom-registry").fetch(`https://room.internal/registry/exists?code=${code}`);exists=(await response.json<{exists:boolean}>()).exists;}
-      const body=await request.json<Partial<CustomConfig>>().catch(()=>({}));const config={name:body.name??"CUSTOM SERVER",map:body.map??"CITY BLOCK",mode:body.mode??"FFA",maxPlayers:body.maxPlayers??8};
+      const body=await request.json<Partial<CustomConfig>>().catch(()=>({}));const config={name:body.name??"CUSTOM SERVER",map:body.map??"CITY BLOCK",mode:body.mode??"FFA",maxPlayers:body.maxPlayers??8,fillBots:Boolean(body.fillBots)};
       await env.GAME_ROOMS.getByName(`custom-${code}`).fetch("https://room.internal/custom/configure",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({code,config})});await env.GAME_ROOMS.getByName("__custom-registry").fetch("https://room.internal/registry/add",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({code,createdAt:Date.now()})});return json({code});
     }
     if(url.pathname==="/custom/list"){
