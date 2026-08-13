@@ -2065,7 +2065,7 @@ export function FpsGame() {
     };
     const spawnExplosionVisual = (position: THREE.Vector3, utilityType: string) => {
       const flashbang = utilityType === "FLASHBANG";
-      const power = utilityType === "C4 CHARGE" ? 1.35 : utilityType === "LANDMINE" ? 1.08 : flashbang ? .82 : 1;
+      const power = utilityType === "AIRSTRIKE" ? 1.85 : utilityType === "C4 CHARGE" ? 1.35 : utilityType === "LANDMINE" ? 1.08 : flashbang ? .82 : 1;
       const effect = new THREE.Group(); effect.position.copy(position); scene.add(effect);
       const noRaycast = (mesh: THREE.Object3D) => { mesh.raycast = () => {}; return mesh; };
       const additive = THREE.AdditiveBlending;
@@ -2263,7 +2263,7 @@ export function FpsGame() {
       classAbilityReadyAt = now + 35_000; setClassCooldown(35);
       const target = new THREE.Vector3(x, terrainHeightAt(x, z) + .05, z);
       const barrage=[[0,0],[-3.8,2.2],[4.4,-1.4],[-1.5,-4.8],[2.5,4.7],[-6,.4],[5.8,2.6],[-3.2,6],[1.1,-6.3]];
-      barrage.forEach(([offsetX,offsetZ],index)=>window.setTimeout(()=>{const impact=target.clone().add(new THREE.Vector3(offsetX,0,offsetZ));impact.y=terrainHeightAt(impact.x,impact.z)+.05;classBlast(impact,6,78,"AIRSTRIKE");},index*285));
+      barrage.forEach(([offsetX,offsetZ],index)=>window.setTimeout(()=>{const impact=target.clone().add(new THREE.Vector3(offsetX,0,offsetZ));impact.y=terrainHeightAt(impact.x,impact.z)+.05;classBlast(impact,8.5,92,"AIRSTRIKE");},index*285));
     };
     airstrikeTargetRef.current = callAirstrike;
     const useClassItem = () => {
