@@ -284,6 +284,9 @@ body:has(.account-shell) { overflow:hidden; touch-action:pan-y; }
   .mobile-actions button { width:64px; height:64px; border-radius:18px; font-size:8px; }
   .mobile-actions .mobile-aim { position:fixed; left:max(225px,calc(env(safe-area-inset-left) + 205px)); bottom:max(160px,calc(env(safe-area-inset-bottom) + 150px)); width:82px; height:82px; border:2px solid rgba(107,203,255,.72); border-radius:50%; color:#bfeaff; background:rgba(18,74,100,.5); font-size:11px; }
   .mobile-actions .mobile-fire { position:absolute; right:0; bottom:12px; width:98px; height:98px; border:3px solid rgba(255,99,54,.9); border-radius:50%; color:#fff; background:rgba(174,48,22,.58); box-shadow:0 0 24px rgba(255,73,37,.2),inset 0 0 25px rgba(255,99,54,.18); font-size:13px; }
+  .mobile-movement-actions { position:absolute; left:max(20px,env(safe-area-inset-left)); top:max(78px,calc(env(safe-area-inset-top) + 64px)); display:grid; grid-template-columns:repeat(3,52px); gap:8px; pointer-events:none; }
+  .mobile-movement-actions button { width:52px; height:52px; border-radius:14px; font-size:7px; line-height:1.35; letter-spacing:.05em; }
+  .mobile-movement-actions button:nth-child(4) { grid-column:1 / 2; }.mobile-movement-actions button:nth-child(5) { grid-column:2 / 3; }
   .mobile-slots { position:absolute; right:max(20px,env(safe-area-inset-right)); top:max(76px,calc(env(safe-area-inset-top) + 60px)); display:flex; gap:7px; pointer-events:none; }
   .mobile-slots button { width:50px; height:50px; border-radius:12px; font-size:11px; }.mobile-slots button.active { border-color:#ff6336; color:#ff8c68; background:rgba(255,99,54,.22); }
   .quick-slots,.test-legend,.stance-status { display:none; }
@@ -295,4 +298,5 @@ body:has(.account-shell) { overflow:hidden; touch-action:pan-y; }
   .mobile-actions { transform:scale(.78); transform-origin:right bottom; }
   .mobile-actions .mobile-aim { left:155px; bottom:175px; transform:scale(.82); }
   .mobile-controls .mobile-sprint { left:160px; bottom:38px; width:68px; height:68px; font-size:8px; }
+  .mobile-movement-actions { top:72px; grid-template-columns:repeat(3,46px); gap:6px; }.mobile-movement-actions button { width:46px; height:46px; font-size:6px; }
 }
