@@ -1114,21 +1114,28 @@ export function FpsGame() {
       const addAdobeHouse=(x:number,z:number,w:number,d:number,h:number,turn=0,variant=0,twoStory=false)=>{
         const ground=terrainHeightAt(x,z),group=new THREE.Group();group.position.set(x,ground,z);group.rotation.y=turn;scene.add(group);
         const houseMat=material(adobeColors[variant%adobeColors.length],.99,0);
-        const totalH=twoStory?h*1.72:h,wall=.42,doorWidth=1.3,doorHeight=2.5,doorX=variant%2?w*.19:-w*.19;
+        const totalH=twoStory?h*1.72:h,wall=.42,doorWidth=1.3,doorHeight=2.5,doorX=variant%2?w*.19:-w*.19,stairSide=variant%2?1:-1;
         const addLocalPart=(lw:number,lh:number,ld:number,lx:number,ly:number,lz:number,partMaterial:THREE.Material,collide=true)=>{
           const mesh=new THREE.Mesh(new THREE.BoxGeometry(lw,lh,ld),partMaterial);mesh.position.set(lx,ly,lz);mesh.castShadow=mesh.receiveShadow=true;group.add(mesh);
           if(collide){const wx=x+lx*Math.cos(turn)+lz*Math.sin(turn),wz=z-lx*Math.sin(turn)+lz*Math.cos(turn),halfX=Math.abs(Math.cos(turn))*lw/2+Math.abs(Math.sin(turn))*ld/2,halfZ=Math.abs(Math.sin(turn))*lw/2+Math.abs(Math.cos(turn))*ld/2;boxes.push({minX:wx-halfX,maxX:wx+halfX,minY:ground+ly-lh/2,maxY:ground+ly+lh/2,minZ:wz-halfZ,maxZ:wz+halfZ});placementSurfaces.push(mesh);}return mesh;
         };
-        // Four separate walls replace the old solid block, leaving a genuinely playable interior.
+        // An adobe foundation skirt reaches into uneven terrain so walls, floors, and stairs never float.
+        addLocalPart(w+.18,1.5,d+.18,0,-.72,0,houseMat,false);
+        // Four separate walls leave a playable interior. Two-storey houses also
+        // have a full-height stair notch through the front wall for roof access.
         addLocalPart(w,totalH,wall,0,totalH/2,d/2,houseMat);addLocalPart(wall,totalH,d,-w/2,totalH/2,0,houseMat);addLocalPart(wall,totalH,d,w/2,totalH/2,0,houseMat);
-        const leftWidth=doorX-doorWidth/2+w/2,rightStart=doorX+doorWidth/2,rightWidth=w/2-rightStart;
-        if(leftWidth>0)addLocalPart(leftWidth,totalH,wall,-w/2+leftWidth/2,totalH/2,-d/2,houseMat);
-        if(rightWidth>0)addLocalPart(rightWidth,totalH,wall,rightStart+rightWidth/2,totalH/2,-d/2,houseMat);
+        const openings:Array<[number,number]>=[[doorX-doorWidth/2,doorX+doorWidth/2],...(twoStory?[[stairSide*(w/2-1.05)-1.12,stairSide*(w/2-1.05)+1.12] as [number,number]]:[])];
+        const cuts=[-w/2,...openings.flatMap(([start,end])=>[Math.max(-w/2,start),Math.min(w/2,end)]),w/2].sort((a,b)=>a-b);
+        for(let cut=0;cut<cuts.length-1;cut++){const start=cuts[cut],end=cuts[cut+1],mid=(start+end)/2;if(end-start>.08&&!openings.some(([openStart,openEnd])=>mid>openStart&&mid<openEnd))addLocalPart(end-start,totalH,wall,mid,totalH/2,-d/2,houseMat);}
         addLocalPart(doorWidth,totalH-doorHeight,wall,doorX,doorHeight+(totalH-doorHeight)/2,-d/2,houseMat,false);
         addLocalPart(w-.45,.14,d-.45,0,.07,0,material(0x8d633e,.98,0),false);
         const roof=addLocalPart(w,.24,d,0,totalH-.12,0,houseMat,false);placementSurfaces.push(roof);
         if(twoStory)addLocalPart(w-.7,.22,d-.7,0,h-.05,0,material(0x8d633e,.98,0),false);
-        const parapet=new THREE.Mesh(new THREE.BoxGeometry(w+.18,.36,d+.18),houseMat);parapet.position.y=totalH+.12;parapet.castShadow=true;group.add(parapet);
+        // Flat roof with waist-high adobe half-walls. The front parapet has a
+        // wide opening aligned with the stairs instead of a rail across the landing.
+        const parapetH=1.05,parapetY=totalH+parapetH/2;
+        addLocalPart(w,parapetH,wall,0,parapetY,d/2,houseMat);addLocalPart(wall,parapetH,d,-w/2,parapetY,0,houseMat);addLocalPart(wall,parapetH,d,w/2,parapetY,0,houseMat);
+        if(twoStory){const landingX=stairSide*(w/2-1.05),opening=2.35,leftEnd=landingX-opening/2,rightStart=landingX+opening/2;if(leftEnd>-w/2)addLocalPart(leftEnd+w/2,parapetH,wall,(-w/2+leftEnd)/2,parapetY,-d/2,houseMat);if(rightStart<w/2)addLocalPart(w/2-rightStart,parapetH,wall,(rightStart+w/2)/2,parapetY,-d/2,houseMat);}else addLocalPart(w,parapetH,wall,0,parapetY,-d/2,houseMat);
         // City Block's hinged door behavior, transformed into each house's local rotation.
         const hingeLocalX=doorX-doorWidth/2,hingeLocalZ=-d/2-.05,hingeX=x+hingeLocalX*Math.cos(turn)+hingeLocalZ*Math.sin(turn),hingeZ=z-hingeLocalX*Math.sin(turn)+hingeLocalZ*Math.cos(turn);
         const pivot=new THREE.Group();pivot.position.set(hingeX,ground,hingeZ);pivot.rotation.y=turn;scene.add(pivot);
@@ -1143,13 +1150,10 @@ export function FpsGame() {
           const windowMesh=new THREE.Mesh(new THREE.BoxGeometry(.82,.82,.13),material(darkOpening,.98,0));windowMesh.position.set(wx,twoStory?h*.58:h*.58,-d/2-.08);windowMesh.raycast=()=>{};group.add(windowMesh);
           const lintel=new THREE.Mesh(new THREE.CylinderGeometry(.075,.09,1.25,7),material(timber,.96,0));lintel.rotation.z=Math.PI/2;lintel.position.set(wx,h*.58+.58,-d/2-.2);lintel.raycast=()=>{};group.add(lintel);
         }
-        for(let beam=0;beam<4;beam++){const roofBeam=new THREE.Mesh(new THREE.CylinderGeometry(.07,.1,d+.65,7),material(timber,.96,0));roofBeam.rotation.x=Math.PI/2;roofBeam.position.set((beam-1.5)*w*.2,totalH+.36,0);roofBeam.raycast=()=>{};group.add(roofBeam);}
-        const awning=new THREE.Mesh(new THREE.BoxGeometry(2.5,.12,1.05),material(0x765035,.98,0));awning.position.set(door.position.x,2.68,-d/2-.55);awning.rotation.x=-.08;awning.raycast=()=>{};group.add(awning);
-        const corners=[[-w/2,-d/2],[w/2,-d/2],[-w/2,d/2],[w/2,d/2]];
-        corners.forEach(([cx,cz],i)=>{const cap=new THREE.Mesh(new THREE.SphereGeometry(.3,7,5),houseMat);cap.scale.set(1.2,.55,1.2);cap.position.set(cx,totalH+.12+(i%2)*.04,cz);cap.raycast=()=>{};group.add(cap);});
+        const awning=new THREE.Mesh(new THREE.BoxGeometry(2.5,.12,1.05),material(0x765035,.98,0));awning.position.set(doorX,2.68,-d/2-.55);awning.rotation.x=-.08;awning.raycast=()=>{};group.add(awning);
         if(twoStory){
-          const stairSide=variant%2?1:-1,steps=12;
-          for(let step=0;step<steps;step++){const progress=(step+.5)/steps,stepH=totalH*progress,localX=stairSide*(w/2-1.05),localZ=-d/2-4.6+progress*4.6;addLocalPart(1.8,stepH,.42,localX,stepH/2,localZ,material(step%2?0x9d6941:0xad7849,.98,0),false);}
+          const steps=16;
+          for(let step=0;step<steps;step++){const progress=(step+1)/steps,stepH=totalH*progress,localX=stairSide*(w/2-1.05),localZ=-d/2-5.4+progress*5.4;addLocalPart(1.9,stepH,.48,localX,stepH/2,localZ,material(step%2?0x9d6941:0xad7849,.98,0),false);}
           desertClimbSurfaces.push({x,z,w,d,turn,baseY:ground,roofY:ground+totalH,stairSide});
         }
       };
@@ -1171,7 +1175,7 @@ export function FpsGame() {
       let height=terrainHeightAt(x,z);
       desertClimbSurfaces.forEach((surface)=>{const dx=x-surface.x,dz=z-surface.z,c=Math.cos(surface.turn),s=Math.sin(surface.turn),lx=dx*c-dz*s,lz=dx*s+dz*c;
         const onRoof=Math.abs(lx)<=surface.w/2-.25&&Math.abs(lz)<=surface.d/2-.25&&currentFeetY>surface.roofY-.85;
-        const stairProgress=THREE.MathUtils.clamp((lz+surface.d/2+4.6)/4.6,0,1),onStairs=Math.abs(lx-surface.stairSide*(surface.w/2-1.05))<1.05&&lz>=-surface.d/2-4.6&&lz<=-surface.d/2+.25;
+        const stairProgress=THREE.MathUtils.clamp((lz+surface.d/2+5.4)/5.4,0,1),onStairs=Math.abs(lx-surface.stairSide*(surface.w/2-1.05))<1.12&&lz>=-surface.d/2-5.4&&lz<=-surface.d/2+.45;
         if(onRoof)height=Math.max(height,surface.roofY);else if(onStairs)height=Math.max(height,surface.baseY+(surface.roofY-surface.baseY)*stairProgress);
       });return height;
     };
