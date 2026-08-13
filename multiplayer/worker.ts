@@ -56,8 +56,18 @@ const maxHealth = (player: Pick<PlayerState, "equipment" | "playerClass">) => (p
 
 const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), {
   status,
-  headers: { "content-type": "application/json", "access-control-allow-origin": "*" },
+  headers: { "content-type": "application/json", "access-control-allow-origin": "*", "access-control-allow-headers": "authorization, content-type", "access-control-allow-methods": "GET, POST, OPTIONS" },
 });
+
+const verifiedPlayerToken = async (idToken: unknown) => {
+  if (typeof idToken !== "string" || idToken.length < 20 || idToken.length > 4096) return false;
+  return (await fetch(PLAYER_API_URL, { headers: { authorization: `Bearer ${idToken}` } })).ok;
+};
+const verifiedPrimaryOwnerToken = async (idToken: unknown) => {
+  if (typeof idToken !== "string" || idToken.length < 20 || idToken.length > 4096) return false;
+  const response=await fetch(PLAYER_API_URL,{headers:{authorization:`Bearer ${idToken}`}});if(!response.ok)return false;
+  return Boolean((await response.json() as {primaryOwner?:boolean}).primaryOwner);
+};
 
 const verifiedAdminToken = async (idToken: unknown): Promise<AdminRole> => {
   if (typeof idToken !== "string" || idToken.length < 20 || idToken.length > 4096) return null;
@@ -110,9 +120,16 @@ const chooseSpawn = (meta: MatchMeta, team: PlayerState["team"], players: Player
   }).sort((a,b) => b.score-a.score)[0];
 };
 
-export class GameRoom extends DurableObject {
+export class GameRoom extends DurableObject<Env> {
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
+    if(url.pathname==="/registry/add"&&request.method==="POST"){
+      const body=await request.json<{code?:string;createdAt?:number}>();if(!body.code)return json({error:"Missing code"},400);
+      const rooms=await this.ctx.storage.get<Record<string,number>>("customRooms")??{};rooms[body.code]=body.createdAt??Date.now();await this.ctx.storage.put("customRooms",rooms);return json({ok:true});
+    }
+    if(url.pathname==="/registry/list"){
+      const rooms=await this.ctx.storage.get<Record<string,number>>("customRooms")??{};const entries=await Promise.all(Object.entries(rooms).map(async([code,createdAt])=>{const response=await this.env.GAME_ROOMS.getByName(`custom-${code}`).fetch("https://room.internal/status");const status=await response.json<{players:number}>();return{code,createdAt,players:status.players};}));return json({rooms:entries.sort((a,b)=>b.createdAt-a.createdAt)});
+    }
     if (url.pathname === "/status") {
       const now = Date.now();
       const cleanupKey = "cleanup-operator-4204-v1";
@@ -553,6 +570,7 @@ interface Env { GAME_ROOMS: DurableObjectNamespace<GameRoom> }
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
+    if(request.method==="OPTIONS")return new Response(null,{status:204,headers:{"access-control-allow-origin":"*","access-control-allow-headers":"authorization, content-type","access-control-allow-methods":"GET, POST, OPTIONS"}});
     if (url.pathname === "/health") return json({ online: true });
     if (url.pathname === "/rooms") {
       const sectors = await Promise.all([1, 2, 3, 4].map(async (number) => {
@@ -563,7 +581,16 @@ export default {
       }));
       return json({ sectors: Object.fromEntries(sectors) });
     }
-    const match = url.pathname.match(/^\/room\/(sector-[1-4])$/);
+    if(url.pathname==="/custom/create"&&request.method==="POST"){
+      const token=request.headers.get("authorization")?.replace(/^Bearer\s+/i,"");if(!await verifiedPlayerToken(token))return json({error:"Sign in to create a custom server."},401);
+      const alphabet="ABCDEFGHJKLMNPQRSTUVWXYZ23456789";let code="";for(let index=0;index<6;index++)code+=alphabet[crypto.getRandomValues(new Uint8Array(1))[0]%alphabet.length];
+      await env.GAME_ROOMS.getByName("__custom-registry").fetch("https://room.internal/registry/add",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({code,createdAt:Date.now()})});return json({code});
+    }
+    if(url.pathname==="/custom/list"){
+      const token=request.headers.get("authorization")?.replace(/^Bearer\s+/i,"");if(!await verifiedPrimaryOwnerToken(token))return json({error:"Primary owner access required."},403);
+      return env.GAME_ROOMS.getByName("__custom-registry").fetch("https://room.internal/registry/list");
+    }
+    const match = url.pathname.match(/^\/room\/(sector-[1-4]|custom-[A-Z2-9]{6})$/);
     if (!match) return json({ error: "Unknown multiplayer room" }, 404);
     return env.GAME_ROOMS.getByName(match[1]).fetch(request);
   },

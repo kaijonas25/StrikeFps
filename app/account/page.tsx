@@ -9,12 +9,15 @@ type Player = { callsign: string; level: number; experience: number; matchesPlay
 type AdminStatus = "idle" | "saving" | "saved" | "error";
 type AdminRole = "owner" | "junior";
 type AdminGrant = { email: string; role: AdminRole; locked?: boolean };
+type CustomRoom = { code: string; createdAt: number; players: number };
+const MULTIPLAYER_SERVER = "https://strikeyard-multiplayer.kaigarcia2510.workers.dev";
 
 export default function AccountPage() {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [player, setPlayer] = useState<Player | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [isPrimaryOwner,setIsPrimaryOwner]=useState(false);
   const [adminStatus, setAdminStatus] = useState<AdminStatus>("idle");
   const [adminError, setAdminError] = useState("");
   const [adminGrants, setAdminGrants] = useState<AdminGrant[]>([]);
@@ -24,6 +27,7 @@ export default function AccountPage() {
   const [nickname, setNickname] = useState("");
   const [nicknameStatus, setNicknameStatus] = useState<AdminStatus>("idle");
   const [nicknameError, setNicknameError] = useState("");
+  const [customRooms,setCustomRooms]=useState<CustomRoom[]>([]);
 
   useEffect(() => onAuthStateChanged(auth, async (currentUser) => {
     if (!currentUser) { router.replace("/login"); return; }
@@ -31,16 +35,18 @@ export default function AccountPage() {
     const token = await currentUser.getIdToken();
     const response = await fetch("/api/player", { headers: { Authorization: `Bearer ${token}` } });
     if (response.ok) {
-      const data = await response.json() as { player: Player; adminRole?: "owner" | "junior" | null };
+      const data = await response.json() as { player: Player; adminRole?: "owner" | "junior" | null; primaryOwner?:boolean };
       setPlayer(data.player);
       setNickname(data.player.callsign);
       setIsAdmin(data.adminRole === "owner");
+      setIsPrimaryOwner(Boolean(data.primaryOwner));
       if (data.adminRole === "owner") {
         const rolesResponse = await fetch("/api/admin-roles", { headers: { Authorization: `Bearer ${token}` } });
         if (rolesResponse.ok) {
           const rolesData = await rolesResponse.json() as { grants?: AdminGrant[] };
           setAdminGrants(rolesData.grants ?? []);
         }
+        if(data.primaryOwner){const roomsResponse=await fetch(`${MULTIPLAYER_SERVER}/custom/list`,{headers:{Authorization:`Bearer ${token}`}});if(roomsResponse.ok){const roomsData=await roomsResponse.json() as {rooms?:CustomRoom[]};setCustomRooms(roomsData.rooms??[]);}}
       }
     }
   }), [router]);
@@ -141,6 +147,11 @@ export default function AccountPage() {
         </div></div>)}
       </div>
       <span className={`role-status ${grantStatus}`}>{grantStatus === "saved" ? "ADMIN ACCESS UPDATED" : grantStatus === "error" ? grantError : ""}</span>
+    </section>}
+    {isPrimaryOwner && <section className="admin-panel custom-room-manager">
+      <div className="admin-heading"><div><small>PRIMARY OWNER VISIBILITY</small><h2>CUSTOM SERVER <span>CODES</span></h2></div><b>OWNER ONLY</b></div>
+      <p>These access codes are visible only from your owner account. Players can join by entering a code from the Play menu.</p>
+      <div className="custom-room-list">{customRooms.map((room)=><div key={room.code}><strong>{room.code}</strong><span>{room.players} PLAYER{room.players===1?"":"S"} ONLINE</span><small>CREATED {new Date(room.createdAt).toLocaleString()}</small></div>)}{!customRooms.length&&<div><strong>NO SERVERS</strong><span>CREATE ONE FROM PLAY</span></div>}</div>
     </section>}
   </main>;
 }

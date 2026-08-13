@@ -41,6 +41,7 @@ export async function GET(request: Request) {
   return Response.json({
     isAdmin: adminRole !== null,
     adminRole,
+    primaryOwner: account.email.toLowerCase() === OWNER_EMAIL,
     player: {
       ...player,
       loadout: JSON.parse(player.loadoutJson),

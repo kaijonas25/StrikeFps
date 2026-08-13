@@ -13,8 +13,8 @@ type ObjectiveZone = { id: string; x: number; z: number; radius: number; owner: 
 type FlagState = { team:"ALPHA"|"BRAVO"; homeX:number; homeZ:number; x:number; z:number; carrierId:string|null; dropped:boolean };
 type MenuPage = "HOME" | "LOADOUT" | "CHARACTER" | "CLASSES" | "SETTINGS";
 type GameMap = "TEST YARD" | "CITY BLOCK" | "BLACKWOOD FOREST" | "FROSTLINE BASE" | "TIDEBREAK BEACH" | "DUSTFALL DESERT";
-type GameSector = "TRAINING SECTOR" | "SECTOR 1" | "SECTOR 2" | "SECTOR 3" | "SECTOR 4";
-type MultiplayerSector = Exclude<GameSector, "TRAINING SECTOR">;
+type GameSector = "TRAINING SECTOR" | "SECTOR 1" | "SECTOR 2" | "SECTOR 3" | "SECTOR 4" | "CUSTOM SERVER";
+type MultiplayerSector = "SECTOR 1" | "SECTOR 2" | "SECTOR 3" | "SECTOR 4";
 type KillFeedEntry = { id: number; killer: string; victim: string; weapon: string; headshot: boolean };
 type NetworkPlayerSummary = { callsign: string; kills: number; deaths: number };
 type ChatMessage = { id: string; senderId: string; text: string; sentAt: number };
@@ -207,6 +207,8 @@ export function FpsGame() {
   const [selectedMap, setSelectedMap] = useState<GameMap>("TEST YARD");
   const [selectedSector, setSelectedSector] = useState<GameSector>("SECTOR 1");
   const [serverBrowserOpen, setServerBrowserOpen] = useState(false);
+  const [customServerCode,setCustomServerCode]=useState("");
+  const [customServerStatus,setCustomServerStatus]=useState("");
   const [sectorPlayerCounts, setSectorPlayerCounts] = useState<Record<MultiplayerSector, number | null>>({ "SECTOR 1": null, "SECTOR 2": null, "SECTOR 3": null, "SECTOR 4": null });
   const [matchPhase, setMatchPhase] = useState<"connecting" | "voting" | "playing" | "results">("connecting");
   const [mapVotes, setMapVotes] = useState(0);
@@ -1526,7 +1528,7 @@ export function FpsGame() {
     if (started && selectedSector !== "TRAINING SECTOR" && MULTIPLAYER_SERVER) {
       setMultiplayerStatus("CONNECTING");
       const serverUrl = MULTIPLAYER_SERVER.replace(/^http/, "ws").replace(/\/$/, "");
-      multiplayerSocket = new WebSocket(`${serverUrl}/room/${selectedSector.toLowerCase().replace(" ", "-")}`);
+      multiplayerSocket = new WebSocket(`${serverUrl}/room/${selectedSector === "CUSTOM SERVER" ? `custom-${customServerCode}` : selectedSector.toLowerCase().replace(" ", "-")}`);
       multiplayerSocketRef.current = multiplayerSocket;
       multiplayerSendRef.current = (packet) => { if (multiplayerSocket?.readyState === WebSocket.OPEN) multiplayerSocket.send(JSON.stringify(packet)); };
       multiplayerSocket.addEventListener("open", () => {
@@ -2946,7 +2948,7 @@ export function FpsGame() {
       renderer.dispose();
       mount.removeChild(renderer.domElement);
     };
-  }, [sessionId, started, selectedSector, selectedMap, primary, secondary, medical, utility, equipment, playerClass, characterSkin, characterUniform, camoPattern, equippedAccessories, characterArmor, characterHelmet, chestRig, backpack, pantsColor, gloveColor, bootColor, weaponSight, muzzleAttachment, tacticalAttachment, magazineAttachment, fireControlAttachment, secondarySight, secondaryMuzzle, secondaryTactical, secondaryMagazine, secondaryFireControl]);
+  }, [sessionId, started, selectedSector, customServerCode, selectedMap, primary, secondary, medical, utility, equipment, playerClass, characterSkin, characterUniform, camoPattern, equippedAccessories, characterArmor, characterHelmet, chestRig, backpack, pantsColor, gloveColor, bootColor, weaponSight, muzzleAttachment, tacticalAttachment, magazineAttachment, fireControlAttachment, secondarySight, secondaryMuzzle, secondaryTactical, secondaryMagazine, secondaryFireControl]);
 
   const equippedItems = [primary, secondary, medical, utility, CLASS_ITEMS[playerClass] ?? "NO CLASS ITEM"];
   const maximumHealth = (equipment === "ARMOR PLATING" ? 125 : 100) + CLASS_STATS[playerClass].healthBonus;
@@ -3266,6 +3268,13 @@ export function FpsGame() {
               }}>
                 <i>{String(index + 1).padStart(2, "0")}</i><span><b>{sector}</b><small>{sectorPlayerCounts[sector] === null ? "CHECKING PLAYERS…" : `${sectorPlayerCounts[sector]} PLAYER${sectorPlayerCounts[sector] === 1 ? "" : "S"} ONLINE`} · MAP VOTE INSIDE</small></span><em>JOIN</em>
               </button>)}
+              <div className="custom-server-card">
+                <header><i>CS</i><span><b>CUSTOM SERVER</b><small>CREATE A PRIVATE ROOM OR JOIN WITH A SIX-CHARACTER CODE</small></span></header>
+                <div><input value={customServerCode} maxLength={6} placeholder="SERVER CODE" aria-label="Custom server code" onChange={(event)=>{setCustomServerCode(event.target.value.toUpperCase().replace(/[^A-Z2-9]/g,"").slice(0,6));setCustomServerStatus("");}} />
+                <button disabled={customServerCode.length!==6} onClick={()=>{setSelectedSector("CUSTOM SERVER");setServerBrowserOpen(false);setSelectedMap("CITY BLOCK");setMatchPhase("connecting");setMapVotes(0);setModeVotes(0);setHasVoted(false);setHasModeVoted(false);setMatchEndsAt(0);setHealth(maximumHealth);setStarted(true);setSessionId((id)=>id+1);}}>JOIN CODE</button>
+                <button disabled={!auth.currentUser} onClick={async()=>{if(!auth.currentUser){setCustomServerStatus("SIGN IN TO CREATE A SERVER");return;}setCustomServerStatus("CREATING…");try{const token=await auth.currentUser.getIdToken();const response=await fetch(`${MULTIPLAYER_SERVER}/custom/create`,{method:"POST",headers:{Authorization:`Bearer ${token}`}});const data=await response.json() as {code?:string;error?:string};if(!response.ok||!data.code)throw new Error(data.error||"CREATE FAILED");setCustomServerCode(data.code);setCustomServerStatus(`SERVER ${data.code} CREATED · PRESS JOIN CODE`);}catch(error){setCustomServerStatus(error instanceof Error?error.message:"CREATE FAILED");}}}>CREATE SERVER</button></div>
+                <small>{customServerStatus||(!auth.currentUser?"SIGN IN REQUIRED TO CREATE · CODES CAN STILL BE JOINED":"NEW SERVERS BEGIN IN MAP VOTING")}</small>
+              </div>
             </div>
           </div>}
           {(!started && menuPage === "SETTINGS") && <div className="settings-panel">
