@@ -1167,15 +1167,16 @@ export function FpsGame() {
         }
       };
       const houses:[number,number,number,number,number,number,number][]=[
-        [-48,42,8,8,4.1,.06,0],[-34,43,10,7,4.8,-.04,2],[-17,44,8,9,4.2,.03,1],[17,44,9,8,5,-.05,3],[34,43,10,7,4.3,.04,0],[49,41,7,9,4.6,-.08,2],
-        [-48,24,9,10,4.8,1.57,1],[-29,25,8,8,4.1,3.14,3],[-11,24,10,9,5.2,0,0],[12,25,8,8,4.4,3.14,2],[30,23,10,10,5,0,1],[49,22,8,9,4.2,-1.57,3],
-        [-47,3,10,8,4.4,1.57,2],[-28,5,9,10,5.1,3.14,0],[-9,4,8,8,4.2,0,3],[10,3,10,9,4.8,3.14,1],[30,4,9,8,4.3,0,2],[49,2,8,10,5,-1.57,0],
-        [-49,-19,8,9,4.2,1.57,3],[-31,-19,10,8,4.9,3.14,1],[-12,-19,8,10,4.5,0,2],[11,-18,10,8,5.1,3.14,0],[31,-20,8,10,4.2,0,3],[49,-20,9,8,4.7,-1.57,1],
-        [-47,-41,10,8,4.8,.05,0],[-30,-42,8,9,4.1,-.04,2],[-12,-41,9,8,5,.03,1],[13,-42,8,10,4.3,-.04,3],[31,-41,10,8,4.9,.05,0],[49,-40,8,9,4.2,-.06,2]
-      ];houses.forEach((house,index)=>addAdobeHouse(...house,index===2||index===8||index===14||index===21||index===26));
-      // Courtyard walls, market stalls and storage make the streets tactically dense.
-      [[-39,33,11,1],[0,34,13,1],[40,32,12,1],[-39,13,10,1],[0,14,12,1],[40,12,10,1],[-39,-8,12,1],[0,-8,11,1],[40,-9,12,1],[-40,-31,11,1],[0,-31,13,1],[40,-31,11,1]].forEach(([x,z,w],i)=>{const ground=terrainHeightAt(x,z);addBox(x,ground+1.05,z,w,2.1,.42,adobeColors[i%adobeColors.length]);});
-      [[-21,34],[22,34],[-20,13],[20,13],[-21,-8],[21,-8],[-20,-31],[20,-31]].forEach(([x,z],i)=>{const ground=terrainHeightAt(x,z);addBox(x,ground+.62,z,3,1.24,2.2,i%2?0x755236:0x86603d);addBox(x+(i%2?.7:-.7),ground+1.5,z,1.1,.52,1,0x60412d);});
+        [-49,39,8,8,4.1,-.31,0],[-34,44,10,7,4.8,.18,2],[-17,37,8,9,4.2,.72,1],[2,46,7,8,4.6,-.48,3],[20,38,9,8,5,.29,3],[38,45,10,7,4.3,-.82,0],[51,34,7,9,4.6,1.12,2],
+        [-51,19,9,10,4.8,1.31,1],[-35,25,8,8,4.1,-2.72,3],[-18,17,10,9,5.2,.41,0],[1,28,8,8,4.4,-2.48,2],[19,20,10,10,5,.83,1],[36,27,8,9,4.2,-1.19,3],[50,14,8,8,4.7,2.61,1],
+        [-48,-2,10,8,4.4,1.91,2],[-31,5,9,10,5.1,-2.38,0],[-13,-5,8,8,4.2,.24,3],[5,8,10,9,4.8,-2.83,1],[24,-2,9,8,4.3,.58,2],[43,5,8,10,5,-1.16,0],
+        [-51,-24,8,9,4.2,1.22,3],[-35,-16,10,8,4.9,-2.57,1],[-18,-27,8,10,4.5,.47,2],[1,-17,10,8,5.1,-2.86,0],[20,-25,8,10,4.2,.92,3],[39,-17,9,8,4.7,-1.34,1],[51,-31,8,9,4.4,2.22,2],
+        [-42,-41,10,8,4.8,.36,0],[-21,-38,8,9,4.1,-.61,2],[7,-42,9,8,5,.27,1],[31,-38,8,10,4.3,-.74,3],[48,-45,9,8,4.9,.52,0]
+      ];houses.forEach((house,index)=>addAdobeHouse(...house,[3,9,16,23,28].includes(index)));
+      // Angled courtyards and irregular market clutter break up the former street grid.
+      const addRotatedCover=(x:number,z:number,w:number,h:number,d:number,turn:number,color:number)=>{const ground=terrainHeightAt(x,z),cover=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),material(color,.98,0));cover.position.set(x,ground+h/2,z);cover.rotation.y=turn;cover.castShadow=cover.receiveShadow=true;scene.add(cover);const halfX=Math.abs(Math.cos(turn))*w/2+Math.abs(Math.sin(turn))*d/2,halfZ=Math.abs(Math.sin(turn))*w/2+Math.abs(Math.cos(turn))*d/2;boxes.push({minX:x-halfX,maxX:x+halfX,minY:ground,maxY:ground+h,minZ:z-halfZ,maxZ:z+halfZ});};
+      [[-42,31,10,.38],[-7,35,12,-.62],[28,31,8,.94],[45,23,10,-.29],[-29,12,9,.71],[8,17,11,-.41],[34,9,8,1.17],[-44,-11,10,-.83],[-8,-10,9,.26],[31,-12,12,-.56],[-29,-32,8,1.02],[17,-34,11,.44],[43,-29,7,-1.21]].forEach(([x,z,w,turn],i)=>addRotatedCover(x,z,w,2.1,.42,turn,adobeColors[i%adobeColors.length]));
+      [[-24,31,.18],[14,34,-.47],[42,30,.76],[-42,11,-.68],[-3,13,.39],[30,16,1.08],[-25,-8,-.22],[12,-7,.84],[43,-6,-.95],[-39,-30,.57],[-5,-32,-.73],[29,-30,.31]].forEach(([x,z,turn],i)=>{addRotatedCover(x,z,3,1.24,2.2,turn,i%2?0x755236:0x86603d);const offsetX=Math.cos(turn)*(i%2?.7:-.7),offsetZ=-Math.sin(turn)*(i%2?.7:-.7);addRotatedCover(x+offsetX,z+offsetZ,1.1,.52,1,turn+.18,0x60412d);});
       const rockMat=material(0x8a5735,.96,.01);[[-55,30,5,3.5,4],[55,28,5,4,4],[-54,-5,6,4,5],[54,-7,5,3.5,4],[-55,-34,5,4,4],[55,-36,6,4.2,5]].forEach(([x,z,w,h,d],i)=>{const rock=new THREE.Mesh(new THREE.DodecahedronGeometry(1,0),rockMat);rock.position.set(x,terrainHeightAt(x,z)+h*.45,z);rock.scale.set(w*.5,h*.5,d*.5);rock.rotation.set(.08*i,.3*i,.05*(i%3));rock.castShadow=rock.receiveShadow=true;scene.add(rock);boxes.push({minX:x-w*.45,maxX:x+w*.45,minY:0,maxY:h+terrainHeightAt(x,z),minZ:z-d*.45,maxZ:z+d*.45});});
       // Wind-blown dust softens the horizon.
       const dustPositions=new Float32Array(320*3);for(let i=0;i<320;i++){dustPositions[i*3]=-59+Math.random()*118;dustPositions[i*3+1]=.3+Math.random()*9;dustPositions[i*3+2]=-59+Math.random()*118;}const dustGeo=new THREE.BufferGeometry();dustGeo.setAttribute("position",new THREE.BufferAttribute(dustPositions,3));const dust=new THREE.Points(dustGeo,new THREE.PointsMaterial({color:0xe7bc7b,size:.1,transparent:true,opacity:.24,depthWrite:false}));dust.raycast=()=>{};scene.add(dust);
