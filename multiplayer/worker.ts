@@ -44,6 +44,7 @@ type FlagState = { team:PlayerState["team"]; homeX:number; homeZ:number; x:numbe
 type AdminRole = "owner" | "junior" | null;
 type SocketAttachment = { id: string; state: PlayerState; adminRole?: AdminRole; godMode?: boolean; damageMultiplier?: number; lastSeenAt?: number; votedMapPhase?: number; votedMap?: MultiplayerMap; votedModePhase?: number; votedMode?: GameMode; endGamePhase?: number; lastChatAt?: number };
 type MatchMeta = { day: string; phase: "voting" | "playing" | "results"; phaseEndsAt: number; votes: number; mapVotes: Record<MultiplayerMap, number>; modeVotes: number; modeVoteCounts: Record<GameMode, number>; endVotes: number; map: MultiplayerMap; mode: GameMode; teamScores: Record<PlayerState["team"], number>; objectiveZones: ObjectiveZone[]; flags:FlagState[]; lastObjectiveTick: number; winnerId: string | null; winningTeam: PlayerState["team"] | null; winningKills: number };
+type CustomConfig={name:string;map:MultiplayerMap;mode:GameMode;maxPlayers:number};
 const VOTE_DURATION = 30_000;
 const MATCH_DURATION = 10 * 60_000;
 const RESULTS_DURATION = 5_000;
@@ -137,7 +138,12 @@ export class GameRoom extends DurableObject<Env> {
       const body=await request.json<{code?:string}>();const rooms=await this.ctx.storage.get<Record<string,number>>("customRooms")??{};if(body.code)delete rooms[body.code];await this.ctx.storage.put("customRooms",rooms);return json({ok:true});
     }
     if(url.pathname==="/custom/configure"&&request.method==="POST"){
-      const body=await request.json<{code?:string}>();if(!body.code)return json({error:"Missing code"},400);await this.ctx.storage.put("customCode",body.code);await this.ctx.storage.setAlarm(Date.now()+60_000);return json({ok:true});
+      const body=await request.json<{code?:string;config?:CustomConfig}>();if(!body.code||!body.config)return json({error:"Missing custom server configuration"},400);
+      const config:CustomConfig={name:safeString(body.config.name,"CUSTOM SERVER",24).replace(/[^a-z0-9 _-]/gi,"").trim()||"CUSTOM SERVER",map:SPAWNS[body.config.map]?body.config.map:"CITY BLOCK",mode:["FFA","TDM","KOTH","CTP","CTF"].includes(body.config.mode)?body.config.mode:"FFA",maxPlayers:Math.max(2,Math.min(16,Math.trunc(body.config.maxPlayers)||8))};
+      const spots:Record<MultiplayerMap,[number,number][]>= {"CITY BLOCK":[[0,0],[-24,0],[24,0]],"BLACKWOOD FOREST":[[5,0],[-25,-15],[22,15]],"FROSTLINE BASE":[[0,22],[-28,18],[28,18]],"TIDEBREAK BEACH":[[0,43],[-31,57],[32,58]],"DUSTFALL DESERT":[[0,0],[-38,30],[38,-27]]};
+      const alphaHome=SPAWNS[config.map].ALPHA[2],bravoHome=SPAWNS[config.map].BRAVO[2],objectiveSpots=spots[config.map];
+      const match:MatchMeta={day:new Date().toISOString().slice(0,10),phase:"playing",phaseEndsAt:Date.now()+MATCH_DURATION,votes:0,mapVotes:{"CITY BLOCK":0,"BLACKWOOD FOREST":0,"FROSTLINE BASE":0,"TIDEBREAK BEACH":0,"DUSTFALL DESERT":0},modeVotes:0,modeVoteCounts:{FFA:0,TDM:0,KOTH:0,CTP:0,CTF:0},endVotes:0,map:config.map,mode:config.mode,teamScores:{ALPHA:0,BRAVO:0},objectiveZones:config.mode==="KOTH"?[{id:"HILL",x:objectiveSpots[0][0],z:objectiveSpots[0][1],radius:7.5,owner:null,progress:0}]:config.mode==="CTP"?objectiveSpots.map(([x,z],index)=>({id:String.fromCharCode(65+index),x,z,radius:4.25,owner:null,progress:0})):[],flags:config.mode==="CTF"?[{team:"ALPHA",homeX:alphaHome[0],homeZ:alphaHome[1],x:alphaHome[0],z:alphaHome[1],carrierId:null,dropped:false},{team:"BRAVO",homeX:bravoHome[0],homeZ:bravoHome[1],x:bravoHome[0],z:bravoHome[1],carrierId:null,dropped:false}]:[],lastObjectiveTick:Date.now(),winnerId:null,winningTeam:null,winningKills:0};
+      await this.ctx.storage.put({customCode:body.code,customConfig:config,match});await this.ctx.storage.setAlarm(Date.now()+60_000);return json({ok:true});
     }
     if(url.pathname==="/custom/delete"&&request.method==="POST"){
       this.ctx.getWebSockets().forEach((socket)=>{try{socket.send(JSON.stringify({type:"kicked",reason:"This custom server was deleted by its owner."}));socket.close(4004,"Custom server deleted");}catch{}});await this.ctx.storage.deleteAll();return json({ok:true});
@@ -160,6 +166,8 @@ export class GameRoom extends DurableObject<Env> {
       return json({ players });
     }
     if (request.headers.get("Upgrade") !== "websocket") return json({ error: "WebSocket upgrade required" }, 426);
+    const customConfig=await this.ctx.storage.get<CustomConfig>("customConfig");
+    if(customConfig&&this.ctx.getWebSockets().filter((socket)=>socket.readyState===WebSocket.OPEN).length>=customConfig.maxPlayers)return json({error:"Custom server is full."},403);
     const meta = await this.currentMatch();
     // Cancel a pending empty-room reset when clients return after loading a map.
     await this.ctx.storage.delete("emptyResetAt");
@@ -600,7 +608,8 @@ export default {
     if(url.pathname==="/custom/create"&&request.method==="POST"){
       const token=request.headers.get("authorization")?.replace(/^Bearer\s+/i,"");if(!await verifiedPlayerToken(token))return json({error:"Sign in to create a custom server."},401);
       const alphabet="ABCDEFGHJKLMNPQRSTUVWXYZ23456789";let code="",exists=true;while(exists){code="";for(let index=0;index<6;index++)code+=alphabet[crypto.getRandomValues(new Uint8Array(1))[0]%alphabet.length];const response=await env.GAME_ROOMS.getByName("__custom-registry").fetch(`https://room.internal/registry/exists?code=${code}`);exists=(await response.json<{exists:boolean}>()).exists;}
-      await env.GAME_ROOMS.getByName(`custom-${code}`).fetch("https://room.internal/custom/configure",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({code})});await env.GAME_ROOMS.getByName("__custom-registry").fetch("https://room.internal/registry/add",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({code,createdAt:Date.now()})});return json({code});
+      const body=await request.json<Partial<CustomConfig>>().catch(()=>({}));const config={name:body.name??"CUSTOM SERVER",map:body.map??"CITY BLOCK",mode:body.mode??"FFA",maxPlayers:body.maxPlayers??8};
+      await env.GAME_ROOMS.getByName(`custom-${code}`).fetch("https://room.internal/custom/configure",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({code,config})});await env.GAME_ROOMS.getByName("__custom-registry").fetch("https://room.internal/registry/add",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({code,createdAt:Date.now()})});return json({code});
     }
     if(url.pathname==="/custom/list"){
       const token=request.headers.get("authorization")?.replace(/^Bearer\s+/i,"");if(!await verifiedPrimaryOwnerToken(token))return json({error:"Primary owner access required."},403);
