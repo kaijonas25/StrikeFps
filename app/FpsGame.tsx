@@ -2284,7 +2284,7 @@ export function FpsGame() {
       } else if (playerClass === "ENGINEER") {
         classAbilityReadyAt = now + 25_000; setClassCooldown(25); classDeployables.splice(0).forEach((item) => scene.remove(item));
         const sentry=new THREE.Group();sentry.position.copy(target);
-        const sentryPart=(geometry:THREE.BufferGeometry,color:number,roughness=.55,metalness=.55)=>{const mesh=new THREE.Mesh(geometry,material(color,roughness,metalness));mesh.castShadow=true;mesh.receiveShadow=true;mesh.raycast=()=>{};return mesh;};
+        const sentryPart=(geometry:THREE.BufferGeometry,color:number,roughness=.55,metalness=.55)=>{const mesh=new THREE.Mesh(geometry,material(color,roughness,metalness));mesh.castShadow=true;mesh.receiveShadow=true;return mesh;};
         const basePlate=sentryPart(new THREE.CylinderGeometry(.43,.49,.11,20),0x28322e,.7,.55);basePlate.position.y=.08;sentry.add(basePlate);
         const swivel=sentryPart(new THREE.CylinderGeometry(.18,.22,.35,18),0x171e1d,.42,.75);swivel.position.y=.3;sentry.add(swivel);
         [0,Math.PI*2/3,Math.PI*4/3].forEach((angle)=>{const leg=sentryPart(new THREE.BoxGeometry(.1,.1,.9),0x343f38,.7,.5);leg.position.set(Math.sin(angle)*.34,.1,Math.cos(angle)*.34);leg.rotation.set(0,angle,-.2);sentry.add(leg);const foot=sentryPart(new THREE.BoxGeometry(.28,.07,.22),0x1b2220,.8,.45);foot.position.set(Math.sin(angle)*.75,.035,Math.cos(angle)*.75);foot.rotation.y=angle;sentry.add(foot);});
@@ -2299,9 +2299,9 @@ export function FpsGame() {
         const optic=sentryPart(new THREE.BoxGeometry(.24,.2,.3),0x111918,.38,.7);optic.position.set(-.28,.38,-.15);turretHead.add(optic);const lens=sentryPart(new THREE.CircleGeometry(.07,16),0xff3b2f,.2,.1);lens.position.set(-.28,.38,-.305);turretHead.add(lens);
         const antenna=sentryPart(new THREE.CylinderGeometry(.012,.018,.65,8),0x151c1b,.5,.65);antenna.position.set(.34,.64,.18);antenna.rotation.z=-.08;turretHead.add(antenna);
         const statusLight=new THREE.PointLight(0x54ff9b,2.5,2);statusLight.position.set(.28,.24,-.39);turretHead.add(statusLight);const statusLens=sentryPart(new THREE.SphereGeometry(.035,10,8),0x54ff9b,.15,.1);statusLens.position.copy(statusLight.position);turretHead.add(statusLens);
-        scene.add(sentry);classDeployables.push(sentry);let sentryBarrel=0;
+        sentry.userData.health=300;sentry.userData.maxHealth=300;sentry.traverse((object)=>{if(object instanceof THREE.Mesh)object.userData.sentryRoot=sentry;});scene.add(sentry);classDeployables.push(sentry);let sentryBarrel=0;
         const sentryFire=window.setInterval(()=>{if(!sentry.parent){window.clearInterval(sentryFire);return;}const remoteTargets=[...remotePlayers.entries()].filter(([,avatar])=>avatar.visible&&avatar.position.distanceTo(sentry.position)<32).map(([id,avatar])=>({id,avatar}));const dummyTargets=dummies.filter((dummy)=>dummy.visible&&dummy.position.distanceTo(sentry.position)<32).map((avatar)=>({id:"",avatar}));const nearest=[...remoteTargets,...dummyTargets].sort((a,b)=>a.avatar.position.distanceTo(sentry.position)-b.avatar.position.distanceTo(sentry.position))[0];if(nearest){const aimPoint=nearest.avatar.position.clone().add(new THREE.Vector3(0,1.1,0));turretHead.lookAt(aimPoint);turretHead.rotateY(Math.PI);if(nearest.id)multiplayerSendRef.current({type:"hit",targetId:nearest.id,damage:10,weapon:"SENTRY",headshot:false});else damageDummyGroup(nearest.avatar,10,"SENTRY");const activeBarrel=barrelSlides[sentryBarrel%2],muzzleAnchor=muzzles[sentryBarrel%2];sentryBarrel++;activeBarrel.position.z=.1;window.setTimeout(()=>{activeBarrel.position.z=0;},80);const start=new THREE.Vector3();muzzleAnchor.getWorldPosition(start);const flash=new THREE.PointLight(0xff9b42,10,4);flash.position.copy(start);scene.add(flash);window.setTimeout(()=>scene.remove(flash),65);const tracer=new THREE.Line(new THREE.BufferGeometry().setFromPoints([start,aimPoint]),new THREE.LineBasicMaterial({color:0xffc078,transparent:true,opacity:.94}));tracer.raycast=()=>{};scene.add(tracer);window.setTimeout(()=>scene.remove(tracer),75);}},420);
-        window.setTimeout(() => { scene.remove(sentry); window.clearInterval(sentryFire); }, 30_000);
+        sentry.userData.damageSentry=(damage:number)=>{if(!sentry.parent)return;sentry.userData.health=Math.max(0,sentry.userData.health-damage);statusLight.color.set(sentry.userData.health<90?0xff3228:sentry.userData.health<180?0xffb52e:0x54ff9b);(statusLens.material as THREE.MeshStandardMaterial).color.copy(statusLight.color);if(sentry.userData.health<=0){window.clearInterval(sentryFire);spawnExplosionVisual(sentry.position.clone().add(new THREE.Vector3(0,.55,0)),"LANDMINE");scene.remove(sentry);const index=classDeployables.indexOf(sentry);if(index>=0)classDeployables.splice(index,1);}};
       } else if (playerClass === "DRONE") {
         classAbilityReadyAt = now + 30_000; setClassCooldown(30);
         if (activeDrone) endDroneControl();
@@ -2368,7 +2368,9 @@ export function FpsGame() {
           scene.remove(tracer); tracer.geometry.dispose(); tracerMaterial.dispose();
         }, pelletCount > 1 ? 48 : 65);
         if (hit) {
-          damageDummy(hit, shotStats.damage * classStats.damage);
+          let hitNode:THREE.Object3D|null=hit.object,sentryRoot:THREE.Group|undefined;
+          while(hitNode&&!sentryRoot){sentryRoot=hitNode.userData.sentryRoot as THREE.Group|undefined;hitNode=hitNode.parent;}
+          if(sentryRoot){const damageSentry=sentryRoot.userData.damageSentry as ((damage:number)=>void)|undefined;damageSentry?.(shotStats.damage*classStats.damage);}else damageDummy(hit,shotStats.damage*classStats.damage);
           const impact = new THREE.Mesh(impactGeometry, impactMaterial);
           impact.raycast = () => {};
           impact.position.copy(hit.point).addScaledVector(hit.face?.normal ?? new THREE.Vector3(0, 1, 0), 0.025);
