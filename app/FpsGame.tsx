@@ -194,7 +194,6 @@ export function FpsGame() {
   const airstrikeTargetRef = useRef<(x: number, z: number) => void>(() => {});
   const droneExitRef = useRef<() => void>(() => {});
   const [locked, setLocked] = useState(false);
-  const [airstrikeMapOpen, setAirstrikeMapOpen] = useState(false);
   const [dronePiloting, setDronePiloting] = useState(false);
   const [mortarSetupRemaining, setMortarSetupRemaining] = useState(0);
   const [touchControls, setTouchControls] = useState(false);
@@ -1727,6 +1726,12 @@ export function FpsGame() {
     let classAbilityReadyAt = 0, classAiming = false, activeDrone: THREE.Group | null = null, droneYaw = yaw, dronePitch = 0, droneTrigger = false, nextDroneShot = 0, lastDroneNetworkSend = 0;
     let mortarSetupEnd = 0, mortarDeployed = false, mortarWorldModel: THREE.Group | null = null;
     const mortarAimOffset = new THREE.Vector2(0, -14);
+    const airstrikeBounds=selectedMap==="TIDEBREAK BEACH"?{minX:-60,maxX:60,minZ:-50,maxZ:96}:selectedMap==="DUSTFALL DESERT"?{minX:-60,maxX:60,minZ:-60,maxZ:60}:selectedMap==="TEST YARD"?{minX:-32,maxX:32,minZ:-32,maxZ:32}:{minX:-50,maxX:50,minZ:-50,maxZ:50};
+    const airstrikeAim=new THREE.Vector2(0,0);
+    const airstrikeTarget=()=>new THREE.Vector3(airstrikeAim.x,terrainHeightAt(airstrikeAim.x,airstrikeAim.y)+.08,airstrikeAim.y);
+    const airstrikeZone=new THREE.Group();
+    [-8,-4,0,4,8].forEach((offset)=>{const ring=new THREE.Mesh(new THREE.RingGeometry(6.4,7,40),new THREE.MeshBasicMaterial({color:0xff4e36,transparent:true,opacity:.72,side:THREE.DoubleSide,depthWrite:false}));ring.rotation.x=-Math.PI/2;ring.position.x=offset;ring.raycast=()=>{};airstrikeZone.add(ring);});
+    const strikeAxis=new THREE.Mesh(new THREE.PlaneGeometry(30,.18),new THREE.MeshBasicMaterial({color:0xff8060,transparent:true,opacity:.75,side:THREE.DoubleSide,depthWrite:false}));strikeAxis.rotation.x=-Math.PI/2;strikeAxis.raycast=()=>{};airstrikeZone.add(strikeAxis);airstrikeZone.visible=false;scene.add(airstrikeZone);
     const mortarTarget = () => {
       const distance = Math.min(30, mortarAimOffset.length());
       const offset = mortarAimOffset.lengthSq() ? mortarAimOffset.clone().normalize().multiplyScalar(distance) : new THREE.Vector2(0,-14);
@@ -1747,6 +1752,7 @@ export function FpsGame() {
     const maxPlayerHealth = (equipment === "ARMOR PLATING" ? 125 : 100) + classStats.healthBonus;
     let playerHealth = maxPlayerHealth, nextPadTick = 0, healEnd = 0;
     const playerPosition = new THREE.Vector3(0, PLAYER_HEIGHT + terrainHeightAt(0,spawnZ), spawnZ);
+    airstrikeAim.set(playerPosition.x,playerPosition.z);
     const lastClearPosition = playerPosition.clone();
     let isThirdPerson = false, orbiting = false, isCrouching = false, isProne = false, slideEnd = 0, stanceOffset = 0, crouchPoseAmount = 0, proneAmount = 0, leanDirection: -1 | 0 | 1 = 0, leanAmount = 0;
     const slideVelocity = new THREE.Vector2();
@@ -1915,11 +1921,13 @@ export function FpsGame() {
         trajectory.visible = false;
         placementAiming = false; placementPreview.visible = false; placementPoint = null;
         classAiming = false; classTargetMarker.visible = false;
+        airstrikeZone.visible=false;
         reloadEnd = 0;
         setReloading(false);
         if (currentSlot !== 3 && healEnd) { healEnd = 0; setHealing(false); }
         if(playerClass==="MORTAR"&&currentSlot===5&&previousSlot!==5)beginMortarSetup();
         else if(playerClass==="MORTAR"&&currentSlot!==5)cancelMortar();
+        if(playerClass==="AIRSTRIKE"&&currentSlot===5&&previousSlot!==5)airstrikeAim.set(playerPosition.x,playerPosition.z);
       }
     };
     const onKeyUp = (e: KeyboardEvent) => keys.delete(e.code);
@@ -1936,6 +1944,7 @@ export function FpsGame() {
       if (document.pointerLockElement !== renderer.domElement) return;
       if (activeDrone) { droneYaw -= e.movementX * .0026; dronePitch = THREE.MathUtils.clamp(dronePitch - e.movementY * .0022, -.72, .62); return; }
       if(playerClass==="MORTAR"&&currentSlot===5&&mortarDeployed){mortarAimOffset.x=THREE.MathUtils.clamp(mortarAimOffset.x+e.movementX*.035,-28,28);mortarAimOffset.y=THREE.MathUtils.clamp(mortarAimOffset.y+e.movementY*.035,-28,28);if(mortarAimOffset.length()>30)mortarAimOffset.setLength(30);return;}
+      if(playerClass==="AIRSTRIKE"&&currentSlot===5){const width=airstrikeBounds.maxX-airstrikeBounds.minX,depth=airstrikeBounds.maxZ-airstrikeBounds.minZ;airstrikeAim.x=THREE.MathUtils.clamp(airstrikeAim.x+e.movementX*width*.0008,airstrikeBounds.minX,airstrikeBounds.maxX);airstrikeAim.y=THREE.MathUtils.clamp(airstrikeAim.y+e.movementY*depth*.0008,airstrikeBounds.minZ,airstrikeBounds.maxZ);return;}
       if (isThirdPerson && !orbiting) return;
       applyLook(e.movementX, e.movementY);
     };
@@ -2248,16 +2257,15 @@ export function FpsGame() {
     const callAirstrike = (x: number, z: number) => {
       const now = performance.now();
       if (now < classAbilityReadyAt) return;
-      classAbilityReadyAt = now + 35_000; setClassCooldown(35); setAirstrikeMapOpen(false);
+      classAbilityReadyAt = now + 35_000; setClassCooldown(35);
       const target = new THREE.Vector3(x, terrainHeightAt(x, z) + .05, z);
       [-8, -4, 0, 4, 8].forEach((offset, index) => window.setTimeout(() => classBlast(target.clone().add(new THREE.Vector3(offset, 0, index % 2 ? 2 : -2)), 7, 105, "AIRSTRIKE"), index * 420));
-      renderer.domElement.requestPointerLock?.();
     };
     airstrikeTargetRef.current = callAirstrike;
     const useClassItem = () => {
       const now = performance.now();
       if (now < classAbilityReadyAt) return;
-      const target = playerClass==="MORTAR"?mortarTarget():classTarget();
+      const target = playerClass==="MORTAR"?mortarTarget():playerClass==="AIRSTRIKE"?airstrikeTarget():classTarget();
       if (playerClass === "MORTAR") {
         if(!mortarDeployed)return;
         classAbilityReadyAt = now + 18_000; setClassCooldown(18);
@@ -2266,8 +2274,7 @@ export function FpsGame() {
         const launchedAt=performance.now(),flightTime=1700;
         const fly=()=>{const t=THREE.MathUtils.clamp((performance.now()-launchedAt)/flightTime,0,1);shell.position.lerpVectors(start,target,t);shell.position.y+=Math.sin(t*Math.PI)*12;shell.rotation.x+=.16;if(t<1)requestAnimationFrame(fly);else{scene.remove(shell);classBlast(target,9,150,"MORTAR");}};fly();
       } else if (playerClass === "AIRSTRIKE") {
-        setRadarPings([{id:"local",x:playerPosition.x,z:playerPosition.z,local:true},...[...remotePlayers.entries()].filter(([,avatar])=>avatar.visible).map(([id,avatar])=>({id,x:avatar.position.x,z:avatar.position.z,local:false}))]);
-        setAirstrikeMapOpen(true); classTargetMarker.visible = false; document.exitPointerLock();
+        callAirstrike(target.x,target.z);airstrikeZone.visible=false;
       } else if (playerClass === "DEMOLITION") {
         classAbilityReadyAt = now + 8_000; setClassCooldown(8); classBlast(target, 8, 140, "ROCKET LAUNCHER");
       } else if (playerClass === "ENGINEER") {
@@ -2362,7 +2369,7 @@ export function FpsGame() {
       }
       if (e.button !== 0 || sprinting || sliding) return;
       if (activeDrone) { droneTrigger = true; return; }
-      if (currentSlot === 5) { if(playerClass==="MORTAR"&&!mortarDeployed)return; classAiming = true; classTargetMarker.visible = playerClass!=="MORTAR"; if(playerClass==="MORTAR")trajectory.visible=true; return; }
+      if (currentSlot === 5) { if(playerClass==="MORTAR"&&!mortarDeployed)return; classAiming = true; classTargetMarker.visible = playerClass!=="MORTAR"&&playerClass!=="AIRSTRIKE"; if(playerClass==="MORTAR")trajectory.visible=true;if(playerClass==="AIRSTRIKE")airstrikeZone.visible=true; return; }
       if (currentSlot === 3) {
         if (medicalCharges > 0 && playerHealth < maxPlayerHealth && !healEnd) {
           const medicalStats = MEDICAL_STATS[medical];
@@ -2392,7 +2399,7 @@ export function FpsGame() {
       if (e.button === 0) {
         triggerHeld = false;
         droneTrigger = false;
-        if (classAiming) { classAiming = false; classTargetMarker.visible = false; if(playerClass==="MORTAR")trajectory.visible=false; useClassItem(); }
+        if (classAiming) { classAiming = false; classTargetMarker.visible = false; if(playerClass==="MORTAR")trajectory.visible=false;if(playerClass==="AIRSTRIKE")airstrikeZone.visible=false; useClassItem(); }
         if (placementAiming) { placeUtility(); placementAiming = false; placementPreview.visible = false; placementPoint = null; }
         if (throwableAiming) { throwableAiming = false; trajectory.visible = false; throwUtility(); }
       }
@@ -2483,6 +2490,7 @@ export function FpsGame() {
       const inputStrength = Math.min(1, input.length());
       if (input.lengthSq() > 0) input.normalize();
       if(playerClass==="MORTAR"&&currentSlot===5){input.set(0,0);sprinting=false;if(mortarSetupEnd){const remaining=Math.max(0,mortarSetupEnd-now);setMortarSetupRemaining(Math.ceil(remaining/1000));if(remaining<=0){mortarSetupEnd=0;mortarDeployed=true;setMortarSetupRemaining(0);}}}
+      if(playerClass==="AIRSTRIKE"&&currentSlot===5){input.set(0,0);sprinting=false;const target=airstrikeTarget();airstrikeZone.position.copy(target);airstrikeZone.position.y+=.04;}
       if (activeDrone) {
         const forward = new THREE.Vector3(-Math.sin(droneYaw) * Math.cos(dronePitch), Math.sin(dronePitch), -Math.cos(droneYaw) * Math.cos(dronePitch));
         const right = new THREE.Vector3(Math.cos(droneYaw), 0, -Math.sin(droneYaw));
@@ -2900,12 +2908,16 @@ export function FpsGame() {
       crouchPoseAmount = THREE.MathUtils.lerp(crouchPoseAmount, isCrouching ? 1 : 0, Math.min(1, dt * 10));
       proneAmount = THREE.MathUtils.lerp(proneAmount, isProne ? 1 : 0, Math.min(1, dt * 8));
       localPlayer.scale.set(1, 1, 1);
-      localPlayer.visible = isThirdPerson || Boolean(activeDrone) || (playerClass==="MORTAR"&&currentSlot===5);
+      localPlayer.visible = isThirdPerson || Boolean(activeDrone) || ((playerClass==="MORTAR"||playerClass==="AIRSTRIKE")&&currentSlot===5);
       if (multiplayerSocket?.readyState === WebSocket.OPEN && now - lastMultiplayerSend >= 66) {
         lastMultiplayerSend = now;
         multiplayerSocket.send(JSON.stringify({ type: "state", x: playerPosition.x, y: playerPosition.y, z: playerPosition.z, yaw, movement: localPlayer.userData.movement, crouching: isCrouching, prone: isProne, slot: currentSlot, primary, secondary, equipment, playerClass, skin: characterSkin, uniform: characterUniform, camo: camoPattern, accessories: equippedAccessories, armor: characterArmor, helmet: characterHelmet, faceGear: localFaceGear, headAccessory: localHeadAccessory, chestRig, backpack, pants: pantsColor, gloves: gloveColor, boots: bootColor, callsign:playerCallsignRef.current }));
       }
-      if(playerClass==="MORTAR"&&currentSlot===5&&(mortarSetupEnd||mortarDeployed)){
+      if(playerClass==="AIRSTRIKE"&&currentSlot===5){
+        const centerX=(airstrikeBounds.minX+airstrikeBounds.maxX)/2,centerZ=(airstrikeBounds.minZ+airstrikeBounds.maxZ)/2;
+        const span=Math.max(airstrikeBounds.maxX-airstrikeBounds.minX,airstrikeBounds.maxZ-airstrikeBounds.minZ);
+        camera.position.set(centerX,span*.82+12,centerZ+span*.05);camera.lookAt(centerX,0,centerZ);camera.rotation.z=0;
+      }else if(playerClass==="MORTAR"&&currentSlot===5&&(mortarSetupEnd||mortarDeployed)){
         const target=mortarDeployed?mortarTarget():new THREE.Vector3(playerPosition.x,terrainHeightAt(playerPosition.x,playerPosition.z),playerPosition.z);
         camera.position.set(target.x,target.y+22,target.z+5);camera.lookAt(target.x,target.y,target.z);camera.rotation.z=0;
       } else if (activeDrone) {
@@ -2999,7 +3011,7 @@ export function FpsGame() {
       multiplayerSendRef.current = () => {};
       airstrikeTargetRef.current = () => {};
       droneExitRef.current = () => {};
-      setAirstrikeMapOpen(false); setDronePiloting(false);
+      setDronePiloting(false);
       setMultiplayerStatus("OFFLINE");
       setConnectedPlayerIds([]); setLocalPlayerId("");
       renderer.dispose();
@@ -3152,17 +3164,8 @@ export function FpsGame() {
       {started && CLASS_ITEMS[playerClass] && <div className={`class-ability-status${classCooldown > 0 ? " cooling" : ""}`}><kbd>5</kbd><span><b>{CLASS_ITEMS[playerClass]}</b><small>{classCooldown > 0 ? `COOLDOWN · ${classCooldown} SEC` : "READY · EQUIP SLOT 5"}</small></span></div>}
       {started&&playerClass==="MORTAR"&&activeSlot===5&&mortarSetupRemaining>0&&<div className="mortar-setup-status"><span>DEPLOYING MORTAR</span><strong>{mortarSetupRemaining}</strong><small>SEC</small><i style={{animationDuration:"5s"}} /></div>}
       {started&&playerClass==="MORTAR"&&activeSlot===5&&mortarSetupRemaining===0&&<div className="mortar-control-hud"><b>MORTAR FIRE CONTROL</b><span>MOVE MOUSE TO SET RANGE · HOLD <kbd>LMB</kbd> TO PREVIEW ARC · RELEASE TO FIRE</span></div>}
+      {started&&playerClass==="AIRSTRIKE"&&activeSlot===5&&<div className="mortar-control-hud"><b>AIRSTRIKE FIRE CONTROL</b><span>MOVE MOUSE ACROSS THE MAP · HOLD <kbd>LMB</kbd> TO VIEW BOMBING AREA · RELEASE TO CONFIRM</span></div>}
       {started && dronePiloting && <div className="drone-control-hud"><b>ATTACK DRONE · REMOTE LINK</b><span><kbd>WASD</kbd> FLY · <kbd>SHIFT</kbd> BOOST · <kbd>LMB</kbd> FIRE · <kbd>RMB</kbd> EXIT</span></div>}
-      {started && airstrikeMapOpen && <div className="airstrike-overlay" role="dialog" aria-modal="true" aria-label="Airstrike targeting map">
-        <section className="airstrike-console">
-          <header><div><small>TACTICAL UPLINK</small><h2>AIRSTRIKE TARGETING</h2></div><button onClick={() => { setAirstrikeMapOpen(false); requestAnimationFrame(() => mountRef.current?.querySelector("canvas")?.requestPointerLock()); }}>×</button></header>
-          <div className="airstrike-map" onClick={(event) => { const rect=event.currentTarget.getBoundingClientRect(); const px=THREE.MathUtils.clamp((event.clientX-rect.left)/rect.width,0,1); const pz=THREE.MathUtils.clamp((event.clientY-rect.top)/rect.height,0,1); airstrikeTargetRef.current(radarBounds.minX+px*(radarBounds.maxX-radarBounds.minX),radarBounds.minZ+pz*(radarBounds.maxZ-radarBounds.minZ)); }}>
-            <i className="airstrike-scanline" /><span className="airstrike-reticle">+</span><b>N</b>
-            {radarPings.map((ping)=><i key={ping.id} className={`airstrike-contact ${ping.local?"local":"enemy"}`} style={{left:`${(ping.x-radarBounds.minX)/(radarBounds.maxX-radarBounds.minX)*100}%`,top:`${(ping.z-radarBounds.minZ)/(radarBounds.maxZ-radarBounds.minZ)*100}%`}} />)}
-          </div>
-          <footer>CLICK A POSITION TO CONFIRM THE STRIKE · FIVE IMPACT RUN</footer>
-        </section>
-      </div>}
       {started && equipment === "HEAT VISION GOGGLES" && <div className="heat-vision-overlay"><span>THERMAL OPTICS · WALL DETECTION {HEAT_VISION_WALL_RANGE}M</span></div>}
       {started && equipment === "360 GOGGLES" && <aside className="rear-view-panel"><header>REAR VIEW · 180°</header></aside>}
       {started && equipment === "SATELLITE GPS" && <aside className={`satellite-map${radarPings.length ? " scanning" : ""}`}>
