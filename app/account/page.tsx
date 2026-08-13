@@ -28,6 +28,7 @@ export default function AccountPage() {
   const [nicknameStatus, setNicknameStatus] = useState<AdminStatus>("idle");
   const [nicknameError, setNicknameError] = useState("");
   const [customRooms,setCustomRooms]=useState<CustomRoom[]>([]);
+  const [deletingRoom,setDeletingRoom]=useState("");
 
   useEffect(() => onAuthStateChanged(auth, async (currentUser) => {
     if (!currentUser) { router.replace("/login"); return; }
@@ -108,6 +109,7 @@ export default function AccountPage() {
       setGrantEmail(""); setGrantStatus("saved");
     } catch (error) { setGrantError(error instanceof Error ? error.message : "Unable to update admin access."); setGrantStatus("error"); }
   };
+  const deleteCustomRoom=async(code:string)=>{if(!user||!isPrimaryOwner)return;setDeletingRoom(code);try{const token=await user.getIdToken();const response=await fetch(`${MULTIPLAYER_SERVER}/custom/delete`,{method:"POST",headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json"},body:JSON.stringify({code})});if(!response.ok)throw new Error("Delete failed");setCustomRooms((rooms)=>rooms.filter((room)=>room.code!==code));}finally{setDeletingRoom("");}};
 
   if (!user || !player) return <main className="account-shell account-loading"><div>LOADING OPERATOR RECORD…</div></main>;
 
@@ -151,7 +153,7 @@ export default function AccountPage() {
     {isPrimaryOwner && <section className="admin-panel custom-room-manager">
       <div className="admin-heading"><div><small>PRIMARY OWNER VISIBILITY</small><h2>CUSTOM SERVER <span>CODES</span></h2></div><b>OWNER ONLY</b></div>
       <p>These access codes are visible only from your owner account. Players can join by entering a code from the Play menu.</p>
-      <div className="custom-room-list">{customRooms.map((room)=><div key={room.code}><strong>{room.code}</strong><span>{room.players} PLAYER{room.players===1?"":"S"} ONLINE</span><small>CREATED {new Date(room.createdAt).toLocaleString()}</small></div>)}{!customRooms.length&&<div><strong>NO SERVERS</strong><span>CREATE ONE FROM PLAY</span></div>}</div>
+      <div className="custom-room-list">{customRooms.map((room)=><div key={room.code}><strong>{room.code}</strong><span>{room.players} PLAYER{room.players===1?"":"S"} ONLINE</span><small>CREATED {new Date(room.createdAt).toLocaleString()}</small><button disabled={deletingRoom===room.code} onClick={()=>void deleteCustomRoom(room.code)}>{deletingRoom===room.code?"DELETING…":"DELETE & KICK"}</button></div>)}{!customRooms.length&&<div><strong>NO SERVERS</strong><span>CREATE ONE FROM PLAY</span></div>}</div>
     </section>}
   </main>;
 }

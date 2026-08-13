@@ -130,6 +130,18 @@ export class GameRoom extends DurableObject<Env> {
     if(url.pathname==="/registry/list"){
       const rooms=await this.ctx.storage.get<Record<string,number>>("customRooms")??{};const entries=await Promise.all(Object.entries(rooms).map(async([code,createdAt])=>{const response=await this.env.GAME_ROOMS.getByName(`custom-${code}`).fetch("https://room.internal/status");const status=await response.json<{players:number}>();return{code,createdAt,players:status.players};}));return json({rooms:entries.sort((a,b)=>b.createdAt-a.createdAt)});
     }
+    if(url.pathname==="/registry/exists"){
+      const code=url.searchParams.get("code")??"";const rooms=await this.ctx.storage.get<Record<string,number>>("customRooms")??{};return json({exists:Boolean(rooms[code])});
+    }
+    if(url.pathname==="/registry/remove"&&request.method==="POST"){
+      const body=await request.json<{code?:string}>();const rooms=await this.ctx.storage.get<Record<string,number>>("customRooms")??{};if(body.code)delete rooms[body.code];await this.ctx.storage.put("customRooms",rooms);return json({ok:true});
+    }
+    if(url.pathname==="/custom/configure"&&request.method==="POST"){
+      const body=await request.json<{code?:string}>();if(!body.code)return json({error:"Missing code"},400);await this.ctx.storage.put("customCode",body.code);await this.ctx.storage.setAlarm(Date.now()+60_000);return json({ok:true});
+    }
+    if(url.pathname==="/custom/delete"&&request.method==="POST"){
+      this.ctx.getWebSockets().forEach((socket)=>{try{socket.send(JSON.stringify({type:"kicked",reason:"This custom server was deleted by its owner."}));socket.close(4004,"Custom server deleted");}catch{}});await this.ctx.storage.deleteAll();return json({ok:true});
+    }
     if (url.pathname === "/status") {
       const now = Date.now();
       const cleanupKey = "cleanup-operator-4204-v1";
@@ -369,6 +381,8 @@ export class GameRoom extends DurableObject<Env> {
 
   async alarm() {
     if (this.ctx.getWebSockets().length === 0) {
+      const customCode=await this.ctx.storage.get<string>("customCode");
+      if(customCode){await this.env.GAME_ROOMS.getByName("__custom-registry").fetch("https://room.internal/registry/remove",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({code:customCode})});await this.ctx.storage.deleteAll();return;}
       const emptyResetAt = await this.ctx.storage.get<number>("emptyResetAt");
       if (emptyResetAt && emptyResetAt > Date.now()) {
         await this.ctx.storage.setAlarm(emptyResetAt);
@@ -406,6 +420,8 @@ export class GameRoom extends DurableObject<Env> {
     // Clients briefly reconnect when the winning map changes. Deleting match
     // state here restarted voting before those clients could load the winner.
     if (remainingPlayers.length === 0) {
+      const customCode=await this.ctx.storage.get<string>("customCode");
+      if(customCode){await this.env.GAME_ROOMS.getByName("__custom-registry").fetch("https://room.internal/registry/remove",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({code:customCode})});await this.ctx.storage.deleteAll();return;}
       const emptyResetAt = Date.now() + EMPTY_ROOM_GRACE;
       await this.ctx.storage.put("emptyResetAt", emptyResetAt);
       await this.ctx.storage.setAlarm(emptyResetAt);
@@ -583,15 +599,21 @@ export default {
     }
     if(url.pathname==="/custom/create"&&request.method==="POST"){
       const token=request.headers.get("authorization")?.replace(/^Bearer\s+/i,"");if(!await verifiedPlayerToken(token))return json({error:"Sign in to create a custom server."},401);
-      const alphabet="ABCDEFGHJKLMNPQRSTUVWXYZ23456789";let code="";for(let index=0;index<6;index++)code+=alphabet[crypto.getRandomValues(new Uint8Array(1))[0]%alphabet.length];
-      await env.GAME_ROOMS.getByName("__custom-registry").fetch("https://room.internal/registry/add",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({code,createdAt:Date.now()})});return json({code});
+      const alphabet="ABCDEFGHJKLMNPQRSTUVWXYZ23456789";let code="",exists=true;while(exists){code="";for(let index=0;index<6;index++)code+=alphabet[crypto.getRandomValues(new Uint8Array(1))[0]%alphabet.length];const response=await env.GAME_ROOMS.getByName("__custom-registry").fetch(`https://room.internal/registry/exists?code=${code}`);exists=(await response.json<{exists:boolean}>()).exists;}
+      await env.GAME_ROOMS.getByName(`custom-${code}`).fetch("https://room.internal/custom/configure",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({code})});await env.GAME_ROOMS.getByName("__custom-registry").fetch("https://room.internal/registry/add",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({code,createdAt:Date.now()})});return json({code});
     }
     if(url.pathname==="/custom/list"){
       const token=request.headers.get("authorization")?.replace(/^Bearer\s+/i,"");if(!await verifiedPrimaryOwnerToken(token))return json({error:"Primary owner access required."},403);
       return env.GAME_ROOMS.getByName("__custom-registry").fetch("https://room.internal/registry/list");
     }
+    if(url.pathname==="/custom/delete"&&request.method==="POST"){
+      const token=request.headers.get("authorization")?.replace(/^Bearer\s+/i,"");if(!await verifiedPrimaryOwnerToken(token))return json({error:"Primary owner access required."},403);
+      const body=await request.json<{code?:string}>(),code=body.code?.toUpperCase()??"";if(!/^[A-Z2-9]{6}$/.test(code))return json({error:"Invalid server code."},400);
+      await env.GAME_ROOMS.getByName(`custom-${code}`).fetch("https://room.internal/custom/delete",{method:"POST"});await env.GAME_ROOMS.getByName("__custom-registry").fetch("https://room.internal/registry/remove",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({code})});return json({deleted:true});
+    }
     const match = url.pathname.match(/^\/room\/(sector-[1-4]|custom-[A-Z2-9]{6})$/);
     if (!match) return json({ error: "Unknown multiplayer room" }, 404);
+    if(match[1].startsWith("custom-")){const code=match[1].slice(7),response=await env.GAME_ROOMS.getByName("__custom-registry").fetch(`https://room.internal/registry/exists?code=${code}`);if(!(await response.json<{exists:boolean}>()).exists)return json({error:"Custom server not found."},404);}
     return env.GAME_ROOMS.getByName(match[1]).fetch(request);
   },
 } satisfies ExportedHandler<Env>;
