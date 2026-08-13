@@ -196,6 +196,7 @@ export function FpsGame() {
   const [locked, setLocked] = useState(false);
   const [airstrikeMapOpen, setAirstrikeMapOpen] = useState(false);
   const [dronePiloting, setDronePiloting] = useState(false);
+  const [mortarSetupRemaining, setMortarSetupRemaining] = useState(0);
   const [touchControls, setTouchControls] = useState(false);
   const [damageFlash, setDamageFlash] = useState(false);
   const [started, setStarted] = useState(false);
@@ -1724,6 +1725,19 @@ export function FpsGame() {
     let placementPoint: { point: THREE.Vector3; normal: THREE.Vector3 } | null = null;
     let currentFireMode: FireMode = "AUTO", triggerHeld = false, currentSlot = 1, movementSpread = 1;
     let classAbilityReadyAt = 0, classAiming = false, activeDrone: THREE.Group | null = null, droneYaw = yaw, dronePitch = 0, droneTrigger = false, nextDroneShot = 0, lastDroneNetworkSend = 0;
+    let mortarSetupEnd = 0, mortarDeployed = false, mortarWorldModel: THREE.Group | null = null;
+    const mortarAimOffset = new THREE.Vector2(0, -14);
+    const mortarTarget = () => {
+      const distance = Math.min(30, mortarAimOffset.length());
+      const offset = mortarAimOffset.lengthSq() ? mortarAimOffset.clone().normalize().multiplyScalar(distance) : new THREE.Vector2(0,-14);
+      const x=playerPosition.x+offset.x,z=playerPosition.z+offset.y;
+      return new THREE.Vector3(x,terrainHeightAt(x,z)+.08,z);
+    };
+    const cancelMortar = () => { mortarSetupEnd=0;mortarDeployed=false;classAiming=false;trajectory.visible=false;classTargetMarker.visible=false;if(mortarWorldModel){scene.remove(mortarWorldModel);mortarWorldModel=null;}setMortarSetupRemaining(0); };
+    const beginMortarSetup = () => {
+      cancelMortar(); mortarSetupEnd=performance.now()+5000; setMortarSetupRemaining(5);
+      mortarWorldModel=buildEquipment("MORTAR SYSTEM"); mortarWorldModel.position.set(playerPosition.x,terrainHeightAt(playerPosition.x,playerPosition.z)+.43,playerPosition.z); mortarWorldModel.rotation.set(0,yaw,0); mortarWorldModel.scale.setScalar(1.25); scene.add(mortarWorldModel);
+    };
     const classDeployables: THREE.Object3D[] = [];
     const lastShotAt = [Number.NEGATIVE_INFINITY, Number.NEGATIVE_INFINITY];
     let nearbyDoor: typeof doors[number] | undefined;
@@ -1887,6 +1901,7 @@ export function FpsGame() {
         setFireMode(currentFireMode);
       }
       if (["Digit1", "Digit2", "Digit3", "Digit4", "Digit5"].includes(e.code) && (e.code !== "Digit5" || CLASS_ITEMS[playerClass])) {
+        const previousSlot=currentSlot;
         currentSlot = Number(e.code.slice(-1));
         setActiveSlot(currentSlot);
         if (currentFireMode === "BURST" && activeAttachments().fireControl !== "BURST TRIGGER") {
@@ -1903,6 +1918,8 @@ export function FpsGame() {
         reloadEnd = 0;
         setReloading(false);
         if (currentSlot !== 3 && healEnd) { healEnd = 0; setHealing(false); }
+        if(playerClass==="MORTAR"&&currentSlot===5&&previousSlot!==5)beginMortarSetup();
+        else if(playerClass==="MORTAR"&&currentSlot!==5)cancelMortar();
       }
     };
     const onKeyUp = (e: KeyboardEvent) => keys.delete(e.code);
@@ -1918,6 +1935,7 @@ export function FpsGame() {
     const onMouseMove = (e: MouseEvent) => {
       if (document.pointerLockElement !== renderer.domElement) return;
       if (activeDrone) { droneYaw -= e.movementX * .0026; dronePitch = THREE.MathUtils.clamp(dronePitch - e.movementY * .0022, -.72, .62); return; }
+      if(playerClass==="MORTAR"&&currentSlot===5&&mortarDeployed){mortarAimOffset.x=THREE.MathUtils.clamp(mortarAimOffset.x+e.movementX*.035,-28,28);mortarAimOffset.y=THREE.MathUtils.clamp(mortarAimOffset.y+e.movementY*.035,-28,28);if(mortarAimOffset.length()>30)mortarAimOffset.setLength(30);return;}
       if (isThirdPerson && !orbiting) return;
       applyLook(e.movementX, e.movementY);
     };
@@ -2239,11 +2257,14 @@ export function FpsGame() {
     const useClassItem = () => {
       const now = performance.now();
       if (now < classAbilityReadyAt) return;
-      const target = classTarget();
+      const target = playerClass==="MORTAR"?mortarTarget():classTarget();
       if (playerClass === "MORTAR") {
+        if(!mortarDeployed)return;
         classAbilityReadyAt = now + 18_000; setClassCooldown(18);
-        const shell = new THREE.Mesh(new THREE.SphereGeometry(.12, 10, 8), material(0x2f382d, .5, .5)); shell.position.copy(target).add(new THREE.Vector3(0, 32, 0)); scene.add(shell);
-        const fall = window.setInterval(() => { shell.position.y -= 1.8; if (shell.position.y <= target.y + .15) { window.clearInterval(fall); scene.remove(shell); classBlast(target, 9, 150, "MORTAR"); } }, 16);
+        const start=new THREE.Vector3(playerPosition.x,terrainHeightAt(playerPosition.x,playerPosition.z)+1.05,playerPosition.z);
+        const shell = new THREE.Mesh(new THREE.CapsuleGeometry(.075,.22,4,8), material(0x2f382d, .5, .5)); scene.add(shell);
+        const launchedAt=performance.now(),flightTime=1700;
+        const fly=()=>{const t=THREE.MathUtils.clamp((performance.now()-launchedAt)/flightTime,0,1);shell.position.lerpVectors(start,target,t);shell.position.y+=Math.sin(t*Math.PI)*12;shell.rotation.x+=.16;if(t<1)requestAnimationFrame(fly);else{scene.remove(shell);classBlast(target,9,150,"MORTAR");}};fly();
       } else if (playerClass === "AIRSTRIKE") {
         setRadarPings([{id:"local",x:playerPosition.x,z:playerPosition.z,local:true},...[...remotePlayers.entries()].filter(([,avatar])=>avatar.visible).map(([id,avatar])=>({id,x:avatar.position.x,z:avatar.position.z,local:false}))]);
         setAirstrikeMapOpen(true); classTargetMarker.visible = false; document.exitPointerLock();
@@ -2341,7 +2362,7 @@ export function FpsGame() {
       }
       if (e.button !== 0 || sprinting || sliding) return;
       if (activeDrone) { droneTrigger = true; return; }
-      if (currentSlot === 5) { classAiming = true; classTargetMarker.visible = true; return; }
+      if (currentSlot === 5) { if(playerClass==="MORTAR"&&!mortarDeployed)return; classAiming = true; classTargetMarker.visible = playerClass!=="MORTAR"; if(playerClass==="MORTAR")trajectory.visible=true; return; }
       if (currentSlot === 3) {
         if (medicalCharges > 0 && playerHealth < maxPlayerHealth && !healEnd) {
           const medicalStats = MEDICAL_STATS[medical];
@@ -2371,7 +2392,7 @@ export function FpsGame() {
       if (e.button === 0) {
         triggerHeld = false;
         droneTrigger = false;
-        if (classAiming) { classAiming = false; classTargetMarker.visible = false; useClassItem(); }
+        if (classAiming) { classAiming = false; classTargetMarker.visible = false; if(playerClass==="MORTAR")trajectory.visible=false; useClassItem(); }
         if (placementAiming) { placeUtility(); placementAiming = false; placementPreview.visible = false; placementPoint = null; }
         if (throwableAiming) { throwableAiming = false; trajectory.visible = false; throwUtility(); }
       }
@@ -2461,6 +2482,7 @@ export function FpsGame() {
       );
       const inputStrength = Math.min(1, input.length());
       if (input.lengthSq() > 0) input.normalize();
+      if(playerClass==="MORTAR"&&currentSlot===5){input.set(0,0);sprinting=false;if(mortarSetupEnd){const remaining=Math.max(0,mortarSetupEnd-now);setMortarSetupRemaining(Math.ceil(remaining/1000));if(remaining<=0){mortarSetupEnd=0;mortarDeployed=true;setMortarSetupRemaining(0);}}}
       if (activeDrone) {
         const forward = new THREE.Vector3(-Math.sin(droneYaw) * Math.cos(dronePitch), Math.sin(dronePitch), -Math.cos(droneYaw) * Math.cos(dronePitch));
         const right = new THREE.Vector3(Math.cos(droneYaw), 0, -Math.sin(droneYaw));
@@ -2734,16 +2756,20 @@ export function FpsGame() {
         setHealth(playerHealth); setMedicalCount(medicalCharges); setHealing(false); setHealingEffect(true);
         window.setTimeout(() => setHealingEffect(false), 650);
       }
-      if (throwableAiming) {
-        const { start, velocity } = getThrow();
+      if (throwableAiming || (classAiming&&playerClass==="MORTAR"&&mortarDeployed)) {
+        const mortarLine=classAiming&&playerClass==="MORTAR";
+        const throwData=getThrow();
+        const start=mortarLine?new THREE.Vector3(playerPosition.x,terrainHeightAt(playerPosition.x,playerPosition.z)+1.05,playerPosition.z):throwData.start;
+        const mortarEnd=mortarTarget();
         const points: THREE.Vector3[] = [];
-        for (let step = 0; step <= 18; step++) {
+        for (let step = 0; step <= (mortarLine?28:18); step++) {
+          const ratio=step/(mortarLine?28:18);
           const time = step * 0.09;
-          const point = start.clone().addScaledVector(velocity, time);
-          point.y -= 7.25 * time * time;
+          const point=mortarLine?start.clone().lerp(mortarEnd,ratio).add(new THREE.Vector3(0,Math.sin(ratio*Math.PI)*12,0)):start.clone().addScaledVector(throwData.velocity,time);
+          if(!mortarLine)point.y-=7.25*time*time;
           const hitsWall = boxes.some((box) => point.x > box.minX && point.x < box.maxX && point.z > box.minZ && point.z < box.maxZ && point.y > 0 && point.y < box.height);
           if (hitsWall) { points.push(point); break; }
-          if (point.y < 0.08) { point.y = 0.08; points.push(point); break; }
+          if (!mortarLine&&point.y < 0.08) { point.y = 0.08; points.push(point); break; }
           points.push(point);
         }
         trajectory.geometry.dispose();
@@ -2852,13 +2878,13 @@ export function FpsGame() {
       secondaryWeapon.model.visible = currentSlot === 2;
       medicalModel.visible = currentSlot === 3 && medicalCharges > 0;
       utilityModel.visible = currentSlot === 4 && grenadesLeft > 0;
-      classItemModel.visible = currentSlot === 5 && Boolean(CLASS_ITEMS[playerClass]);
+      classItemModel.visible = currentSlot === 5 && Boolean(CLASS_ITEMS[playerClass]) && playerClass!=="MORTAR";
       worldPrimary.visible = isThirdPerson && currentSlot === 1;
       worldSecondary.visible = isThirdPerson && currentSlot === 2;
       worldMedical.visible = isThirdPerson && currentSlot === 3 && medicalCharges > 0;
       worldUtility.visible = isThirdPerson && currentSlot === 4 && grenadesLeft > 0;
-      worldClassItem.visible = isThirdPerson && currentSlot === 5 && Boolean(CLASS_ITEMS[playerClass]);
-      if (classAiming) { const target = classTarget(); classTargetMarker.position.copy(target).add(new THREE.Vector3(0, .035, 0)); classTargetMarker.rotation.z += dt * 1.8; }
+      worldClassItem.visible = isThirdPerson && currentSlot === 5 && Boolean(CLASS_ITEMS[playerClass]) && playerClass!=="MORTAR";
+      if (classAiming&&!mortarDeployed) { const target = classTarget(); classTargetMarker.position.copy(target).add(new THREE.Vector3(0, .035, 0)); classTargetMarker.rotation.z += dt * 1.8; }
       [worldPrimary, worldSecondary].forEach((worldWeapon) => {
         const carryLow = sprinting || sliding;
         const shoulderSwapX = leanAmount < 0 ? leanAmount * .4 : 0;
@@ -2874,12 +2900,15 @@ export function FpsGame() {
       crouchPoseAmount = THREE.MathUtils.lerp(crouchPoseAmount, isCrouching ? 1 : 0, Math.min(1, dt * 10));
       proneAmount = THREE.MathUtils.lerp(proneAmount, isProne ? 1 : 0, Math.min(1, dt * 8));
       localPlayer.scale.set(1, 1, 1);
-      localPlayer.visible = isThirdPerson || Boolean(activeDrone);
+      localPlayer.visible = isThirdPerson || Boolean(activeDrone) || (playerClass==="MORTAR"&&currentSlot===5);
       if (multiplayerSocket?.readyState === WebSocket.OPEN && now - lastMultiplayerSend >= 66) {
         lastMultiplayerSend = now;
         multiplayerSocket.send(JSON.stringify({ type: "state", x: playerPosition.x, y: playerPosition.y, z: playerPosition.z, yaw, movement: localPlayer.userData.movement, crouching: isCrouching, prone: isProne, slot: currentSlot, primary, secondary, equipment, playerClass, skin: characterSkin, uniform: characterUniform, camo: camoPattern, accessories: equippedAccessories, armor: characterArmor, helmet: characterHelmet, faceGear: localFaceGear, headAccessory: localHeadAccessory, chestRig, backpack, pants: pantsColor, gloves: gloveColor, boots: bootColor, callsign:playerCallsignRef.current }));
       }
-      if (activeDrone) {
+      if(playerClass==="MORTAR"&&currentSlot===5&&(mortarSetupEnd||mortarDeployed)){
+        const target=mortarDeployed?mortarTarget():new THREE.Vector3(playerPosition.x,terrainHeightAt(playerPosition.x,playerPosition.z),playerPosition.z);
+        camera.position.set(target.x,target.y+22,target.z+5);camera.lookAt(target.x,target.y,target.z);camera.rotation.z=0;
+      } else if (activeDrone) {
         const droneForward = new THREE.Vector3(-Math.sin(droneYaw) * Math.cos(dronePitch), Math.sin(dronePitch), -Math.cos(droneYaw) * Math.cos(dronePitch));
         camera.position.copy(activeDrone.position).add(new THREE.Vector3(0, .28, 0)).addScaledVector(droneForward, -1.15);
         camera.lookAt(activeDrone.position.clone().addScaledVector(droneForward, 18));
@@ -3121,6 +3150,8 @@ export function FpsGame() {
       <div className="crosshair" style={{ left: thirdPerson ? leanSide < 0 ? "46%" : "54%" : "50%" }}><span /><span /></div>
       <div className="hud-left"><small>VITALS · {equipment}</small><strong>{health}</strong><div className="health"><i style={{ width: `${health / maximumHealth * 100}%` }} /></div><div className={`stamina${stamina <= 25 ? " low" : ""}`}><span>STAMINA</span><i><b style={{ width: `${stamina}%` }} /></i><em>{stamina}</em></div></div>
       {started && CLASS_ITEMS[playerClass] && <div className={`class-ability-status${classCooldown > 0 ? " cooling" : ""}`}><kbd>5</kbd><span><b>{CLASS_ITEMS[playerClass]}</b><small>{classCooldown > 0 ? `COOLDOWN · ${classCooldown} SEC` : "READY · EQUIP SLOT 5"}</small></span></div>}
+      {started&&playerClass==="MORTAR"&&activeSlot===5&&mortarSetupRemaining>0&&<div className="mortar-setup-status"><span>DEPLOYING MORTAR</span><strong>{mortarSetupRemaining}</strong><small>SEC</small><i style={{animationDuration:"5s"}} /></div>}
+      {started&&playerClass==="MORTAR"&&activeSlot===5&&mortarSetupRemaining===0&&<div className="mortar-control-hud"><b>MORTAR FIRE CONTROL</b><span>MOVE MOUSE TO SET RANGE · HOLD <kbd>LMB</kbd> TO PREVIEW ARC · RELEASE TO FIRE</span></div>}
       {started && dronePiloting && <div className="drone-control-hud"><b>ATTACK DRONE · REMOTE LINK</b><span><kbd>WASD</kbd> FLY · <kbd>SHIFT</kbd> BOOST · <kbd>LMB</kbd> FIRE · <kbd>RMB</kbd> EXIT</span></div>}
       {started && airstrikeMapOpen && <div className="airstrike-overlay" role="dialog" aria-modal="true" aria-label="Airstrike targeting map">
         <section className="airstrike-console">
